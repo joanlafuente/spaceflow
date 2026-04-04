@@ -4,12 +4,13 @@ import utils3d
 import open3d_pycg as o3d
 
 def convert_mesh_yup_to_zup(mesh):
-    mesh.vertices = mesh.vertices @ np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]])
+    # Row vectors v' = v @ R. Use the inverse of the old rotation so +Y maps to +Z vs -Z the other way.
+    mesh.vertices = mesh.vertices @ np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
     return mesh
 
 def voxelize_mesh(mesh_file, save_path):
     assert mesh_file.endswith('.ply') and save_path.endswith('.ply'), 'Voxelization only supports .ply files'
-    
+
     mesh = o3d.io.read_triangle_mesh(mesh_file)
 
     # clamp vertices to the range [-0.5, 0.5]
