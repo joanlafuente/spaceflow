@@ -156,6 +156,20 @@ def load_superquadrics(path, args):
     # Implementation for loading superquadrics
 
     superquadrics = load_superquadric_from_file(path)
+    
+        # Loading the spatial control mesh generated from the superquadrics provided and check that it all right
+    if not osp.exists(args.spatial_control_mesh_path):
+        log.error(f"Spatial control mesh not found: {args.spatial_control_mesh_path}")
+        return
+    else:
+        log.info(f"Spatial control mesh found: {args.spatial_control_mesh_path}")
+        mesh = o3d.io.read_triangle_mesh(args.spatial_control_mesh_path)
+        if mesh.is_empty():
+            log.error(f"Spatial control mesh is empty: {args.spatial_control_mesh_path}")
+            return
+        else:
+            log.info(f"Spatial control mesh loaded successfully: {args.spatial_control_mesh_path}")
+
 
     meshes = []
     for superquadric_id in superquadrics.keys():
@@ -229,16 +243,10 @@ def predict_part(obj_path, output_dir):
     random.seed(0)
     np.random.seed(0)
 
-    checkpoint_callbacks = [ModelCheckpoint(
-        monitor="train/current_epoch",
-        dirpath=partfield_cfg.output_dir,
-        filename="{epoch:02d}",
-        save_top_k=100,
-        save_last=True,
-        every_n_epochs=partfield_cfg.save_every_epoch,
-        mode="max",
-        verbose=True
-    )]
+    # Lightning defaults to ./lightning_logs under cwd (repo root); team members often
+    # cannot mkdir there. Keep all PL artifacts under this run's output_dir.
+    pl_root = osp.join(output_dir, 'pl_partfield')
+    common.ensure_dir(pl_root)
 
     trainer = Trainer(devices=-1,
                       accelerator="gpu",
@@ -248,7 +256,9 @@ def predict_part(obj_path, output_dir):
                       log_every_n_steps=1,
                       limit_train_batches=3500,
                       limit_val_batches=None,
-                      callbacks=checkpoint_callbacks
+                      default_root_dir=pl_root,
+                      logger=False,
+                      enable_checkpointing=False,
                      )
 
     partfield_model = Model(partfield_cfg, obj_path)
