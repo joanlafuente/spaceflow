@@ -19,10 +19,9 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 cd /work/courses/3dv/team3/spaceflow
 srun --ntasks=1 --export=ALL \
   /work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python run.py \
-  --guidance_mode appearance \
-  --appearance_mesh examples/lamp.glb \
-  --output_dir outputs/test1 \
-  --convert_yup_to_zup \
+  --guidance_mode similarity \
+  --appearance_image examples/plane.jpg \
+  --output_dir outputs/test4 \
   --shape_superquadric_path examples/superquadrics/plane_sq.npz \
   --shape_tau 6.0 \
-  --text_prompt "An aerodynamic plane" \
+  --text_prompt "A propeller airplane" \

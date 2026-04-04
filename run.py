@@ -40,7 +40,7 @@ CFG_SHAPE_GEN = 7.5
 
 def init_args():
     parser = argparse.ArgumentParser(description='GuideFlow3D - 3D Shape Generation')
-    
+
     # Guidance mode selection
     parser.add_argument('--guidance_mode', type=str, required=True, choices=['appearance', 'similarity'],
                         help='Guidance mode: "appearance" or "similarity"')
@@ -48,36 +48,35 @@ def init_args():
                         help='Output directory for results')
     parser.add_argument('--convert_yup_to_zup', action='store_true',
                         help='Convert Y-up coordinate system to Z-up')
-    
-    parser.add_argument('--appearance_mesh', type=str, 
+
+    parser.add_argument('--appearance_mesh', type=str,
                         help='Path to appearance mesh (.glb format)')
-    
+
     parser.add_argument('--appearance_image', type=str,
                         help='Path to appearance reference image')
     parser.add_argument('--appearance_text', type=str, default='',
                         help='Optional appearance text description')
 
+    # SapceControl parameters
     parser.add_argument('--shape_superquadric_path', type=str, required=True,
                         help='Path to shape superquadrics file')
     parser.add_argument('--shape_tau', type=float, default=6.0, required=True,
                         help='Value of tau for superquadric control')
-    parser.add_argument('--spatial_control_mesh_path', type=str, required=True,
-                        help='Path to save the temporal file for spatial control generated from the superquadrics provided')
     parser.add_argument('--text_prompt', type=str, required=True,
                         help='Text prompt for 3D shape generation')
 
     args = parser.parse_args()
-    
+
     if args.guidance_mode == 'appearance' and not args.appearance_mesh:
             parser.error("--appearance_mesh is required when using appearance guidance mode")
-    
+
     elif args.guidance_mode == 'similarity':
         if args.appearance_text and args.appearance_image:
             parser.error("Provide either --appearance_image or --appearance_text for similarity guidance, not both.")
 
         if not args.appearance_text and not args.appearance_image:
             parser.error("Provide either --appearance_image or --appearance_text for similarity guidance.")
-    
+
     return parser.parse_args()
 
 def add_superquadric_compact_rot_mat(
@@ -153,7 +152,7 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadrics[k] = superquadric_dict
     return superquadrics
 
-def load_superquadrics(path, spatial_control_mesh_path):
+def load_superquadrics(path, args):
     # Implementation for loading superquadrics
 
     superquadrics = load_superquadric_from_file(path)
@@ -176,49 +175,46 @@ def load_superquadrics(path, spatial_control_mesh_path):
 
     merged_mesh.translate(-center)
     merged_mesh.scale(scale, (0,0,0))
+    spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
     o3d.io.write_triangle_mesh(spatial_control_mesh_path, merged_mesh)
 
 def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.glb"):
     """
     Converts sparse voxel coordinates to a GLB mesh.
-    
+
     :param sparse_points: List or array of (x, y, z) coordinates (integers).
     :param grid_size: The size of the voxel bounding box (e.g., 64).
     :param output_filename: The name of the output GLB file.
     """
-    
+
     print(f"Creating {grid_size}x{grid_size}x{grid_size} grid...")
-    # Step 1: Initialize an empty dense grid with zeros (False)
+    # Init grid
     voxel_grid = np.zeros((grid_size, grid_size, grid_size), dtype=bool)
 
-    # Step 2: Populate the grid with your sparse points
-    # Ensure coordinates are integers to use as array indices
+    # Populate grid with sparse points
     sparse_points = np.round(sparse_points).astype(int)
     for x, y, z in sparse_points:
         # Check bounds just in case
         if 0 <= x < grid_size and 0 <= y < grid_size and 0 <= z < grid_size:
             voxel_grid[x, y, z] = True
 
-    # Step 3: Pad the grid
-    # Padding ensures that if you have voxels on the very edge (e.g., at x=0 or x=63), 
-    # the Marching Cubes algorithm will properly close the mesh geometry.
+    # Padding the grid (Needed for marching cubes)
     padded_grid = np.pad(voxel_grid, pad_width=1, mode='constant', constant_values=False)
 
     print("Running Marching Cubes algorithm...")
-    # Step 4: Run Marching Cubes
-    # We use a level of 0.5 to extract the surface exactly halfway between the 0s and 1s
+    # Marching Cubes (Level set at 0.5 to extract the surface between occupied and empty voxels)
     verts, faces, normals, values = measure.marching_cubes(padded_grid, level=0.5)
 
     # Shift vertices back by 1 to account for the padding we added
     verts = verts - 1.0
 
     print("Generating mesh and exporting to GLB...")
-    # Step 5: Create a Trimesh object
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
 
-    trimesh.smoothing.filter_taubin(mesh, iterations=40)
+    # Smoothing of the mesh
+    trimesh.smoothing.filter_taubin(mesh, iterations=50)
 
-    # Step 6: Export to GLB format
+    # Export to GLB format
     mesh.export(output_filename)
     print(f"Successfully exported mesh to {output_filename}")
 
@@ -226,13 +222,13 @@ def predict_part(obj_path, output_dir):
     log.info("Extracting PartField feature planes...")
     partfield_config = 'third_party/PartField/config.yaml'
     partfield_cfg = OmegaConf.load(partfield_config)
-    
+
     seed_everything(partfield_cfg.seed)
 
     torch.manual_seed(0)
     random.seed(0)
     np.random.seed(0)
-    
+
     checkpoint_callbacks = [ModelCheckpoint(
         monitor="train/current_epoch",
         dirpath=partfield_cfg.output_dir,
@@ -259,34 +255,20 @@ def predict_part(obj_path, output_dir):
     output = trainer.predict(partfield_model, ckpt_path=partfield_cfg.continue_ckpt)
     part_planes, uid = output[0]
     np.save(f'{output_dir}/part_feat_{uid}_batch_part_plane.npy', part_planes)
-    
+
     del partfield_model
     gc.collect() # Free up memory
 
 def main():
     args = init_args()
     cfg = OmegaConf.load('config/default.yaml')
-    
+
     common.ensure_dir(args.output_dir)
-    
+
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
 
-    load_superquadrics(args.shape_superquadric_path, args.spatial_control_mesh_path)
-
-    # Loading the spatial control mesh generated from the superquadrics provided and check that it all right
-    if not osp.exists(args.spatial_control_mesh_path):
-        log.error(f"Spatial control mesh not found: {args.spatial_control_mesh_path}")
-        return
-    else:
-        log.info(f"Spatial control mesh found: {args.spatial_control_mesh_path}")
-        mesh = o3d.io.read_triangle_mesh(args.spatial_control_mesh_path)
-        if mesh.is_empty():
-            log.error(f"Spatial control mesh is empty: {args.spatial_control_mesh_path}")
-            return
-        else:
-            log.info(f"Spatial control mesh loaded successfully: {args.spatial_control_mesh_path}")
-
+    load_superquadrics(args.shape_superquadric_path, args)
 
     pipeline = TrellisTextTo3DPipeline.from_pretrained("gui")
     pipeline.cuda()
@@ -298,75 +280,77 @@ def main():
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,
-        "spatial_control_mesh_path": args.spatial_control_mesh_path,
-    }) 
+        "spatial_control_mesh_path": osp.join(args.output_dir, 'spatial_control_mesh.ply')
+    })
 
     # Convert sparse voxels to mesh
     log.info("Converting sparse voxels to mesh...")
-    
+
     coords_np = coords.detach().cpu().numpy()
-    
+
     print(coords_np)
     filtered_coords = coords_np[:, 1:]
     print(f"Number of valid voxels: {filtered_coords.shape[0]}")
-    
-    sparse_voxels_to_glb(filtered_coords, grid_size=64, output_filename='sample.glb')
+
+    sparse_voxels_to_glb(filtered_coords, grid_size=64, output_filename=osp.join(args.output_dir, "sample.glb"))
 
     # glb.export("sample.glb")
 
     # log.info("Loading generated mesh...")
-    
-    struct_mesh = trimesh.load("sample.glb", force='mesh')
+
+    struct_mesh = trimesh.load(osp.join(args.output_dir, "sample.glb"), force='mesh')
+    # Generator / marching-cubes output in Y-up; keep a copy for debugging.
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh.glb'))
 
     del pipeline
     gc.collect() # Free up memory
-    
-    # Convert Y-up to Z-up if needed
+
+    # Canonical mesh for renders, voxels, and PartField must share one frame (Z-up if converting).
     if args.convert_yup_to_zup:
         struct_mesh = pointcloud.convert_mesh_yup_to_zup(struct_mesh)
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh_zup.glb'))
+    struct_mesh_for_pipeline = osp.join(args.output_dir, 'struct_mesh_zup.glb')
 
     log.info(f"Rendering structure mesh for {cfg.num_views // 10} views...")
     struct_render_dir = osp.join(args.output_dir, 'struct_renders')
     common.ensure_dir(struct_render_dir)
-    out_renderviews = render.render_all_views(osp.join(args.output_dir, 'struct_mesh.glb'), struct_render_dir, num_views=cfg.num_views // 10)
-    
+    out_renderviews = render.render_all_views(struct_mesh_for_pipeline, struct_render_dir, num_views=cfg.num_views // 10)
+
     voxel_dir = osp.join(args.output_dir, 'voxels')
     common.ensure_dir(voxel_dir)
     log.info("Voxelizing structure mesh...")
     pointcloud.voxelize_mesh(osp.join(struct_render_dir, 'mesh.ply'), save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
-    
+
     log.info("Extracting Structure Mesh PartField feature planes...")
     partfield_dir = osp.join(args.output_dir, 'partfield')
     common.ensure_dir(partfield_dir)
-    predict_part(osp.join(args.output_dir, 'struct_mesh_zup.glb'), partfield_dir)
-    
+    predict_part(struct_mesh_for_pipeline, partfield_dir)
+
     if not out_renderviews:
         log.info("Structure rendering failed!")
-    
+
     if args.guidance_mode == 'appearance':
         log.info("Running appearance-guided optimization...")
-        
+
         # Load appearance mesh
         log.info("Loading appearance mesh...")
-        
+
         if not args.appearance_mesh.endswith('.glb'):
             log.error("Meshes must be in .glb format")
             return
-        
+
         if not osp.exists(args.appearance_mesh):
             log.error(f"Appearance mesh not found: {args.appearance_mesh}")
             return
-        
+
         app_mesh = trimesh.load(args.appearance_mesh, force='mesh')
         app_mesh.export(osp.join(args.output_dir, 'app_mesh.glb'))
-        
+
         # Convert Y-up to Z-up if needed
         if args.convert_yup_to_zup:
             app_mesh = pointcloud.convert_mesh_yup_to_zup(app_mesh)
         app_mesh.export(osp.join(args.output_dir, 'app_mesh_zup.glb'))
-        
+
         # Load appearance image
         log.info("Loading appearance image...")
         if args.appearance_image:
@@ -382,7 +366,7 @@ def main():
             rendering = scene.render_blender(quality=512)
             rendering = image.alpha_compositing(rendering, image.solid(rendering.shape[1], rendering.shape[0]))
             image.write(osp.join(args.output_dir, 'app_image.png'), rendering)
-        
+
         # Render views for DinoV2 feature extraction
         log.info(f"Rendering appearance mesh for {cfg.num_views} views...")
         app_render_dir = osp.join(args.output_dir, 'app_renders')
@@ -391,41 +375,41 @@ def main():
         if not out_renderviews:
             log.info("Appearance rendering failed!")
             return
-        
+
         # Voxelise mesh
         log.info("Voxelizing appearance mesh...")
         pointcloud.voxelize_mesh(osp.join(app_render_dir, 'mesh.ply'), save_path=osp.join(voxel_dir, 'app_voxels.ply'))
-        
+
         # Extract DinoV2 Features
         log.info("Extracting DinoV2 features...")
         dinov2_model = torch.hub.load(cfg.dinov2_repo, cfg.feature_name)
         dinov2_model.eval().cuda()
         transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-        
+
         common.ensure_dir(osp.join(args.output_dir, 'features', cfg.feature_name))
         generation.extract_feature(args.output_dir, dinov2_model, transform)
         torch.cuda.empty_cache()
-        
+
         del dinov2_model
         gc.collect() # Free up memory
-        
+
         # Extract SLAT Latent
         log.info("Extracting SLAT latent...")
         encoder = models.from_pretrained(cfg.enc_pretrained).eval().cuda()
-        
+
         common.ensure_dir(osp.join(args.output_dir, 'latents', cfg.latent_name))
         generation.get_latent(args.output_dir, cfg.feature_name, cfg.latent_name, encoder)
 
         del encoder
         gc.collect() # Free up memory
-        
+
         # Extract PartField features for appearance mesh
         log.info("Extracting Appearance Mesh PartField feature planes...")
         predict_part(osp.join(args.output_dir, 'app_mesh_zup.glb'), partfield_dir)
-    
+
         # Appearance Optimization
         appearance.optimize_appearance(cfg, args.output_dir)
-    
+
     elif args.guidance_mode == 'similarity':
         log.info("Running similarity-guided optimization...")
 
@@ -439,13 +423,13 @@ def main():
         elif args.appearance_text:
             app_type = 'text'
             app = args.appearance_text
-        
+
         log.info(f"Using {app_type} for self-similarity guidance...")
-        
+
 
         # Self-Similarity Optimization
         self_similarity.optimize_self_similarity(cfg, app, app_type, args.output_dir)
-    
+
     else:
         raise NotImplementedError(f"Guidance mode {args.guidance_mode} not implemented.")
 
