@@ -176,14 +176,18 @@ function toPrimitive(raw: RawPrimitive): Primitive {
 }
 
 /** Strip ids — what the LLM sees for the current scene. */
+function roundForLlm(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 export function primitivesToLlmJson(primitives: Primitive[]) {
   return {
     primitives: primitives.map(p => ({
       name: p.name,
-      scales: [...p.scales],
-      shapes: [...p.shapes],
-      translation: [...p.translation],
-      eulerDeg: [...p.eulerDeg],
+      scales: p.scales.map(roundForLlm),
+      shapes: p.shapes.map(roundForLlm),
+      translation: p.translation.map(roundForLlm),
+      eulerDeg: p.eulerDeg.map(roundForLlm),
     })),
   };
 }
