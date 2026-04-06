@@ -31,23 +31,45 @@ FORWARD = os.environ.get("SQ_OLLAMA_FORWARD", "").strip().rstrip("/")
 PARTITION = os.environ.get("SQ_SLURM_PARTITION", "interactive")
 ACCOUNT = os.environ.get("SQ_SLURM_ACCOUNT", "3dv")
 GRES = os.environ.get("SQ_SLURM_GRES", "gpu:1")
+GPUS = os.environ.get("SQ_SLURM_GPUS", "").strip()
 TIME_LIMIT = os.environ.get("SQ_SLURM_TIME", "00:15:00")
 PORT = int(os.environ.get("SQ_PROXY_PORT", "11434"))
 SRUN_TIMEOUT = int(os.environ.get("SQ_SRUN_TIMEOUT_SEC", "180"))
+EXTRA_ARGS = os.environ.get("SQ_SLURM_EXTRA_ARGS", "").strip()
+
+
+def _split_args(s: str) -> list[str]:
+    # Tiny shell-like splitter for env-provided args (no quotes support).
+    return [tok for tok in s.split() if tok]
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    def _cors(self) -> None:
+        # Allow the UI (dev server on :5173) to call the proxy on :11434.
+        # Without these headers, browsers block the request (CORS) and the UI reports "Cannot reach Ollama".
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
     def log_message(self, fmt: str, *args) -> None:
         print(f"[sq-ollama-proxy] {fmt % args}", flush=True)
+
+    def do_OPTIONS(self) -> None:
+        # CORS preflight for POST /api/chat
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
 
     def do_GET(self) -> None:
         if self.path in ("/", ""):
             self.send_response(200)
+            self._cors()
             self.end_headers()
             self.wfile.write(b"Ollama is running")
             return
         if self.path == "/api/tags":
             self.send_response(200)
+            self._cors()
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"models":[]}')
@@ -87,16 +109,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             env = os.environ.copy()
             env["OLLAMA_BASE"] = OLLAMA_BASE
-            cmd = [
+            cmd: list[str] = [
                 "srun",
                 f"--partition={PARTITION}",
                 f"--account={ACCOUNT}",
-                f"--gres={GRES}",
                 f"--time={TIME_LIMIT}",
                 "--job-name=sq_ollama",
-                INFER_SCRIPT,
-                req_path,
             ]
+            # GPU request varies by cluster. Prefer --gpus if SQ_SLURM_GPUS is set.
+            if GPUS:
+                cmd.append(f"--gpus={GPUS}")
+            else:
+                cmd.append(f"--gres={GRES}")
+            if EXTRA_ARGS:
+                cmd.extend(_split_args(EXTRA_ARGS))
+            cmd.extend([INFER_SCRIPT, req_path])
             p = subprocess.run(cmd, capture_output=True, env=env, timeout=SRUN_TIMEOUT)
             if p.returncode != 0:
                 err = p.stderr.decode("utf-8", errors="replace")[:8000]
@@ -111,6 +138,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
             self.send_response(200)
+            self._cors()
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(p.stdout)
@@ -139,6 +167,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with urllib.request.urlopen(req, timeout=300) as resp:
                 rbody = resp.read()
                 self.send_response(resp.status)
+                self._cors()
                 ct = resp.headers.get("Content-Type", "application/json")
                 self.send_header("Content-Type", ct)
                 self.end_headers()
@@ -146,6 +175,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             err_body = e.read() if e.fp else b""
             self.send_response(e.code)
+            self._cors()
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err_body if err_body else json.dumps({"error": str(e)}).encode())
@@ -155,6 +185,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _send_json(self, code: int, obj: object) -> None:
         raw = json.dumps(obj).encode()
         self.send_response(code)
+        self._cors()
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(raw)

@@ -40,10 +40,11 @@ Each person needs their **own** Ollama binary and model weights under **`/work/s
    npm run dev -- --host 0.0.0.0
    ```
 
-**Without Slurm** (e.g. you run `ollama serve` yourself on port 11436):  
+**Without Slurm** (e.g. you run `ollama serve` yourself on port 11436):
 `SQ_OLLAMA_FORWARD=http://127.0.0.1:11436 python3 "$OLLAMA_BASE/scripts/ollama_proxy.py"`
 
 **Overrides:** `SQ_SLURM_PARTITION`, `SQ_SLURM_ACCOUNT`, `SQ_SLURM_GRES`, `SQ_SLURM_TIME`, `SQ_OLLAMA_SCRATCH` (install path for `setup_ollama.sh`).
+**Slurm GPU override:** some clusters reject `--gres=gpu:1`. You can set `SQ_SLURM_GPUS=1` to use `--gpus=1` instead, or provide custom args via `SQ_SLURM_EXTRA_ARGS`.
 
 **In the UI:** **AI Generate** → **Create** builds a new scene from a prompt; **Edit** sends the current preset (names, scales, shapes, translations, eulerDeg) plus your instruction (e.g. “make the wheels rounder”). Use **Focus parts** checkboxes or **+ selection** to steer which parts to change; the model still returns a full `primitives` list. With **Include viewport screenshot** (default on), a PNG of the 3D view is sent to multimodal models (e.g. Gemma 4) together with the text. Undo restores the previous scene.
 
