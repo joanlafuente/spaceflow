@@ -6,7 +6,8 @@ import type { PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives } from '../mesh/npzImport';
 import { isOrthogonal } from '../state/rotation';
 import { eulerToMatrix, matrixToEuler } from '../state/rotation';
-import { editFromText, generateFromText } from '../state/generate';
+import { editFromText } from '../state/generate';
+import { createFromTextViaSuperdec } from '../state/createPipeline';
 import { generateWithSuperdec } from '../state/superdec';
 import {
   captureViewportDataUrl,
@@ -152,10 +153,15 @@ export default function TopBar() {
     const prevName = primitives.find(p => p.id === selectedId)?.name ?? null;
     try {
       if (genMode === 'create') {
-        const prims = await generateFromText(prompt);
+        const result = await createFromTextViaSuperdec(prompt, {
+          name: prompt.replace(/^a\s+/i, '').trim() || 'superquadrics',
+        });
+        const prims = result.primitives;
         loadPreset(prims);
         setProjectName(prompt.replace(/^a\s+/i, '').trim() || 'superquadrics');
-        showToast(`Generated ${prims.length} primitives`);
+        showToast(
+          `Generated ${result.primitiveCount} primitives from ${result.pointCount} TRELLIS points`
+        );
         setShowGenerate(false);
         setGenPrompt('');
       } else {
@@ -449,7 +455,7 @@ export default function TopBar() {
               className="btn-generate"
               onClick={() => { setShowGenerate(true); setTimeout(() => genInputRef.current?.focus(), 50); }}
               disabled={generating}
-              title="Generate from text description (requires Ollama)"
+              title="Create via TRELLIS + SuperDec, or edit via Ollama"
             >
               {generating ? '...' : 'AI Generate'}
             </button>

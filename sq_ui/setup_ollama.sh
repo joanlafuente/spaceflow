@@ -85,7 +85,7 @@ echo "2) In another terminal, run the UI and point it at the proxy (default port
 echo "     cd $SCRIPT_DIR/app && npm run dev -- --host 0.0.0.0"
 echo "     # optional: echo 'VITE_OLLAMA_URL=http://127.0.0.1:11434/api/chat' >> app/.env.local"
 echo ""
-echo "3) Open the printed dev URL in your browser and use AI Generate."
+echo "3) Open the printed dev URL in your browser and use AI Generate Edit mode."
 echo ""
 echo "Forward mode (no Slurm — you run ollama yourself on a port):"
 echo "     SQ_OLLAMA_FORWARD=http://127.0.0.1:11436 python3 $BASE/scripts/ollama_proxy.py"

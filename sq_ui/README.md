@@ -90,7 +90,7 @@ Supported first-pass inputs:
 - The service writes a pipeline-compatible `.npz` with `scales`, `shapes`, `translations`, and `rotations`, then the UI loads it through the existing importer.
 - Generated primitive names are rewritten to stable names like `chair_scan_part_01` so the current LLM edit flow can keep matching parts by name.
 
-## AI Generate (Ollama on the ETH cluster)
+## AI Edit (Ollama on the ETH cluster)
 
 Each person needs their **own** Ollama binary and model weights under **`/work/scratch/$USER`** (other users cannot read your scratch).
 
@@ -124,7 +124,49 @@ Each person needs their **own** Ollama binary and model weights under **`/work/s
 **Overrides:** `SQ_SLURM_PARTITION`, `SQ_SLURM_ACCOUNT`, `SQ_SLURM_GRES`, `SQ_SLURM_TIME`, `SQ_OLLAMA_SCRATCH` (install path for `setup_ollama.sh`).
 **Slurm GPU override:** some clusters reject `--gres=gpu:1`. You can set `SQ_SLURM_GPUS=1` to use `--gpus=1` instead, or provide custom args via `SQ_SLURM_EXTRA_ARGS`.
 
-**In the UI:** **AI Generate** → **Create** builds a new scene from a prompt; **Edit** sends the current preset (names, scales, shapes, translations, eulerDeg) plus your instruction (e.g. “make the wheels rounder”). Use **Focus parts** checkboxes or **+ selection** to steer which parts to change; the model still returns a full `primitives` list. With **Include viewport screenshot** (default on), a PNG of the 3D view is sent to multimodal models (e.g. Gemma 4) together with the text. Undo restores the previous scene.
+**In the UI:** **AI Generate** now has two backends. **Create** sends the text prompt through a TRELLIS text-to-pointcloud service and then fits the result with SuperDec; **Edit** still sends the current preset (names, scales, shapes, translations, eulerDeg) plus your instruction (e.g. “make the wheels rounder”) to Gemma via Ollama. Use **Focus parts** checkboxes or **+ selection** to steer which parts to change; the model still returns a full `primitives` list. With **Include viewport screenshot** (default on), a PNG of the 3D view is sent to multimodal models (e.g. Gemma 4) together with the text. Undo restores the previous scene.
+
+## TRELLIS Create Service
+
+`Create` no longer depends on Gemma/Ollama. It now relies on a local TRELLIS-backed text-to-pointcloud service plus the existing SuperDec service.
+
+### Start the TRELLIS service
+
+Run the service from an environment where the repo's TRELLIS dependencies are already installed:
+
+```bash
+cd /work/courses/3dv/team3/spaceflow
+export SQ_TRELLIS_SLURM_GPUS=1
+export SQ_TRELLIS_PYTHON=/work/courses/3dv/team3/spaceflow/envs/guideflow3d/bin/python
+export SQ_TRELLIS_SCRATCH=/work/scratch/$USER/spaceflow/trellis_ui
+python3 sq_ui/scripts/trellis_service.py
+```
+
+The service listens on `http://127.0.0.1:11437` by default.
+
+Useful overrides:
+
+- `VITE_TRELLIS_URL` for the frontend
+- `SQ_TRELLIS_PORT`
+- `SQ_TRELLIS_REPO_ROOT`
+- `SQ_TRELLIS_PYTHON`
+- `SQ_TRELLIS_SCRATCH`
+- `SQ_TRELLIS_CACHE_ROOT`
+- `SQ_TRELLIS_FORCE_LOCAL=1` when already running on a GPU node and you want to keep the TRELLIS pipeline warm in-process
+- `SQ_TRELLIS_SLURM_PARTITION`
+- `SQ_TRELLIS_SLURM_ACCOUNT`
+- `SQ_TRELLIS_SLURM_GPUS`
+- `SQ_TRELLIS_SLURM_TIME`
+- `SQ_TRELLIS_SLURM_EXTRA_ARGS`
+
+### Recommended runtime split
+
+- `Create`: TRELLIS service + SuperDec service
+- `Edit`: Ollama/Gemma proxy
+
+This keeps editing behavior unchanged while making from-scratch generation go through point-cloud fitting instead of raw LLM-authored superquadric JSON.
+
+The service will place Hugging Face and Torch Hub caches under scratch by default, using `SQ_TRELLIS_SCRATCH` and `SQ_TRELLIS_CACHE_ROOT`, so large model downloads do not end up in `~/.cache`.
 
 ## Usage
 
