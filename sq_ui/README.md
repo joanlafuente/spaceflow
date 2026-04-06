@@ -12,6 +12,84 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+## SuperDec Generate
+
+You can now generate a superquadric set from a point cloud directly in the UI via the `SuperDec` button in the top bar. The result is loaded into the same editor state as manual presets and AI-generated scenes, so parameter editing, LLM editing, undo/redo, JSON copy/import, and `.npz` export continue to work the same way.
+
+### One-time setup
+
+Use scratch storage for all large SuperDec assets and checkpoints:
+
+```bash
+cd /work/courses/3dv/team3/spaceflow
+bash sq_ui/setup_superdec.sh
+```
+
+By default this installs into:
+
+- `/work/scratch/nedela/spaceflow/superdec_ui/weights`
+- `/work/scratch/nedela/spaceflow/superdec_ui/runs`
+- `/work/scratch/nedela/spaceflow/superdec_ui/logs`
+
+Optional overrides:
+
+- `SQ_SUPERDEC_SCRATCH` to change the scratch root
+- `SUPERDEC_REPO_REF` to pin a branch/tag/commit
+- `SKIP_CLONE=1`, `SKIP_PIP=1`, `SKIP_CHECKPOINTS=1` to reuse existing assets
+
+### Start the SuperDec service
+
+```bash
+export SUPERDEC_BASE=/work/scratch/nedela/spaceflow/superdec_ui
+export SQ_SUPERDEC_CHECKPOINT_DIR="$SUPERDEC_BASE/weights/normalized"
+python3 "$SUPERDEC_BASE/scripts/superdec_service.py"
+```
+
+The service listens on `http://127.0.0.1:11435` by default.
+
+When started on a login node, the service will try to run the actual SuperDec inference through `srun` on a GPU node by default. Useful overrides:
+
+- `SQ_SUPERDEC_SLURM_PARTITION`
+- `SQ_SUPERDEC_SLURM_ACCOUNT`
+- `SQ_SUPERDEC_SLURM_GRES`
+- `SQ_SUPERDEC_SLURM_GPUS`
+- `SQ_SUPERDEC_SLURM_TIME`
+- `SQ_SUPERDEC_SLURM_EXTRA_ARGS`
+- `SQ_SUPERDEC_TORCH_CUDA_ARCH_LIST` such as `7.5;8.9+PTX` for mixed GPU nodes
+- `SQ_SUPERDEC_FORCE_LOCAL=1` to disable `srun` wrapping
+
+### Run the UI
+
+```bash
+cd sq_ui/app
+# optional if you want to be explicit:
+# echo 'VITE_SUPERDEC_URL=http://127.0.0.1:11435' >> .env.local
+npm run dev -- --host 0.0.0.0
+```
+
+### Supported inputs
+
+The UI uploads the source file to the SuperDec service, which reads point-based formats directly and falls back to mesh vertices for common mesh formats.
+
+Supported first-pass inputs:
+
+- `.ply`
+- `.pcd`
+- `.xyz`
+- `.xyzn`
+- `.xyzrgb`
+- `.pts`
+- `.obj`
+- `.stl`
+
+### Notes
+
+- `Z-up` applies a service-side basis conversion into the editor's Y-up frame before loading the generated primitives.
+- `Normalize point cloud` matches the inference path used by the SuperDec demo for generic objects.
+- `LM optimization` is exposed as an optional slower fit-improvement toggle.
+- The service writes a pipeline-compatible `.npz` with `scales`, `shapes`, `translations`, and `rotations`, then the UI loads it through the existing importer.
+- Generated primitive names are rewritten to stable names like `chair_scan_part_01` so the current LLM edit flow can keep matching parts by name.
+
 ## AI Generate (Ollama on the ETH cluster)
 
 Each person needs their **own** Ollama binary and model weights under **`/work/scratch/$USER`** (other users cannot read your scratch).

@@ -55,6 +55,25 @@ interface ParsedNpy {
   values: Float64Array;
 }
 
+function squeezeSingletonAxis(
+  parsed: ParsedNpy,
+  trailingShape: number[],
+  label: string,
+): ParsedNpy {
+  let shape = [...parsed.shape];
+  while (shape.length > trailingShape.length + 1 && shape[1] === 1) {
+    shape.splice(1, 1);
+  }
+  if (shape.length === trailingShape.length + 2 && shape[1] === 1) {
+    shape.splice(1, 1);
+  }
+  const expected = [shape[0], ...trailingShape];
+  if (shape.length !== expected.length || !expected.every((v, i) => shape[i] === v)) {
+    throw new Error(`${label} expected shape (N,${trailingShape.join(',')}), got (${parsed.shape.join(',')})`);
+  }
+  return { ...parsed, shape };
+}
+
 function parseNpyHeader(headerText: string): { descr: string; shape: number[]; fortran: boolean } {
   const descrM = /'descr':\s*'([^']+)'/.exec(headerText);
   if (!descrM) throw new Error('NPY header missing descr');
@@ -150,27 +169,20 @@ export function npzArraysToExports(
   translations: ParsedNpy,
   rotations: ParsedNpy,
 ): PrimitiveExport[] {
-  if (scales.shape.length !== 2 || scales.shape[1] !== 3) {
-    throw new Error(`scales.npy expected shape (N,3), got (${scales.shape.join(',')})`);
-  }
-  if (shapes.shape.length !== 2 || shapes.shape[1] !== 2) {
-    throw new Error(`shapes.npy expected shape (N,2), got (${shapes.shape.join(',')})`);
-  }
-  if (translations.shape.length !== 2 || translations.shape[1] !== 3) {
-    throw new Error(`translations.npy expected shape (N,3), got (${translations.shape.join(',')})`);
-  }
-  if (rotations.shape.length !== 3 || rotations.shape[1] !== 3 || rotations.shape[2] !== 3) {
-    throw new Error(`rotations.npy expected shape (N,3,3), got (${rotations.shape.join(',')})`);
-  }
-  const N = scales.shape[0];
-  if (shapes.shape[0] !== N || translations.shape[0] !== N || rotations.shape[0] !== N) {
-    throw new Error(`Array length mismatch: scales ${N}, shapes ${shapes.shape[0]}, translations ${translations.shape[0]}, rotations ${rotations.shape[0]}`);
+  const scalesSq = squeezeSingletonAxis(scales, [3], 'scales.npy');
+  const shapesSq = squeezeSingletonAxis(shapes, [2], 'shapes.npy');
+  const translationsSq = squeezeSingletonAxis(translations, [3], 'translations.npy');
+  const rotationsSq = squeezeSingletonAxis(rotations, [3, 3], 'rotations.npy');
+
+  const N = scalesSq.shape[0];
+  if (shapesSq.shape[0] !== N || translationsSq.shape[0] !== N || rotationsSq.shape[0] !== N) {
+    throw new Error(`Array length mismatch: scales ${N}, shapes ${shapesSq.shape[0]}, translations ${translationsSq.shape[0]}, rotations ${rotationsSq.shape[0]}`);
   }
 
-  const scalesM = reshape2(scales.values, N, 3);
-  const shapesM = reshape2(shapes.values, N, 2);
-  const transM = reshape2(translations.values, N, 3);
-  const rotM = reshape3(rotations.values, N, 3, 3);
+  const scalesM = reshape2(scalesSq.values, N, 3);
+  const shapesM = reshape2(shapesSq.values, N, 2);
+  const transM = reshape2(translationsSq.values, N, 3);
+  const rotM = reshape3(rotationsSq.values, N, 3, 3);
 
   const out: PrimitiveExport[] = [];
   for (let i = 0; i < N; i++) {

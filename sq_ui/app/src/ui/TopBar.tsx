@@ -7,6 +7,7 @@ import { importNpzToPrimitives } from '../mesh/npzImport';
 import { isOrthogonal } from '../state/rotation';
 import { eulerToMatrix, matrixToEuler } from '../state/rotation';
 import { editFromText, generateFromText } from '../state/generate';
+import { generateWithSuperdec } from '../state/superdec';
 import {
   captureViewportDataUrl,
   captureViewportImageForLlm,
@@ -40,6 +41,15 @@ export default function TopBar() {
   const [generating, setGenerating] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [genPrompt, setGenPrompt] = useState('');
+  const [showSuperdec, setShowSuperdec] = useState(false);
+  const [superdecGenerating, setSuperdecGenerating] = useState(false);
+  const [superdecFile, setSuperdecFile] = useState<File | null>(null);
+  const [superdecName, setSuperdecName] = useState('');
+  const [superdecZUp, setSuperdecZUp] = useState(false);
+  const [superdecNormalize, setSuperdecNormalize] = useState(true);
+  const [superdecLmOptimization, setSuperdecLmOptimization] = useState(false);
+  const [superdecMaxPrimitives, setSuperdecMaxPrimitives] = useState('16');
+  const [superdecExistThreshold, setSuperdecExistThreshold] = useState('0.5');
   const [projectName, setProjectName] = useState('superquadrics');
   const [genMode, setGenMode] = useState<'create' | 'edit'>('create');
   const [editFocusNames, setEditFocusNames] = useState<string[]>([]);
@@ -48,6 +58,7 @@ export default function TopBar() {
   const [viewportPreviewModal, setViewportPreviewModal] = useState(false);
   const [viewportModalUrl, setViewportModalUrl] = useState<string | null>(null);
   const genInputRef = useRef<HTMLInputElement>(null);
+  const superdecNameRef = useRef<HTMLInputElement>(null);
 
   const refreshViewportPreview = useCallback(async () => {
     if (!includeViewportInEdit) {
@@ -76,6 +87,12 @@ export default function TopBar() {
       setViewportModalUrl(null);
     }
   }, [showGenerate]);
+
+  useEffect(() => {
+    if (showSuperdec) {
+      setTimeout(() => superdecNameRef.current?.focus(), 50);
+    }
+  }, [showSuperdec]);
 
   useEffect(() => {
     if (!viewportPreviewModal) return;
@@ -112,6 +129,17 @@ export default function TopBar() {
     if (!name) return;
     setEditFocusNames(prev => (prev.includes(name) ? prev : [...prev, name]));
   }, [selectedId, primitives]);
+
+  const resetSuperdec = useCallback(() => {
+    setShowSuperdec(false);
+    setSuperdecFile(null);
+    setSuperdecName('');
+    setSuperdecZUp(false);
+    setSuperdecNormalize(true);
+    setSuperdecLmOptimization(false);
+    setSuperdecMaxPrimitives('16');
+    setSuperdecExistThreshold('0.5');
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     const prompt = genPrompt.trim();
@@ -185,6 +213,50 @@ export default function TopBar() {
     loadPreset,
     selectPrimitive,
     selectedId,
+  ]);
+
+  const handleSuperdecGenerate = useCallback(async () => {
+    if (!superdecFile || superdecGenerating) return;
+    setSuperdecGenerating(true);
+    const baseName =
+      superdecName.trim() ||
+      superdecFile.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') ||
+      'superdec';
+    try {
+      const maxPrimitives = Math.max(0, Number.parseInt(superdecMaxPrimitives || '0', 10) || 0);
+      const existThreshold = Math.min(
+        1,
+        Math.max(0, Number.parseFloat(superdecExistThreshold || '0.5') || 0.5)
+      );
+      const result = await generateWithSuperdec({
+        file: superdecFile,
+        name: baseName,
+        zUp: superdecZUp,
+        normalize: superdecNormalize,
+        lmOptimization: superdecLmOptimization,
+        maxPrimitives,
+        existThreshold,
+      });
+      loadPreset(result.primitives);
+      setProjectName(baseName);
+      showToast(`Generated ${result.primitiveCount} primitives with SuperDec`);
+      resetSuperdec();
+    } catch (err) {
+      showToast(`SuperDec failed: ${err instanceof Error ? err.message : err}`, 10000);
+    } finally {
+      setSuperdecGenerating(false);
+    }
+  }, [
+    loadPreset,
+    resetSuperdec,
+    superdecExistThreshold,
+    superdecFile,
+    superdecGenerating,
+    superdecLmOptimization,
+    superdecMaxPrimitives,
+    superdecName,
+    superdecNormalize,
+    superdecZUp,
   ]);
 
   const handleDownloadNpz = useCallback(async () => {
@@ -555,6 +627,173 @@ export default function TopBar() {
                       </svg>
                     ) : (
                       'Go'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <div className={`generate-group ${showSuperdec ? 'is-open' : ''}`}>
+          {!showSuperdec ? (
+            <button
+              className="btn-generate btn-superdec"
+              onClick={() => setShowSuperdec(true)}
+              disabled={superdecGenerating}
+              title="Generate superquadrics from a point cloud with SuperDec"
+            >
+              {superdecGenerating ? '...' : 'SuperDec'}
+            </button>
+          ) : (
+            <>
+              <div
+                className="generate-popover-backdrop"
+                onClick={() => {
+                  if (!superdecGenerating) resetSuperdec();
+                }}
+                aria-hidden
+              />
+              <div className="generate-open-bar">
+                <div className="gen-mode-row" role="group" aria-label="SuperDec mode">
+                  <span className="superdec-open-label">Point Cloud</span>
+                </div>
+                <button
+                  className="toolbar-btn"
+                  onClick={resetSuperdec}
+                  disabled={superdecGenerating}
+                  title="Close (Esc)"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+              <div
+                className="generate-popover superdec-popover"
+                role="dialog"
+                aria-label="Generate superquadrics from a point cloud"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <label className="generate-popover-label" htmlFor="sq-superdec-name-input">
+                  Scene name
+                </label>
+                <input
+                  id="sq-superdec-name-input"
+                  ref={superdecNameRef}
+                  type="text"
+                  className="generate-input generate-input-popover"
+                  placeholder="e.g. chair_scan"
+                  value={superdecName}
+                  onChange={(e) => setSuperdecName(e.target.value)}
+                  disabled={superdecGenerating}
+                />
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Input point cloud</span>
+                  </div>
+                  <label className="superdec-file-picker">
+                    <input
+                      type="file"
+                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl"
+                      onChange={(e) => setSuperdecFile(e.target.files?.[0] ?? null)}
+                      disabled={superdecGenerating}
+                    />
+                    <span>{superdecFile ? superdecFile.name : 'Choose point cloud or mesh file'}</span>
+                  </label>
+                  <p className="edit-focus-hint">
+                    Supports `.ply` directly and also common formats such as `.pcd`, `.xyz`, `.pts`, `.obj`, and `.stl` via the service-side loader.
+                  </p>
+                </div>
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Inference options</span>
+                  </div>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superdecZUp}
+                      onChange={(e) => setSuperdecZUp(e.target.checked)}
+                      disabled={superdecGenerating}
+                    />
+                    <span>Treat input as Z-up and convert it into the editor&apos;s Y-up frame</span>
+                  </label>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superdecNormalize}
+                      onChange={(e) => setSuperdecNormalize(e.target.checked)}
+                      disabled={superdecGenerating}
+                    />
+                    <span>Normalize point cloud before inference</span>
+                  </label>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superdecLmOptimization}
+                      onChange={(e) => setSuperdecLmOptimization(e.target.checked)}
+                      disabled={superdecGenerating}
+                    />
+                    <span>Enable LM optimization for a slower but potentially better fit</span>
+                  </label>
+                  <div className="superdec-number-grid">
+                    <label className="superdec-number-field">
+                      <span>Max primitives</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="num-input"
+                        value={superdecMaxPrimitives}
+                        onChange={(e) => setSuperdecMaxPrimitives(e.target.value)}
+                        disabled={superdecGenerating}
+                      />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>Exist threshold</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        className="num-input"
+                        value={superdecExistThreshold}
+                        onChange={(e) => setSuperdecExistThreshold(e.target.value)}
+                        disabled={superdecGenerating}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="generate-popover-footer">
+                  <button
+                    className="btn-generate-go"
+                    type="button"
+                    onClick={handleSuperdecGenerate}
+                    disabled={superdecGenerating || !superdecFile}
+                  >
+                    {superdecGenerating ? (
+                      <svg
+                        className="spinner-svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        aria-hidden={true}
+                      >
+                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6.5"
+                          fill="none"
+                          stroke="#fff"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeDasharray="10 31"
+                        />
+                      </svg>
+                    ) : (
+                      'Generate'
                     )}
                   </button>
                 </div>
