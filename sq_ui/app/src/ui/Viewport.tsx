@@ -2,6 +2,7 @@ import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useStore } from '../state/store';
 import type { Primitive } from '../state/store';
@@ -30,6 +31,15 @@ const PRIM_COLORS = [
   '#f06292', '#7986cb', '#a1887f', '#90a4ae',
 ];
 
+type DragState = {
+  plane: THREE.Plane;
+  startHit: THREE.Vector3;
+  startTranslation: [number, number, number];
+  frozenNormScale: number;
+  pointerId: number;
+  undoPushed: boolean;
+};
+
 function SuperquadricMesh({
   primitive,
   index,
@@ -49,7 +59,18 @@ function SuperquadricMesh({
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const outlineRef = useRef<THREE.LineSegments>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const ndcRef = useRef(new THREE.Vector2());
+  const hitRef = useRef(new THREE.Vector3());
+
   const selectPrimitive = useStore(s => s.selectPrimitive);
+  const updatePrimitiveLive = useStore(s => s.updatePrimitiveLive);
+  const pushUndoSnapshot = useStore(s => s.pushUndoSnapshot);
+
+  const camera = useThree(s => s.camera);
+  const gl = useThree(s => s.gl);
+  const controls = useThree(s => s.controls as OrbitControlsImpl | null);
 
   const { geometry, edgesGeometry } = useMemo(() => {
     const { vertices, indices } = createSuperquadricMesh(
@@ -85,10 +106,117 @@ function SuperquadricMesh({
 
   const color = PRIM_COLORS[index % PRIM_COLORS.length];
 
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+  const windowDragCleanupRef = useRef<(() => void) | null>(null);
+
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
+
+  const endDrag = useCallback(() => {
+    windowDragCleanupRef.current?.();
+    windowDragCleanupRef.current = null;
+    dragRef.current = null;
+    if (controls) controls.enabled = true;
+  }, [controls]);
+
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     selectPrimitive(primitive.id);
-  }, [primitive.id, selectPrimitive]);
+    if (e.button !== 0) return;
+
+    windowDragCleanupRef.current?.();
+    windowDragCleanupRef.current = null;
+
+    const cam = cameraRef.current;
+    const planeNormal = new THREE.Vector3();
+    cam.getWorldDirection(planeNormal);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, e.point);
+
+    const pointerId = e.pointerId;
+    const primId = primitive.id;
+    const startTranslation = [...primitive.translation] as [number, number, number];
+    const frozenNormScale = Math.max(normScale, 1e-6);
+
+    dragRef.current = {
+      plane,
+      startHit: e.point.clone(),
+      startTranslation,
+      frozenNormScale,
+      pointerId,
+      undoPushed: false,
+    };
+
+    if (controls) controls.enabled = false;
+
+    const applyMove = (clientX: number, clientY: number, buttons: number) => {
+      const drag = dragRef.current;
+      if (!drag || (buttons & 1) === 0) return;
+
+      const rect = gl.domElement.getBoundingClientRect();
+      ndcRef.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndcRef.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycasterRef.current.setFromCamera(ndcRef.current, cameraRef.current);
+
+      const hit = hitRef.current;
+      if (!raycasterRef.current.ray.intersectPlane(drag.plane, hit)) return;
+
+      if (!drag.undoPushed) {
+        pushUndoSnapshot();
+        drag.undoPushed = true;
+      }
+
+      const s = drag.frozenNormScale;
+      const dx = (hit.x - drag.startHit.x) / s;
+      const dy = (hit.y - drag.startHit.y) / s;
+      const dz = (hit.z - drag.startHit.z) / s;
+
+      updatePrimitiveLive(primId, {
+        translation: [
+          drag.startTranslation[0] + dx,
+          drag.startTranslation[1] + dy,
+          drag.startTranslation[2] + dz,
+        ],
+      });
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      applyMove(ev.clientX, ev.clientY, ev.buttons);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      endDrag();
+    };
+
+    windowDragCleanupRef.current = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }, [
+    controls,
+    endDrag,
+    gl.domElement,
+    normScale,
+    primitive.id,
+    primitive.translation,
+    pushUndoSnapshot,
+    selectPrimitive,
+    updatePrimitiveLive,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      windowDragCleanupRef.current?.();
+      windowDragCleanupRef.current = null;
+      dragRef.current = null;
+      if (controls) controls.enabled = true;
+    };
+  }, [controls]);
 
   useFrame(() => {
     if (outlineRef.current) {
@@ -100,7 +228,7 @@ function SuperquadricMesh({
 
   return (
     <group>
-      <mesh ref={meshRef} geometry={geometry} onClick={handleClick}>
+      <mesh ref={meshRef} geometry={geometry} onPointerDown={handlePointerDown}>
         <meshStandardMaterial
           color={color}
           roughness={0.45}

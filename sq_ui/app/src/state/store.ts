@@ -31,6 +31,10 @@ export interface AppState {
   duplicatePrimitive: (id: string) => void;
   selectPrimitive: (id: string | null) => void;
   updatePrimitive: (id: string, updates: Partial<Primitive>) => void;
+  /** Same as updatePrimitive but does not record undo; use during drags, then rely on pushUndoSnapshot. */
+  updatePrimitiveLive: (id: string, updates: Partial<Primitive>) => void;
+  /** Push current primitives/selection as one undo step (e.g. once at drag start). */
+  pushUndoSnapshot: () => void;
   reorderPrimitives: (fromIndex: number, toIndex: number) => void;
   setPreviewResolution: (res: number) => void;
   setShowNormalized: (v: boolean) => void;
@@ -91,6 +95,16 @@ function snapshot(state: { primitives: Primitive[]; selectedId: string | null })
     })),
     selectedId: state.selectedId,
   };
+}
+
+function withSyncedRotation(updates: Partial<Primitive>): Partial<Primitive> {
+  const finalUpdates = { ...updates };
+  if (updates.eulerDeg && !updates.rotation) {
+    finalUpdates.rotation = eulerToMatrix(updates.eulerDeg as [number, number, number]);
+  } else if (updates.rotation && !updates.eulerDeg) {
+    finalUpdates.eulerDeg = matrixToEuler(updates.rotation as number[][]);
+  }
+  return finalUpdates;
 }
 
 /** Canonical superquadric recipes for this editor (shapes + eulerDeg + rotation must stay in sync). */
@@ -168,19 +182,31 @@ export const useStore = create<AppState>((set, get) => ({
   updatePrimitive: (id, updates) => {
     const state = get();
     const entry = snapshot(state);
-    let finalUpdates = { ...updates };
-
-    // Sync rotation ↔ euler
-    if (updates.eulerDeg && !updates.rotation) {
-      finalUpdates.rotation = eulerToMatrix(updates.eulerDeg as [number, number, number]);
-    } else if (updates.rotation && !updates.eulerDeg) {
-      finalUpdates.eulerDeg = matrixToEuler(updates.rotation as number[][]);
-    }
+    const finalUpdates = withSyncedRotation(updates);
 
     set({
       primitives: state.primitives.map(p =>
         p.id === id ? { ...p, ...finalUpdates } : p
       ),
+      undoStack: [...state.undoStack, entry],
+      redoStack: [],
+    });
+  },
+
+  updatePrimitiveLive: (id, updates) => {
+    const state = get();
+    const finalUpdates = withSyncedRotation(updates);
+    set({
+      primitives: state.primitives.map(p =>
+        p.id === id ? { ...p, ...finalUpdates } : p
+      ),
+    });
+  },
+
+  pushUndoSnapshot: () => {
+    const state = get();
+    const entry = snapshot(state);
+    set({
       undoStack: [...state.undoStack, entry],
       redoStack: [],
     });
