@@ -1,4 +1,8 @@
-const TRELLIS_URL = import.meta.env.VITE_TRELLIS_URL ?? 'http://localhost:11437';
+import { serviceBaseUrl } from './devServiceUrl';
+
+function trellisBase(): string {
+  return serviceBaseUrl(import.meta.env.VITE_TRELLIS_URL, 'http://localhost:11437');
+}
 
 export interface TrellisGenerateOptions {
   prompt: string;
@@ -31,7 +35,9 @@ interface TrellisGenerateResponse {
 
 function resolveUrl(pathOrUrl: string): string {
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  return `${TRELLIS_URL.replace(/\/$/, '')}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
+  const base = trellisBase().replace(/\/$/, '');
+  const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return base ? `${base}${path}` : path;
 }
 
 async function parseJson<T>(res: Response): Promise<T> {

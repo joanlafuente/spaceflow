@@ -1,9 +1,11 @@
 import { eulerToMatrix } from './rotation';
 import type { Primitive } from './store';
+import { ollamaChatUrl } from './devServiceUrl';
 import { chairSqForPrompt, laptopSqForPrompt, planeSqForPrompt, sofaSqForPrompt } from './verifiedSqPresets';
 
-/** Override in `.env.local`: `VITE_OLLAMA_URL=http://127.0.0.1:11436/api/chat` if your daemon is not on 11434. */
-const OLLAMA_URL = import.meta.env.VITE_OLLAMA_URL ?? 'http://localhost:11434/api/chat';
+function ollamaUrl(): string {
+  return ollamaChatUrl('http://localhost:11434/api/chat');
+}
 /** Ollama tag. Default `gemma4:e2b` (~7 GB). Other Gemma 4 tags: `gemma4:e4b` / `gemma4:latest` (larger), `gemma4:e2b-it-q8_0` (higher-quality quant). */
 const MODEL = 'gemma4:e2b';
 
@@ -284,7 +286,7 @@ async function fetchChatJson(body: object): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(OLLAMA_URL, {
+    const res = await fetch(ollamaUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

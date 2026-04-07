@@ -1,225 +1,282 @@
 # Superquadric Editor UI
 
-Interactive web-based editor for composing 3D shapes from superquadric primitives, producing `.npz` files compatible with the Spaceflow pipeline.
+Web-based editor for composing 3D shapes from superquadric primitives and exporting `.npz` files for the Spaceflow pipeline.
 
-## Quick Start
+This document is the **full setup guide** for running the UI with **SuperDec**, **TRELLIS (Create)**, and **Ollama / Gemma (Edit)** on a typical ETH Slurm cluster with scratch storage.
 
-```bash
-cd sq_ui/app
-npm install
-npm run dev
-```
+---
 
-Open `http://localhost:5173` in your browser.
+## What talks to what
 
-## SuperDec Generate
+| UI capability | What it does | Python service | Default port |
+|---------------|--------------|----------------|--------------|
+| **SuperDec** button | Fit superquadrics to an uploaded point cloud / mesh | `superdec_service.py` | `11435` |
+| **Create** (AI Generate) | Text → point cloud (TRELLIS) → fit (SuperDec) | `trellis_service.py` **and** `superdec_service.py` | TRELLIS `11437`, SuperDec `11435` |
+| **Edit** (AI Generate) | Change the current scene with natural language | `ollama_proxy.py` → Gemma on GPU | proxy `11434` |
 
-You can now generate a superquadric set from a point cloud directly in the UI via the `SuperDec` button in the top bar. The result is loaded into the same editor state as manual presets and AI-generated scenes, so parameter editing, LLM editing, undo/redo, JSON copy/import, and `.npz` export continue to work the same way.
+The React app calls HTTP endpoints. **Development (`npm run dev`)**: Vite proxies `/superdec`, `/trellis`, and `/api` to `127.0.0.1` on the **login node**, so you can open the UI via the **Network** URL (e.g. `http://129.x:5173`) from your laptop without “failed to fetch” — as long as the Python services run on that same host. **Production build** (`npm run build`): set absolute `VITE_*_URL` values (or put the UI behind a reverse proxy). Optional: override proxy targets with `VITE_DEV_PROXY_SUPERDEC`, `VITE_DEV_PROXY_TRELLIS`, `VITE_DEV_PROXY_OLLAMA` when starting Vite.
 
-### One-time setup
+---
 
-Use scratch storage for all large SuperDec assets and checkpoints:
+## Prerequisites
+
+- **Node.js** (for `sq_ui/app`): `npm install` / `npm run dev`
+- **Slurm account** that can request GPUs on your cluster (defaults in the scripts use partition `interactive`, account `3dv`—change if yours differ)
+- **Scratch space** under `/work/scratch/$USER/...` for weights, Ollama, caches (large downloads)
+- **SuperDec**: run `setup_superdec.sh` once (clone, venv, checkpoints)
+- **TRELLIS**: a Python env with TRELLIS dependencies. The repo expects **`envs/guideflow3d/bin/python`** at the **Spaceflow repo root** (set `SQ_TRELLIS_PYTHON` if yours differs)
+- **Edit**: run `setup_ollama.sh` once (Ollama binary + Gemma weights in your scratch)
+
+---
+
+## First-time setup (recommended order)
+
+Do this from the **Spaceflow repo root** (the directory that contains `sq_ui/` and `run.py`).
+
+### 1) SuperDec (one-time install + weights)
 
 ```bash
 cd /work/courses/3dv/team3/spaceflow
+
+# Optional: own scratch root (default is /work/scratch/$USER/spaceflow/superdec_ui)
+# export SQ_SUPERDEC_SCRATCH=/work/scratch/$USER/spaceflow/superdec_ui
+
 bash sq_ui/setup_superdec.sh
 ```
 
-By default this installs into:
+Remember the printed **`Install root`** (below called `$SUPERDEC_BASE`). The script copies **`superdec_service.py`** and **`superdec_infer.py`** into `$SUPERDEC_BASE/scripts/` with paths filled in—**prefer starting that copy**, not the raw file under `sq_ui/scripts/`, unless you always set `SUPERDEC_BASE` yourself.
 
-- `/work/scratch/nedela/spaceflow/superdec_ui/weights`
-- `/work/scratch/nedela/spaceflow/superdec_ui/runs`
-- `/work/scratch/nedela/spaceflow/superdec_ui/logs`
-
-Optional overrides:
-
-- `SQ_SUPERDEC_SCRATCH` to change the scratch root
-- `SUPERDEC_REPO_REF` to pin a branch/tag/commit
-- `SKIP_CLONE=1`, `SKIP_PIP=1`, `SKIP_CHECKPOINTS=1` to reuse existing assets
-
-### Start the SuperDec service
-
-```bash
-export SUPERDEC_BASE=/work/scratch/nedela/spaceflow/superdec_ui
-export SQ_SUPERDEC_CHECKPOINT_DIR="$SUPERDEC_BASE/weights/normalized"
-python3 "$SUPERDEC_BASE/scripts/superdec_service.py"
-```
-
-The service listens on `http://127.0.0.1:11435` by default.
-
-When started on a login node, the service will try to run the actual SuperDec inference through `srun` on a GPU node by default. Useful overrides:
-
-- `SQ_SUPERDEC_SLURM_PARTITION`
-- `SQ_SUPERDEC_SLURM_ACCOUNT`
-- `SQ_SUPERDEC_SLURM_GRES`
-- `SQ_SUPERDEC_SLURM_GPUS`
-- `SQ_SUPERDEC_SLURM_TIME`
-- `SQ_SUPERDEC_SLURM_EXTRA_ARGS`
-- `SQ_SUPERDEC_TORCH_CUDA_ARCH_LIST` such as `7.5;8.9+PTX` for mixed GPU nodes
-- `SQ_SUPERDEC_FORCE_LOCAL=1` to disable `srun` wrapping
-
-### Run the UI
-
-```bash
-cd sq_ui/app
-# optional if you want to be explicit:
-# echo 'VITE_SUPERDEC_URL=http://127.0.0.1:11435' >> .env.local
-npm run dev -- --host 0.0.0.0
-```
-
-### Supported inputs
-
-The UI uploads the source file to the SuperDec service, which reads point-based formats directly and falls back to mesh vertices for common mesh formats.
-
-Supported first-pass inputs:
-
-- `.ply`
-- `.pcd`
-- `.xyz`
-- `.xyzn`
-- `.xyzrgb`
-- `.pts`
-- `.obj`
-- `.stl`
-
-### Notes
-
-- `Z-up` applies a service-side basis conversion into the editor's Y-up frame before loading the generated primitives.
-- `Normalize point cloud` matches the inference path used by the SuperDec demo for generic objects.
-- `LM optimization` is exposed as an optional slower fit-improvement toggle.
-- The service writes a pipeline-compatible `.npz` with `scales`, `shapes`, `translations`, and `rotations`, then the UI loads it through the existing importer.
-- Generated primitive names are rewritten to stable names like `chair_scan_part_01` so the current LLM edit flow can keep matching parts by name.
-
-## AI Edit (Ollama on the ETH cluster)
-
-Each person needs their **own** Ollama binary and model weights under **`/work/scratch/$USER`** (other users cannot read your scratch).
-
-1. **One-time setup** from the repo root:
-
-   ```bash
-   bash sq_ui/setup_ollama.sh
-   ```
-
-   This downloads the Ollama Linux binary, pulls `gemma4:e2b` (configurable with `OLLAMA_MODEL`), and installs `ollama_proxy.py` + `ollama_infer.sh` into your scratch tree.
-
-2. **Start the proxy** on the login node (it submits a short GPU job per request via Slurm):
-
-   ```bash
-   export OLLAMA_BASE=/work/scratch/$USER/spaceflow/superquadric_ui
-   python3 "$OLLAMA_BASE/scripts/ollama_proxy.py"
-   ```
-
-3. **Run the UI** and ensure it talks to the proxy (default browser URL assumes `localhost:11434`):
-
-   ```bash
-   cd sq_ui/app
-   # if needed:
-   # echo 'VITE_OLLAMA_URL=http://127.0.0.1:11434/api/chat' >> .env.local
-   npm run dev -- --host 0.0.0.0
-   ```
-
-**Without Slurm** (e.g. you run `ollama serve` yourself on port 11436):
-`SQ_OLLAMA_FORWARD=http://127.0.0.1:11436 python3 "$OLLAMA_BASE/scripts/ollama_proxy.py"`
-
-**Overrides:** `SQ_SLURM_PARTITION`, `SQ_SLURM_ACCOUNT`, `SQ_SLURM_GRES`, `SQ_SLURM_TIME`, `SQ_OLLAMA_SCRATCH` (install path for `setup_ollama.sh`).
-**Slurm GPU override:** some clusters reject `--gres=gpu:1`. You can set `SQ_SLURM_GPUS=1` to use `--gpus=1` instead, or provide custom args via `SQ_SLURM_EXTRA_ARGS`.
-
-**In the UI:** **AI Generate** now has two backends. **Create** sends the text prompt through a TRELLIS text-to-pointcloud service and then fits the result with SuperDec; **Edit** still sends the current preset (names, scales, shapes, translations, eulerDeg) plus your instruction (e.g. “make the wheels rounder”) to Gemma via Ollama. Use **Focus parts** checkboxes or **+ selection** to steer which parts to change; the model still returns a full `primitives` list. With **Include viewport screenshot** (default on), a PNG of the 3D view is sent to multimodal models (e.g. Gemma 4) together with the text. Undo restores the previous scene.
-
-## TRELLIS Create Service
-
-`Create` no longer depends on Gemma/Ollama. It now relies on a local TRELLIS-backed text-to-pointcloud service plus the existing SuperDec service.
-
-### Start the TRELLIS service
-
-Run the service from an environment where the repo's TRELLIS dependencies are already installed:
+### 2) Ollama + Gemma for Edit (one-time)
 
 ```bash
 cd /work/courses/3dv/team3/spaceflow
+
+# Optional: export SQ_OLLAMA_SCRATCH=/work/scratch/$USER/spaceflow/superquadric_ui
+
+bash sq_ui/setup_ollama.sh
+```
+
+Remember the printed **`OLLAMA_BASE`**.
+
+### 3) Frontend dependencies
+
+```bash
+cd /work/courses/3dv/team3/spaceflow/sq_ui/app
+npm install
+```
+
+### 4) Frontend URLs (`.env.local`) — optional in dev
+
+With **`npm run dev`**, you usually **do not** need `.env.local`: the app uses **same-origin** paths and Vite forwards them to the services on the machine where Vite runs.
+
+Add **`sq_ui/app/.env.local`** only if you want to override that (e.g. different ports or a remote service):
+
+```bash
+VITE_SUPERDEC_URL=http://127.0.0.1:11435
+VITE_TRELLIS_URL=http://127.0.0.1:11437
+VITE_OLLAMA_URL=http://127.0.0.1:11434/api/chat
+```
+
+**Note:** Typing `VITE_…=…` in a shell does **nothing** for Vite — variables must be in `.env.local` or the environment **when** you start `npm run dev`.
+
+Restart `npm run dev` after changing env vars or `vite.config.ts`.
+
+---
+
+## Running the three services
+
+Use **separate terminals** on the login node (or long-lived `tmux`/`screen` sessions). Order does not matter, but **Create** needs **both** TRELLIS and SuperDec up.
+
+### A) SuperDec service
+
+Always set **`SUPERDEC_BASE`** to the directory from `setup_superdec.sh` and **`SQ_SUPERDEC_CHECKPOINT_DIR`** to the normalized weights.
+
+```bash
+export SUPERDEC_BASE=/work/scratch/$USER/spaceflow/superdec_ui   # your actual path
+export SQ_SUPERDEC_CHECKPOINT_DIR="$SUPERDEC_BASE/weights/normalized"
+
+python3 "$SUPERDEC_BASE/scripts/superdec_service.py"
+```
+
+- Listens on **`http://127.0.0.1:11435`** by default (`SQ_SUPERDEC_PORT` to override).
+- **Health check:** `curl -s http://127.0.0.1:11435/superdec/health | head`
+- **Slurm:** inference is wrapped in `srun` with **`--gpus=1`** by default (`SQ_SUPERDEC_SLURM_GPUS` to change count or syntax your site expects).
+- Other useful vars: `SQ_SUPERDEC_SLURM_PARTITION`, `SQ_SUPERDEC_SLURM_ACCOUNT`, `SQ_SUPERDEC_SLURM_TIME`, `SQ_SUPERDEC_SLURM_EXTRA_ARGS`, `SQ_SUPERDEC_TORCH_CUDA_ARCH_LIST`, `SQ_SUPERDEC_FORCE_LOCAL=1` (already on a GPU node).
+
+### B) TRELLIS service (Create)
+
+Run with **system `python3`**; the service spawns **`SQ_TRELLIS_PYTHON`** (defaults to `envs/guideflow3d/bin/python` under the repo) for the heavy job.
+
+```bash
+cd /work/courses/3dv/team3/spaceflow
+
+export SQ_TRELLIS_REPO_ROOT="$(pwd)"
 export SQ_TRELLIS_SLURM_GPUS=1
-export SQ_TRELLIS_PYTHON=/work/courses/3dv/team3/spaceflow/envs/guideflow3d/bin/python
+export SQ_TRELLIS_PYTHON="$(pwd)/envs/guideflow3d/bin/python"
 export SQ_TRELLIS_SCRATCH=/work/scratch/$USER/spaceflow/trellis_ui
+
+# If you are already on a GPU node and want one long-lived process (no srun per request):
+# export SQ_TRELLIS_FORCE_LOCAL=1
+
 python3 sq_ui/scripts/trellis_service.py
 ```
 
-The service listens on `http://127.0.0.1:11437` by default.
+- Listens on **`http://127.0.0.1:11437`** (`SQ_TRELLIS_PORT`).
+- **Health check:** `curl -s http://127.0.0.1:11437/trellis/health | head`
+- Caches (Hugging Face, Torch, etc.) go under **`SQ_TRELLIS_SCRATCH`** / **`SQ_TRELLIS_CACHE_ROOT`** so they do not fill `~/.cache`.
+- More options: `SQ_TRELLIS_SLURM_PARTITION`, `SQ_TRELLIS_SLURM_ACCOUNT`, `SQ_TRELLIS_SLURM_TIME`, `SQ_TRELLIS_SLURM_EXTRA_ARGS`.
 
-Useful overrides:
+### C) Ollama proxy (Edit)
 
-- `VITE_TRELLIS_URL` for the frontend
-- `SQ_TRELLIS_PORT`
-- `SQ_TRELLIS_REPO_ROOT`
-- `SQ_TRELLIS_PYTHON`
-- `SQ_TRELLIS_SCRATCH`
-- `SQ_TRELLIS_CACHE_ROOT`
-- `SQ_TRELLIS_FORCE_LOCAL=1` when already running on a GPU node and you want to keep the TRELLIS pipeline warm in-process
-- `SQ_TRELLIS_SLURM_PARTITION`
-- `SQ_TRELLIS_SLURM_ACCOUNT`
-- `SQ_TRELLIS_SLURM_GPUS`
-- `SQ_TRELLIS_SLURM_TIME`
-- `SQ_TRELLIS_SLURM_EXTRA_ARGS`
+```bash
+export OLLAMA_BASE=/work/scratch/$USER/spaceflow/superquadric_ui   # your path from setup_ollama.sh
 
-### Recommended runtime split
+python3 "$OLLAMA_BASE/scripts/ollama_proxy.py"
+```
 
-- `Create`: TRELLIS service + SuperDec service
-- `Edit`: Ollama/Gemma proxy
+- Listens on **`http://127.0.0.1:11434`** by default (`SQ_PROXY_PORT` to override).
+- **Smoke test:** `curl -s http://127.0.0.1:11434/ | head` → should show *Ollama is running*.
+- **Slurm GPU:** uses **`--gpus=1`** by default (`SQ_SLURM_GPUS` to override).
+- **No Slurm / local Ollama:** `SQ_OLLAMA_FORWARD=http://127.0.0.1:11436 python3 "$OLLAMA_BASE/scripts/ollama_proxy.py"` (example port).
 
-This keeps editing behavior unchanged while making from-scratch generation go through point-cloud fitting instead of raw LLM-authored superquadric JSON.
+---
 
-The service will place Hugging Face and Torch Hub caches under scratch by default, using `SQ_TRELLIS_SCRATCH` and `SQ_TRELLIS_CACHE_ROOT`, so large model downloads do not end up in `~/.cache`.
+## Run the UI
 
-## Usage
+```bash
+cd /work/courses/3dv/team3/spaceflow/sq_ui/app
+npm run dev -- --host 0.0.0.0
+```
 
-1. **Add primitives** using the "+ Add Primitive" button (presets: Ball, Ellipsoid, Cylinder, Cube, Astroid (star))
-2. **Select a primitive** by clicking it in the left panel or the 3D viewport
-3. **Adjust parameters** in the right panel:
-   - **Scales (A, B, C)**: half-axes of the superellipsoid
-   - **Shape (e₁, e₂)**: exponents — values <1 produce boxy shapes, 2 gives a sphere/ellipsoid, >2 produces pinched shapes
-   - **Translation**: position in 3D space
-   - **Rotation**: Euler angles (ZYX order, degrees)
-4. **Export** via the Export button → "Download .npz"
+Open the printed URL (often `http://localhost:5173`). If you develop over SSH from your laptop, bind `0.0.0.0` and forward the port, or use the cluster’s published hostname.
 
-## Templates
+---
 
-Use the toolbar buttons to load preset scenes:
-- **⊙** Single Ellipsoid
-- **⊞** Table (5 parts: top + 4 legs)
-- **⊟** Chair (6 parts: seat + backrest + 4 legs)
+## Service files (where they live)
 
-## Keyboard Shortcuts
+| File | In repo | After setup |
+|------|---------|-------------|
+| SuperDec HTTP service | `sq_ui/scripts/superdec_service.py` (template; use with `SUPERDEC_BASE` or scratch copy) | `$SUPERDEC_BASE/scripts/superdec_service.py` |
+| SuperDec worker | `sq_ui/scripts/superdec_infer.py` | copied to `$SUPERDEC_BASE/scripts/` |
+| TRELLIS HTTP service | `sq_ui/scripts/trellis_service.py` | run from repo (no copy step) |
+| TRELLIS worker | `sq_ui/scripts/trellis_infer.py` | used by service above |
+| Ollama proxy + GPU wrapper | `sq_ui/scripts_templates/ollama_proxy.py`, `ollama_infer.sh` | `$OLLAMA_BASE/scripts/` after `setup_ollama.sh` |
+
+---
+
+## SuperDec: supported uploads
+
+The UI uploads to the SuperDec service. Supported inputs include `.ply`, `.pcd`, `.xyz`, `.xyzn`, `.xyzrgb`, `.pts`, `.obj`, `.stl`.
+
+- **Z-up** applies a basis fix to the editor’s Y-up frame.
+- **Normalize point cloud** matches the generic-object inference path from the SuperDec demo.
+- **LM optimization** is optional and slower; it needs a **GPU** (upstream LM code uses CUDA).
+
+---
+
+## Troubleshooting
+
+1. **SuperDec / TRELLIS / Edit: “failed to fetch” in dev**
+   - If you opened the UI as **`http://<cluster-ip>:5173`**, older setups sent API calls to **`localhost` on your laptop** (wrong). Current dev defaults use **Vite’s proxy**; restart **`npm run dev`** after pulling, and keep Python services on the **same host** as Vite.
+   - **Do not** put **`http://<other-ip>:11435`** in `.env.local` unless that URL is the **same browser origin** as the page (same host **and** port as the dev server). A typo (e.g. `.130` vs `.131`) or a bare service port is a **different origin** — the browser will call a host your laptop often cannot reach. Prefer **no** `VITE_*` lines in dev; the app falls back to same-origin + proxy (and ignores cross-origin `VITE_*` in dev with a console warning).
+   - If you set **`VITE_*`** to `http://127.0.0.1:...` but browse from another machine, that still means “localhost on the laptop” — remove those lines to use the proxy.
+
+2. **“Cannot reach …” / CORS in the browser**
+   - Confirm the service is listening: `curl` the health URLs above.
+   - For a custom **`VITE_OLLAMA_URL`**, it must end with **`/api/chat`**.
+   - Restart **`npm run dev`** after editing `.env.local`.
+
+3. **Create does nothing or errors**
+   - **Create needs both TRELLIS and SuperDec** running on the Vite host (or matching `VITE_*_URL` overrides).
+
+4. **Slurm rejects GPU flags / mentions `--gres`**
+   - All services use **`--gpus=...`** only (no `--gres`). Defaults: **`SQ_SUPERDEC_SLURM_GPUS=1`**, **`SQ_SLURM_GPUS=1`**, **`SQ_TRELLIS_SLURM_GPUS=1`**.
+   - If you still see **`gres` in errors**, check **`SQ_SUPERDEC_SLURM_EXTRA_ARGS`**, **`SQ_TRELLIS_SLURM_EXTRA_ARGS`**, **`SQ_SLURM_EXTRA_ARGS`**, or your shell profile for **`--gres`** and remove it. The services strip `--gres` from those extras, but **refresh installed scripts** from the repo: `bash sq_ui/setup_superdec.sh` (with skips as needed) and re-copy the Ollama proxy via `bash sq_ui/setup_ollama.sh` so `superdec_service.py` and `ollama_proxy.py` match the repo.
+   - Use **`SQ_*_SLURM_EXTRA_ARGS`** only for flags that are not GPU binding (or extra `--gpus`-compatible options your site documents).
+
+5. **SuperDec points at the wrong install**
+   - Always set **`SUPERDEC_BASE`** to **your** scratch tree from `setup_superdec.sh`, or run **`python3 "$SUPERDEC_BASE/scripts/superdec_service.py"`** from that install.
+
+6. **TRELLIS `ModuleNotFoundError` or wrong Python**
+   - Set **`SQ_TRELLIS_PYTHON`** to the interpreter that has TRELLIS deps (repo default: `envs/guideflow3d/bin/python`).
+
+7. **Remote browser**
+   Forward dev + service ports, e.g.
+   `ssh -L 5173:localhost:5173 -L 11434:localhost:11434 -L 11435:localhost:11435 -L 11437:localhost:11437 user@login`
+
+---
+
+## Usage (editor)
+
+1. **Add primitives** with “+ Add Primitive” (presets: Ball, Ellipsoid, Cylinder, Cube, Astroid).
+2. **Select** in the left list or by clicking in the 3D view; **drag** a selected superquadric to change **translation**.
+3. **Parameters** in the right panel: scales, shapes, translation, rotation (Euler ZYX, degrees).
+4. **Export** → Download `.npz`.
+
+**Templates** in the toolbar: single ellipsoid, table, chair.
+
+---
+
+## Keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
-| `Delete` / `Backspace` | Remove selected primitive |
+| `Delete` / `Backspace` | Remove selected |
 | `D` | Duplicate selected |
 
-## Export Format
+---
 
-The `.npz` file contains four arrays matching `run.py`'s `load_superquadric_from_file`:
+## Export format
+
+The `.npz` contains arrays compatible with `run.py`’s `load_superquadric_from_file`:
 
 | Key | Shape | Description |
 |-----|-------|-------------|
 | `scales` | `(N, 3)` | Half-axes A, B, C |
 | `shapes` | `(N, 2)` | Exponents e₁, e₂ |
-| `translations` | `(N, 3)` | Translation vectors |
+| `translations` | `(N, 3)` | Translations |
 | `rotations` | `(N, 3, 3)` | Rotation matrices |
 
-## Pipeline Integration
+---
+
+## Pipeline integration
 
 ```bash
 python run.py --shape_superquadric_path path/to/exported.npz [other args...]
 ```
 
-## Preview vs Pipeline
+---
 
-The editor shows a **pipeline-normalized view** by default (toggle in the Preview section). This replicates the normalization step in `load_superquadrics()`: centering the AABB and uniform-scaling to max extent = 1. The exported `.npz` stores **raw parameters** (pre-normalization).
+## Preview vs pipeline
+
+The editor can show a **pipeline-normalized** preview (toggle in the Preview section). The exported `.npz` stores **raw** parameters (pre-normalization in the viewer).
+
+---
 
 ## Validation
-
-Run the compatibility test against exported files:
 
 ```bash
 python sq_ui/scripts/test_npz_compat.py path/to/exported.npz
 ```
+
+---
+
+## Optional: `setup_superdec.sh` / `setup_ollama.sh` environment reference
+
+**SuperDec setup**
+
+- `SQ_SUPERDEC_SCRATCH` — install root (default `/work/scratch/$USER/spaceflow/superdec_ui`)
+- `SUPERDEC_REPO_URL`, `SUPERDEC_REPO_REF`
+- `SKIP_CLONE=1`, `SKIP_PIP=1`, `SKIP_CHECKPOINTS=1` to reuse trees
+
+**Ollama setup**
+
+- `SQ_OLLAMA_SCRATCH` — install root (default `/work/scratch/$USER/spaceflow/superquadric_ui`)
+- `OLLAMA_VERSION`, `OLLAMA_MODEL` (default `gemma4:e2b`)
+- `SKIP_DOWNLOAD=1`, `SKIP_PULL=1`
+
+**Edit / multimodal**
+
+With **Include viewport screenshot** (default on), the UI sends a PNG of the 3D view to the model together with the text. Use **Focus parts** or **+ selection** to steer which primitives to change; the model still returns a full `primitives` list.

@@ -8,7 +8,7 @@ Ollama-compatible HTTP proxy for the SQ Editor "AI Generate" button.
 
 Environment (after setup_ollama.sh installs this script):
   OLLAMA_BASE   — your scratch install root (substituted by setup script)
-  SQ_SLURM_PARTITION, SQ_SLURM_ACCOUNT, SQ_SLURM_GRES, SQ_SLURM_TIME — Slurm
+  SQ_SLURM_PARTITION, SQ_SLURM_ACCOUNT, SQ_SLURM_GPUS, SQ_SLURM_TIME — Slurm (--gpus only)
   SQ_PROXY_PORT — listen port (default 11434)
   SQ_OLLAMA_FORWARD — if set, forward instead of srun
 """
@@ -30,8 +30,7 @@ FORWARD = os.environ.get("SQ_OLLAMA_FORWARD", "").strip().rstrip("/")
 
 PARTITION = os.environ.get("SQ_SLURM_PARTITION", "interactive")
 ACCOUNT = os.environ.get("SQ_SLURM_ACCOUNT", "3dv")
-GRES = os.environ.get("SQ_SLURM_GRES", "gpu:1")
-GPUS = os.environ.get("SQ_SLURM_GPUS", "").strip()
+GPUS = os.environ.get("SQ_SLURM_GPUS", "1").strip()
 TIME_LIMIT = os.environ.get("SQ_SLURM_TIME", "00:15:00")
 PORT = int(os.environ.get("SQ_PROXY_PORT", "11434"))
 SRUN_TIMEOUT = int(os.environ.get("SQ_SRUN_TIMEOUT_SEC", "180"))
@@ -41,6 +40,37 @@ EXTRA_ARGS = os.environ.get("SQ_SLURM_EXTRA_ARGS", "").strip()
 def _split_args(s: str) -> list[str]:
     # Tiny shell-like splitter for env-provided args (no quotes support).
     return [tok for tok in s.split() if tok]
+
+
+def _drop_gres_tokens(tokens: list[str]) -> list[str]:
+    """Strip --gres; cluster uses --gpus only."""
+    out: list[str] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        t = tokens[i]
+        if t.startswith("--gres="):
+            i += 1
+            continue
+        if t == "--gres":
+            i += 2
+            continue
+        out.append(t)
+        i += 1
+    return out
+
+
+def _append_srun_extras(cmd: list[str], extra: str) -> None:
+    if not extra.strip():
+        return
+    raw = _split_args(extra)
+    cleaned = _drop_gres_tokens(raw)
+    if len(cleaned) < len(raw):
+        print(
+            "[sq-ollama-proxy] Removed --gres from SQ_SLURM_EXTRA_ARGS; this site uses --gpus only.",
+            flush=True,
+        )
+    cmd.extend(cleaned)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -115,14 +145,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 f"--account={ACCOUNT}",
                 f"--time={TIME_LIMIT}",
                 "--job-name=sq_ollama",
+                f"--gpus={GPUS or '1'}",
             ]
-            # GPU request varies by cluster. Prefer --gpus if SQ_SLURM_GPUS is set.
-            if GPUS:
-                cmd.append(f"--gpus={GPUS}")
-            else:
-                cmd.append(f"--gres={GRES}")
-            if EXTRA_ARGS:
-                cmd.extend(_split_args(EXTRA_ARGS))
+            _append_srun_extras(cmd, EXTRA_ARGS)
             cmd.extend([INFER_SCRIPT, req_path])
             p = subprocess.run(cmd, capture_output=True, env=env, timeout=SRUN_TIMEOUT)
             if p.returncode != 0:

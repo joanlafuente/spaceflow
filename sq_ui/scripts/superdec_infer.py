@@ -20,6 +20,7 @@ from omegaconf import OmegaConf
 
 from superdec.data.dataloader import denormalize_outdict, normalize_points
 from superdec.data.transform import rotate_around_axis
+from superdec.lm_optimization.lm_optimizer import LMOptimizer
 from superdec.superdec import SuperDec
 
 
@@ -166,8 +167,12 @@ def main() -> None:
     configs = OmegaConf.load(config_path)
 
     model = SuperDec(configs.superdec).to(device)
-    model.lm_optimization = bool(args.lm_optimization)
     model.load_state_dict(checkpoint["model_state_dict"])
+    # Upstream __init__ sets lm_optimization=False and only builds lm_optimizer when True at
+    # construction time, so lm_optimizer is never created. Enable LM after load + attach module.
+    model.lm_optimization = bool(args.lm_optimization)
+    if args.lm_optimization:
+        model.lm_optimizer = LMOptimizer().to(device)
     model.eval()
 
     raw_points = load_point_cloud(input_path)
@@ -192,8 +197,12 @@ def main() -> None:
         device=device,
     )
 
-    with torch.no_grad():
+    # LM refinement uses functorch jacfwd; must not run the whole forward under inference_mode/no_grad.
+    if args.lm_optimization:
         outdict = model(points_tensor)
+    else:
+        with torch.no_grad():
+            outdict = model(points_tensor)
     outdict = denormalize_outdict(outdict, translation_batch, scale_batch, args.z_up)
     out_np = to_numpy_tree(outdict)
 

@@ -405,3 +405,6 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# SQ UI — local Vite env (often wrong cluster IPs; do not commit)
+sq_ui/app/.env.local

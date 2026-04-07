@@ -19,7 +19,7 @@ PLACEHOLDER_BASE = "__SUPERDEC_BASE__"
 
 
 def _default_base() -> Path:
-    return Path("/work/scratch/nedela/spaceflow/superdec_ui")
+    return Path("/work/scratch") / os.environ.get("USER", "user") / "spaceflow" / "superdec_ui"
 
 
 def _resolve_superdec_base() -> Path:
@@ -50,8 +50,7 @@ FORWARD = os.environ.get("SQ_SUPERDEC_FORWARD", "").strip().rstrip("/")
 FORCE_LOCAL = os.environ.get("SQ_SUPERDEC_FORCE_LOCAL", "").strip() == "1"
 PARTITION = os.environ.get("SQ_SUPERDEC_SLURM_PARTITION", "interactive")
 ACCOUNT = os.environ.get("SQ_SUPERDEC_SLURM_ACCOUNT", "3dv")
-GRES = os.environ.get("SQ_SUPERDEC_SLURM_GRES", "gpu:1")
-GPUS = os.environ.get("SQ_SUPERDEC_SLURM_GPUS", "").strip()
+GPUS = os.environ.get("SQ_SUPERDEC_SLURM_GPUS", "1").strip()
 TIME_LIMIT = os.environ.get("SQ_SUPERDEC_SLURM_TIME", "00:20:00")
 EXTRA_ARGS = os.environ.get("SQ_SUPERDEC_SLURM_EXTRA_ARGS", "").strip()
 TORCH_CUDA_ARCH_LIST = os.environ.get("SQ_SUPERDEC_TORCH_CUDA_ARCH_LIST", "7.5;8.9+PTX").strip()
@@ -119,6 +118,37 @@ def _split_args(s: str) -> list[str]:
     return [tok for tok in s.split() if tok]
 
 
+def _drop_gres_tokens(tokens: list[str]) -> list[str]:
+    """This cluster rejects --gres; only --gpus is used. Strip gres from user-provided extras."""
+    out: list[str] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        t = tokens[i]
+        if t.startswith("--gres="):
+            i += 1
+            continue
+        if t == "--gres":
+            i += 2
+            continue
+        out.append(t)
+        i += 1
+    return out
+
+
+def _append_srun_extras(srun_cmd: list[str], extra: str, log_prefix: str) -> None:
+    if not extra.strip():
+        return
+    raw = _split_args(extra)
+    cleaned = _drop_gres_tokens(raw)
+    if len(cleaned) < len(raw):
+        print(
+            f"{log_prefix} Removed --gres from SQ_SUPERDEC_SLURM_EXTRA_ARGS; this site uses --gpus only.",
+            flush=True,
+        )
+    srun_cmd.extend(cleaned)
+
+
 def _should_use_srun() -> bool:
     if FORCE_LOCAL:
         return False
@@ -134,13 +164,9 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
         f"--account={ACCOUNT}",
         f"--time={TIME_LIMIT}",
         "--job-name=sq_superdec",
+        f"--gpus={GPUS or '1'}",
     ]
-    if GPUS:
-        srun_cmd.append(f"--gpus={GPUS}")
-    else:
-        srun_cmd.append(f"--gres={GRES}")
-    if EXTRA_ARGS:
-        srun_cmd.extend(_split_args(EXTRA_ARGS))
+    _append_srun_extras(srun_cmd, EXTRA_ARGS, "[sq-superdec]")
     srun_cmd.extend(cmd)
     return srun_cmd
 
@@ -357,11 +383,13 @@ def main() -> None:
     for path in (SUPERDEC_BASE, RUNS_DIR, TMP_DIR, LOGS_DIR):
         path.mkdir(parents=True, exist_ok=True)
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    uses_srun = _should_use_srun()
     print(
         f"[sq-superdec] SUPERDEC_BASE={SUPERDEC_BASE}\n"
         f"[sq-superdec] Listening on 0.0.0.0:{PORT}\n"
         f"[sq-superdec] Work dir: {WORK_DIR}\n"
-        f"[sq-superdec] Checkpoints: {CHECKPOINT_DIR}\n",
+        f"[sq-superdec] Checkpoints: {CHECKPOINT_DIR}\n"
+        f"[sq-superdec] Slurm: uses_srun={uses_srun} gpu_flag=--gpus={GPUS or '1'} (no --gres)\n",
         flush=True,
     )
     server.serve_forever()

@@ -1,7 +1,10 @@
 import { importNpzToPrimitives } from '../mesh/npzImport';
 import type { Primitive } from './store';
+import { serviceBaseUrl } from './devServiceUrl';
 
-const SUPERDEC_URL = import.meta.env.VITE_SUPERDEC_URL ?? 'http://localhost:11435';
+function superdecBase(): string {
+  return serviceBaseUrl(import.meta.env.VITE_SUPERDEC_URL, 'http://localhost:11435');
+}
 
 export interface SuperdecGenerateOptions {
   file: File;
@@ -32,7 +35,9 @@ interface SuperdecGenerateResponse {
 
 function resolveUrl(pathOrUrl: string): string {
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  return `${SUPERDEC_URL.replace(/\/$/, '')}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
+  const base = superdecBase().replace(/\/$/, '');
+  const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return base ? `${base}${path}` : path;
 }
 
 async function parseJson<T>(res: Response): Promise<T> {

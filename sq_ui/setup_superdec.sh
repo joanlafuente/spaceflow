@@ -8,7 +8,7 @@
 #   bash sq_ui/setup_superdec.sh
 #
 # Optional environment:
-#   SQ_SUPERDEC_SCRATCH   — install root (default /work/scratch/nedela/spaceflow/superdec_ui)
+#   SQ_SUPERDEC_SCRATCH   — install root (default /work/scratch/$USER/spaceflow/superdec_ui)
 #   SUPERDEC_REPO_URL     — override repo URL
 #   SUPERDEC_REPO_REF     — branch/tag/commit to checkout
 #   SKIP_CLONE            — if 1, reuse existing repo
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE="${SQ_SUPERDEC_SCRATCH:-/work/scratch/nedela/spaceflow/superdec_ui}"
+BASE="${SQ_SUPERDEC_SCRATCH:-/work/scratch/${USER:-nedela}/spaceflow/superdec_ui}"
 REPO_DIR="$BASE/repo"
 VENV_DIR="$BASE/venv"
 WEIGHTS_DIR="$BASE/weights"

@@ -84,6 +84,37 @@ def _split_args(s: str) -> list[str]:
     return [tok for tok in s.split() if tok]
 
 
+def _drop_gres_tokens(tokens: list[str]) -> list[str]:
+    """Strip --gres; cluster uses --gpus only."""
+    out: list[str] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        t = tokens[i]
+        if t.startswith("--gres="):
+            i += 1
+            continue
+        if t == "--gres":
+            i += 2
+            continue
+        out.append(t)
+        i += 1
+    return out
+
+
+def _append_srun_extras(srun_cmd: list[str], extra: str, log_prefix: str) -> None:
+    if not extra.strip():
+        return
+    raw = _split_args(extra)
+    cleaned = _drop_gres_tokens(raw)
+    if len(cleaned) < len(raw):
+        print(
+            f"{log_prefix} Removed --gres from SQ_TRELLIS_SLURM_EXTRA_ARGS; this site uses --gpus only.",
+            flush=True,
+        )
+    srun_cmd.extend(cleaned)
+
+
 def _should_use_srun() -> bool:
     if FORCE_LOCAL:
         return False
@@ -101,8 +132,7 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
         "--job-name=sq_trellis",
         f"--gpus={GPUS or '1'}",
     ]
-    if EXTRA_ARGS:
-        srun_cmd.extend(_split_args(EXTRA_ARGS))
+    _append_srun_extras(srun_cmd, EXTRA_ARGS, "[sq-trellis]")
     srun_cmd.extend(cmd)
     return srun_cmd
 
