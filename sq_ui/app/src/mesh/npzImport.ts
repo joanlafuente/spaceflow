@@ -196,9 +196,50 @@ export function npzArraysToExports(
   return out;
 }
 
+/** Median half-axis after auto-rescale (middle of 0–5 scale sliders). */
+export const EDITOR_TYPICAL_HALF_AXIS = 2.5;
+/**
+ * If every half-axis is below this, the preset is treated as a normalized fit (e.g. SuperDec)
+ * and scales + translations are multiplied so the median half-axis ≈ EDITOR_TYPICAL_HALF_AXIS.
+ */
+export const AUTO_RESCALE_SCENE_MAX_HALF_AXIS = 0.04;
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid]! : ((s[mid - 1]! + s[mid]!) / 2);
+}
+
+/**
+ * Uniformly scale scales and translations so typical half-axes land near EDITOR_TYPICAL_HALF_AXIS.
+ * Geometry stays the same up to one global scale; rotations unchanged.
+ */
+export function maybeRescalePrimitivesForEditor(primitives: Primitive[]): Primitive[] {
+  if (primitives.length === 0) return primitives;
+  const halves = primitives.flatMap(p => [...p.scales]);
+  const sceneMax = Math.max(...halves);
+  if (sceneMax >= AUTO_RESCALE_SCENE_MAX_HALF_AXIS) return primitives;
+  const med = median(halves);
+  if (!Number.isFinite(med) || med <= 0) return primitives;
+  const k = EDITOR_TYPICAL_HALF_AXIS / med;
+  if (!Number.isFinite(k) || k <= 0 || k > 1e6) return primitives;
+  return primitives.map(p => ({
+    ...p,
+    scales: [p.scales[0] * k, p.scales[1] * k, p.scales[2] * k] as [number, number, number],
+    translation: [p.translation[0] * k, p.translation[1] * k, p.translation[2] * k] as [
+      number,
+      number,
+      number,
+    ],
+  }));
+}
+
 export interface ImportNpzOptions {
   /** If true, apply S @ R and S @ t so Z-up pipeline assets sit upright in Y-up Three.js. */
   basisZUpToYUp?: boolean;
+  /** If true, skip expanding tiny normalized fits for slider range (default false). */
+  skipEditorRescale?: boolean;
 }
 
 export async function importNpzToPrimitives(
@@ -230,7 +271,7 @@ export async function importNpzToPrimitives(
   }
 
   const t = Date.now();
-  return exports.map((e, i): Primitive => {
+  let prims: Primitive[] = exports.map((e, i): Primitive => {
     const euler = matrixToEuler(e.rotation);
     return {
       id: `npz_${i}_${t}`,
@@ -243,4 +284,8 @@ export async function importNpzToPrimitives(
       eulerDeg: euler,
     };
   });
+  if (!options?.skipEditorRescale) {
+    prims = maybeRescalePrimitivesForEditor(prims);
+  }
+  return prims;
 }

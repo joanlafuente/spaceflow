@@ -2,6 +2,11 @@ import { useCallback } from 'react';
 import { useStore } from '../state/store';
 import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
 
+/** Half-axis minimum; must match scale slider min (SuperDec / normalized fits use ~1e-3). */
+const SCALE_MIN = 0.0001;
+const SCALE_SLIDER_MAX = 5;
+const SCALE_STEP = 0.0001;
+
 interface SliderRowProps {
   label: string;
   value: number;
@@ -10,9 +15,14 @@ interface SliderRowProps {
   max: number;
   step: number;
   tooltip?: string;
+  /** Decimal places for the number box (range uses `step`). Use more for very small values (e.g. SuperDec fits). */
+  inputDecimals?: number;
 }
 
-function SliderRow({ label, value, onChange, min, max, step, tooltip }: SliderRowProps) {
+function SliderRow({ label, value, onChange, min, max, step, tooltip, inputDecimals = 4 }: SliderRowProps) {
+  // Range inputs require value in [min,max]; clamp only for the thumb, keep number box on the real value.
+  const forRange = Math.min(max, Math.max(min, value));
+  const numDisplay = Number(value.toFixed(inputDecimals));
   return (
     <div className="slider-row">
       <label className="slider-label" title={tooltip}>
@@ -25,13 +35,13 @@ function SliderRow({ label, value, onChange, min, max, step, tooltip }: SliderRo
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={forRange}
         onChange={(e) => onChange(parseFloat(e.target.value))}
       />
       <input
         type="number"
         className="num-input"
-        value={parseFloat(value.toFixed(4))}
+        value={numDisplay}
         step={step}
         onChange={(e) => {
           const v = parseFloat(e.target.value);
@@ -56,7 +66,7 @@ export default function ParameterPanel() {
   const updateScales = useCallback((idx: number, val: number) => {
     if (!prim) return;
     const s: [number, number, number] = [...prim.scales];
-    s[idx] = Math.max(0.001, val);
+    s[idx] = Math.max(SCALE_MIN, val);
     updatePrimitive(prim.id, { scales: s });
   }, [prim, updatePrimitive]);
 
@@ -143,7 +153,12 @@ export default function ParameterPanel() {
       <div className="section">
         <div className="section-title">
           Scales (A, B, C)
-          <span className="help-badge" title="Half-axes of the superellipsoid">?</span>
+          <span
+            className="help-badge"
+            title="Half-axes (not diameter). SuperDec / tiny NPZ fits are auto-rescaled so a typical half-axis is ~2.5 (middle of the slider). Templates use hand-tuned values (often ~0.5–1)."
+          >
+            ?
+          </span>
         </div>
         {(['A', 'B', 'C'] as const).map((label, i) => (
           <SliderRow
@@ -151,7 +166,10 @@ export default function ParameterPanel() {
             label={label}
             value={prim.scales[i]}
             onChange={(v) => updateScales(i, v)}
-            min={0.01} max={5} step={0.01}
+            min={SCALE_MIN}
+            max={SCALE_SLIDER_MAX}
+            step={SCALE_STEP}
+            inputDecimals={6}
           />
         ))}
       </div>

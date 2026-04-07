@@ -3,7 +3,7 @@ import { useStore } from '../state/store';
 import type { Primitive } from '../state/store';
 import { exportNpz } from '../mesh/npzExport';
 import type { PrimitiveExport } from '../mesh/npzExport';
-import { importNpzToPrimitives } from '../mesh/npzImport';
+import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
 import { isOrthogonal } from '../state/rotation';
 import { eulerToMatrix, matrixToEuler } from '../state/rotation';
 import { editFromText } from '../state/generate';
@@ -327,7 +327,7 @@ export default function TopBar() {
             eulerDeg: euler,
           };
         });
-        loadPreset(prims);
+        loadPreset(maybeRescalePrimitivesForEditor(prims));
         showToast(`Loaded ${prims.length} primitives from JSON`);
       } catch (err) {
         showToast(`Import failed: ${err}`);

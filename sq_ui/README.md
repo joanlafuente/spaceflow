@@ -171,6 +171,7 @@ The UI uploads to the SuperDec service. Supported inputs include `.ply`, `.pcd`,
 - **Z-up** applies a basis fix to the editor’s Y-up frame.
 - **Normalize point cloud** matches the generic-object inference path from the SuperDec demo.
 - **LM optimization** is optional and slower; it needs a **GPU** (upstream LM code uses CUDA).
+- **Editor scaling:** NPZ/JSON loads where **every** half-axis is tiny (max half-axis **&lt; 0.04**, typical SuperDec normalized fits) are **uniformly rescaled** so the **median** half-axis is about **2.5** (usable on the 0–5 sliders). **Translations** get the same factor so relative layout is unchanged. Templates and hand-sized presets are untouched. Programmatic import: pass **`skipEditorRescale: true`** to `importNpzToPrimitives` to keep raw numbers.
 
 ---
 
