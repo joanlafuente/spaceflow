@@ -59,3 +59,25 @@ export function det3(R: number[][]): number {
     R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0])
   );
 }
+
+/** 3×3 matrix product (row-major), C = A B. */
+export function matMul3(a: number[][], b: number[][]): number[][] {
+  const out: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      let s = 0;
+      for (let k = 0; k < 3; k++) s += a[i][k] * b[k][j];
+      out[i][j] = s;
+    }
+  }
+  return out;
+}
+
+/** Column vector v → M v (world-space linear map). */
+export function matVec3(m: number[][], v: readonly [number, number, number]): [number, number, number] {
+  return [
+    m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+    m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+    m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+  ];
+}

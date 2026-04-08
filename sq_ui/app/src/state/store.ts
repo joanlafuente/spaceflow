@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { eulerToMatrix, matrixToEuler } from './rotation';
+import { eulerToMatrix, matMul3, matVec3, matrixToEuler } from './rotation';
 
 export interface Primitive {
   id: string;
@@ -41,6 +41,8 @@ export interface AppState {
   undo: () => void;
   redo: () => void;
   loadPreset: (primitives: Primitive[]) => void;
+  /** Apply the same world-space rotation (ZYX Euler delta in degrees) to every primitive. */
+  rotateAllWorld: (deltaEulerDeg: [number, number, number]) => void;
 }
 
 let idCounter = 0;
@@ -258,6 +260,28 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       primitives,
       selectedId: primitives.length > 0 ? primitives[0].id : null,
+      undoStack: [...state.undoStack, entry],
+      redoStack: [],
+    });
+  },
+
+  rotateAllWorld: (deltaEulerDeg) => {
+    const state = get();
+    if (state.primitives.length === 0) return;
+    const entry = snapshot(state);
+    const Rg = eulerToMatrix(deltaEulerDeg);
+    const primitives = state.primitives.map(p => {
+      const rotation = matMul3(Rg, p.rotation).map(row => [...row]);
+      const translation = matVec3(Rg, p.translation);
+      return {
+        ...p,
+        rotation,
+        translation,
+        eulerDeg: matrixToEuler(rotation),
+      };
+    });
+    set({
+      primitives,
       undoStack: [...state.undoStack, entry],
       redoStack: [],
     });

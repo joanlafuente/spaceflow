@@ -33,12 +33,14 @@ export default function TopBar() {
   const selectedId = useStore(s => s.selectedId);
   const selectPrimitive = useStore(s => s.selectPrimitive);
   const loadPreset = useStore(s => s.loadPreset);
+  const rotateAllWorld = useStore(s => s.rotateAllWorld);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
   const redoStack = useStore(s => s.redoStack);
   const [toast, setToast] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showRotateAll, setShowRotateAll] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [genPrompt, setGenPrompt] = useState('');
@@ -448,6 +450,76 @@ export default function TopBar() {
         <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single Ellipsoid">⊙</button>
         <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template">⊞</button>
         <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template">⊟</button>
+        <span className="separator" />
+        <div className={`export-dropdown rotate-all-group${showRotateAll ? ' is-open' : ''}`}>
+          <button
+            type="button"
+            className={`toolbar-btn toolbar-btn-menu${showRotateAll ? ' is-open' : ''}`}
+            onClick={() => setShowRotateAll(v => !v)}
+            disabled={primitives.length === 0}
+            title="Rotate all primitives 90° about a world axis (wrong up-axis / upside-down)"
+          >
+            <svg
+              className="toolbar-btn-menu-icon"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M23 4v6h-6" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            <span className="toolbar-btn-menu-label">90°</span>
+            <span className="toolbar-btn-menu-caret" aria-hidden>
+              ▾
+            </span>
+          </button>
+          {showRotateAll && (
+            <div className="dropdown-menu dropdown-menu-toolbar" role="menu">
+              <button
+                type="button"
+                className="dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  rotateAllWorld([90, 0, 0]);
+                  setShowRotateAll(false);
+                  showToast('Rotated all parts +90° about world X');
+                }}
+              >
+                +90° about world X
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  rotateAllWorld([0, 90, 0]);
+                  setShowRotateAll(false);
+                  showToast('Rotated all parts +90° about world Y');
+                }}
+              >
+                +90° about world Y
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                role="menuitem"
+                onClick={() => {
+                  rotateAllWorld([0, 0, 90]);
+                  setShowRotateAll(false);
+                  showToast('Rotated all parts +90° about world Z');
+                }}
+              >
+                +90° about world Z
+              </button>
+            </div>
+          )}
+        </div>
         <span className="separator" />
         <div className={`generate-group ${showGenerate ? 'is-open' : ''}`}>
           {!showGenerate ? (

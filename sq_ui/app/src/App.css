@@ -141,6 +141,43 @@ body {
   cursor: default;
 }
 
+/* Wider toolbar control (same discrete look as undo/redo) */
+.toolbar-btn.toolbar-btn-menu {
+  width: auto;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px 0 5px;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-btn.toolbar-btn-menu .toolbar-btn-menu-icon {
+  flex-shrink: 0;
+  opacity: 0.88;
+}
+
+.toolbar-btn.toolbar-btn-menu .toolbar-btn-menu-label {
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.toolbar-btn.toolbar-btn-menu .toolbar-btn-menu-caret {
+  flex-shrink: 0;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.45;
+  margin-left: -1px;
+  transform: translateY(0.5px);
+}
+
+.toolbar-btn.toolbar-btn-menu.is-open:not(:disabled) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
 .separator {
   width: 1px;
   height: 20px;
@@ -182,6 +219,29 @@ body {
 
 .export-dropdown {
   position: relative;
+}
+
+.rotate-all-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rotate-all-group.is-open {
+  z-index: 120;
+}
+
+.dropdown-menu-toolbar {
+  left: 0;
+  right: auto;
+  min-width: max(100%, 172px);
+  box-sizing: border-box;
+}
+
+.dropdown-menu-toolbar .dropdown-item {
+  padding: 11px 16px;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .dropdown-menu {
