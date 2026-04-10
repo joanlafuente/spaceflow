@@ -1,0 +1,17 @@
+{
+  "name": "chair",
+  "prompt": "chair",
+  "seed": 1,
+  "point_count": 4096,
+  "normalize": true,
+  "prefer_mesh": false,
+  "source": "sparse_structure",
+  "sparse_steps": 12,
+  "slat_steps": 12,
+  "cfg_strength": 7.5,
+  "slat_cfg_strength": 7.5,
+  "mesh_vertex_count": 0,
+  "mesh_face_count": 0,
+  "pipeline_path": "gui",
+  "output_ply": "/work/courses/3dv/team3/spaceflow/sq_ui/scripts/__TRELLIS_RUNS__/1775572605_chair/output/chair.ply"
+}
