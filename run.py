@@ -60,6 +60,8 @@ def init_args():
     # SapceControl parameters
     parser.add_argument('--shape_superquadric_path', type=str, required=True,
                         help='Path to shape superquadrics file')
+    parser.add_argument('--spatial_control_mesh_path', type=str, default=None,
+                        help='Path to save the spatial control mesh (defaults to <output_dir>/spatial_control_mesh.ply)')
     parser.add_argument('--shape_tau', type=float, default=6.0, required=True,
                         help='Value of tau for superquadric control')
     parser.add_argument('--text_prompt', type=str, required=True,
@@ -152,24 +154,9 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadrics[k] = superquadric_dict
     return superquadrics
 
-def load_superquadrics(path, args):
-    # Implementation for loading superquadrics
-
+def load_superquadrics(path, spatial_control_mesh_path):
+    # Generate spatial control mesh from superquadric primitives and write to spatial_control_mesh_path
     superquadrics = load_superquadric_from_file(path)
-    
-        # Loading the spatial control mesh generated from the superquadrics provided and check that it all right
-    if not osp.exists(args.spatial_control_mesh_path):
-        log.error(f"Spatial control mesh not found: {args.spatial_control_mesh_path}")
-        return
-    else:
-        log.info(f"Spatial control mesh found: {args.spatial_control_mesh_path}")
-        mesh = o3d.io.read_triangle_mesh(args.spatial_control_mesh_path)
-        if mesh.is_empty():
-            log.error(f"Spatial control mesh is empty: {args.spatial_control_mesh_path}")
-            return
-        else:
-            log.info(f"Spatial control mesh loaded successfully: {args.spatial_control_mesh_path}")
-
 
     meshes = []
     for superquadric_id in superquadrics.keys():
@@ -189,8 +176,8 @@ def load_superquadrics(path, args):
 
     merged_mesh.translate(-center)
     merged_mesh.scale(scale, (0,0,0))
-    spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
     o3d.io.write_triangle_mesh(spatial_control_mesh_path, merged_mesh)
+    log.info(f"Spatial control mesh generated from superquadrics: {spatial_control_mesh_path}")
 
 def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.glb"):
     """
@@ -275,10 +262,12 @@ def main():
 
     common.ensure_dir(args.output_dir)
 
+    # Generate spatial control mesh from superquadrics
+    spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
+    load_superquadrics(args.shape_superquadric_path, spatial_control_mesh_path)
+
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
-
-    load_superquadrics(args.shape_superquadric_path, args)
 
     pipeline = TrellisTextTo3DPipeline.from_pretrained("gui")
     pipeline.cuda()
@@ -290,7 +279,7 @@ def main():
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,
-        "spatial_control_mesh_path": osp.join(args.output_dir, 'spatial_control_mesh.ply')
+        "spatial_control_mesh_path": spatial_control_mesh_path
     })
 
     # Convert sparse voxels to mesh

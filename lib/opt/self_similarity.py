@@ -19,6 +19,42 @@ def attn_cosine_sim(x, eps=1e-08):
     sim_matrix = (x @ x.permute(0, 2, 1)) / factor
     return sim_matrix
 
+def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
+    """Supervised contrastive loss without materializing the full N×N similarity matrix.
+    Peak memory is O(chunk_size × N) instead of O(N²).
+    """
+    # feats: (1, 1, N, C) -> (N, C)
+    x = feats[0, 0]
+    x_norm = x / x.norm(dim=1, keepdim=True).clamp(min=eps)  # (N, C), L2-normalized
+    labels = labels.view(-1)  # (N,)
+    N = x_norm.shape[0]
+
+    numerator = torch.zeros(N, device=x.device)
+    denominator = torch.zeros(N, device=x.device)
+    valid = torch.zeros(N, dtype=torch.bool, device=x.device)
+
+    for i in range(0, N, chunk_size):
+        i_end = min(i + chunk_size, N)
+        sim_row = x_norm[i:i_end] @ x_norm.T  # (cs, N)
+
+        labels_i = labels[i:i_end].unsqueeze(1)  # (cs, 1)
+        same_label = (labels_i == labels.unsqueeze(0)).float()  # (cs, N)
+
+        # Exclude self-similarity on diagonal
+        diag_idx = torch.arange(i_end - i, device=x.device)
+        same_label[diag_idx, i + diag_idx] = 0.0
+
+        logits_mask = torch.ones_like(sim_row)
+        logits_mask[diag_idx, i + diag_idx] = 0.0
+
+        exp_sim = torch.exp(sim_row) * logits_mask
+        numerator[i:i_end] = (exp_sim * same_label).sum(dim=1)
+        denominator[i:i_end] = exp_sim.sum(dim=1)
+        valid[i:i_end] = same_label.sum(dim=1) > 0
+
+    loss = -torch.log(numerator / (denominator + 1e-8))
+    return loss[valid].mean()
+
 def optimize_self_similarity(cfg, app, app_type, output_dir):
     log.info("Starting self-similarity optimization...")
     
@@ -56,8 +92,14 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
     feats = None
     
     cond = generation_pipeline.get_cond([app])
-    
+
     flow_model = generation_pipeline.models['slat_flow_model']
+
+    # get_cond() is done — only slat_flow_model is needed for the loop. Offload everything else.
+    for k, m in generation_pipeline.models.items():
+        if k != 'slat_flow_model':
+            m.cpu()
+    torch.cuda.empty_cache()
     
     if app_type == 'image':
         sampler_params = {
@@ -99,20 +141,7 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
         
         # Optimization - Structure Loss
         if iteration < len(t_pairs) - 1:
-            labels = struct_labels.view(-1,1)
-            sim = attn_cosine_sim(struct_feats_params[None, None, ...])[0]
-        
-            mask = (labels == labels.T).float()
-            
-            logits_mask = torch.ones_like(mask) - torch.eye(mask.size(0), device=struct_feats_params.device)
-            mask = mask * logits_mask
-            
-            exp_sim = torch.exp(sim) * logits_mask
-            numerator = (exp_sim * mask).sum(dim=1)
-            denominator = exp_sim.sum(dim=1)
-            
-            struct_loss = -torch.log(numerator / (denominator + 1e-8))
-            struct_loss = struct_loss[mask.sum(dim=1) > 0].mean()
+            struct_loss = chunked_contrastive_loss(struct_feats_params[None, None, ...], struct_labels)
 
             total_loss = cfg.sim_guidance.loss_weight * struct_loss
             total_loss.backward()
@@ -127,6 +156,11 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
                 best_loss = total_loss.item()
                 feats = struct_feats_params.detach() * std + mean
     
+    # Move SLAT decoders back to GPU for decoding
+    for k in ['slat_decoder_mesh', 'slat_decoder_gs', 'slat_decoder_rf']:
+        if k in generation_pipeline.models:
+            generation_pipeline.models[k].cuda()
+
     # Decode SLAT
     log.info("Decoding output SLAT...")
     out_meshpath = osp.join(output_dir,  'out_sim.glb')
