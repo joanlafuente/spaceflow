@@ -140,6 +140,7 @@ def _run_pipeline(cmd, on_done):
 
 
 def generate(superquadrics, gui_state) -> None:
+    import json as _json
     btn = gui_elements['generate_button']
     btn.label = "Generating..."
     btn.icon = viser.Icon.LOADER
@@ -155,10 +156,13 @@ def generate(superquadrics, gui_state) -> None:
     output_dir = f'outputs/{timestamp}_{text_prompt.replace(" ", "_")}'
     os.makedirs(output_dir, exist_ok=True)
 
+    mode = gui_state['guidance_mode']
+    run_mode = 'appearance' if mode == 'appearance' else 'similarity'
+
     python = sys.executable
     cmd = [
         python, 'run.py',
-        '--guidance_mode', gui_state['guidance_mode'],
+        '--guidance_mode', run_mode,
         '--output_dir', output_dir,
         '--shape_superquadric_path', sq_npz_path,
         '--shape_tau', str(gui_state['shape_tau']),
@@ -168,39 +172,54 @@ def generate(superquadrics, gui_state) -> None:
     if gui_state.get('convert_yup_to_zup'):
         cmd.append('--convert_yup_to_zup')
 
-    if gui_state['guidance_mode'] == 'appearance':
+    if mode == 'appearance':
         cmd += ['--appearance_mesh', gui_state['appearance_mesh']]
         if gui_state.get('appearance_image_path'):
             cmd += ['--appearance_image', gui_state['appearance_image_path']]
-    elif gui_state['guidance_mode'] == 'similarity':
+    elif mode == 'image-similarity':
         if gui_state.get('appearance_image_path'):
             cmd += ['--appearance_image', gui_state['appearance_image_path']]
-        elif gui_state.get('appearance_text'):
-            cmd += ['--appearance_text', gui_state['appearance_text']]
+        local_image_paths = gui_state.get('local_image_paths', [])
+        if any(p for p in local_image_paths):
+            cmd += ['--local_image_paths', _json.dumps(local_image_paths)]
+    elif mode == 'text-similarity':
+        if gui_state.get('global_texture'):
+            cmd += ['--appearance_text', gui_state['global_texture']]
+        local_text_prompts = gui_state.get('local_text_prompts', [])
+        if any(p.strip() for p in local_text_prompts):
+            cmd += ['--local_text_prompts', _json.dumps(local_text_prompts)]
 
     print(f"Running: {' '.join(cmd)}")
+
+    # Collect temp local image paths for cleanup
+    local_image_paths_for_cleanup = gui_state.get('local_image_paths', []) or []
 
     def on_done(returncode):
         global generated_mesh
         # Clean up temp files used by this run
-        for tmp in [sq_npz_path, gui_state.get('appearance_image_path')]:
+        cleanup_paths = [sq_npz_path, gui_state.get('appearance_image_path')] + local_image_paths_for_cleanup
+        for tmp in cleanup_paths:
             if tmp and os.path.exists(tmp):
                 try:
                     os.remove(tmp)
                 except Exception:
                     pass
         gui_elements.pop('_appearance_image_path', None)
+        # Clear stored local image paths from superquadrics
+        for sq_id in superquadrics:
+            superquadrics[sq_id].pop('local_image_path', None)
 
         btn = gui_elements['generate_button']
         if returncode == 0:
-            mode = gui_state['guidance_mode']
-            candidate = 'out_app.glb' if mode == 'appearance' else 'out_sim.glb'
+            candidate = 'out_app.glb' if gui_state['guidance_mode'] == 'appearance' else 'out_sim.glb'
             glb_path = os.path.join(output_dir, candidate)
             if os.path.exists(glb_path):
                 try:
-                    import trimesh
-                    mesh = trimesh.load(glb_path, force='mesh')
-                    generated_mesh = server.scene.add_mesh_trimesh("generated_mesh", mesh=mesh, visible=True)
+                    with open(glb_path, 'rb') as f:
+                        glb_data = f.read()
+                    generated_mesh = server.scene.add_glb("generated_mesh", glb_data, visible=True)
+                    toggle_sq_mesh()
+                    toggle_sq_mesh()
                     print(f"Displaying {glb_path}", flush=True)
                 except Exception as e:
                     print(f"Could not display mesh: {e}", flush=True)
@@ -235,8 +254,8 @@ def _save_and_preview_image(upload_handle, folder_key, preview_key):
     print(f"Appearance image saved to {path}")
 
 
-def handle_upload_sim_image(event):
-    _save_and_preview_image(sim_image_handle, 'folder_similarity', 'sim_image_preview')
+def handle_upload_texture_image(event):
+    _save_and_preview_image(texture_image_handle, 'folder_image_sim', 'texture_image_preview')
 
 
 def handle_upload_app_image(event):
@@ -245,7 +264,7 @@ def handle_upload_app_image(event):
 
 def setup_gui(server, superquadrics):
     global gui_elements, scene_elements, active_template_id, active_superquadric
-    global sim_image_handle, app_image_handle
+    global texture_image_handle, app_image_handle
 
     gui_elements = {}
     active_superquadric = -1
@@ -272,9 +291,30 @@ def setup_gui(server, superquadrics):
         min=0, max=steps, step=1.0, initial_value=6.0,
         marks=((0, "0"), (steps // 3, f"{steps // 3}"), (2 * steps // 3, f"{2 * steps // 3}")))
 
-    text_prompt = server.gui.add_text("Text prompt (shape)", "chair", order=2)
+    convert_checkbox = server.gui.add_checkbox("Convert Y-up \u2192 Z-up", initial_value=True, order=2)
+    gui_elements['convert_checkbox'] = convert_checkbox
 
     # Per-superquadric folders
+    def make_sq_image_upload_handler(sq_id):
+        def handler(event):
+            # Access image data from the upload button handle, not the event object.
+            handle = gui_elements[f'sq_{sq_id}']['local_image_upload']
+            path = f'gui/tmp_local_image_{sq_id}.png'
+            img = Image.open(BytesIO(handle.value.content)).convert('RGB')
+            img.save(path)
+            superquadrics[sq_id]['local_image_path'] = path
+            # Show preview inside the SQ folder
+            with gui_elements[f'sq_{sq_id}']['folder']:
+                if 'local_image_preview' in gui_elements[f'sq_{sq_id}']:
+                    try:
+                        gui_elements[f'sq_{sq_id}']['local_image_preview'].remove()
+                    except Exception:
+                        pass
+                gui_elements[f'sq_{sq_id}']['local_image_preview'] = server.gui.add_image(
+                    np.array(img.resize((128, 128))))
+            print(f"Local image for SQ {sq_id} saved to {path}")
+        return handler
+
     for id, sq in superquadrics.items():
         per = {}
         per['folder'] = server.gui.add_folder(f'Superquadric {id}', order=3, expand_by_default=True, visible=False)
@@ -289,6 +329,11 @@ def setup_gui(server, superquadrics):
                     per[k].on_update(lambda _: update_sq(superquadrics, active_superquadric, RESOLUTION))
                 except Exception:
                     pass
+            per['local_text_prompt'] = server.gui.add_text(
+                "Local texture", initial_value=sq.get('local_text_prompt', ''), visible=False)
+            per['local_image_upload'] = server.gui.add_upload_button(
+                "Upload local texture", color='gray', visible=False)
+            per['local_image_upload'].on_upload(make_sq_image_upload_handler(id))
             per['duplicate_button'] = server.gui.add_button("Duplicate", color='blue', icon=viser.Icon.COPY)
             per['duplicate_button'].on_click(lambda _: duplicate_active_superquadric())
             per['delete_button'] = server.gui.add_button("Delete", color='red', icon=viser.Icon.CROSS)
@@ -296,60 +341,85 @@ def setup_gui(server, superquadrics):
         gui_elements[f'sq_{id}'] = per
 
     gui_elements['save_sq_button'] = server.gui.add_button("Save as Template", color='gray', icon=viser.Icon.WRITING, order=4)
-    gui_elements['save_sq_button'].on_click(
-        lambda _: save_superquadric_to_file(
-            superquadrics, f'gui/superquadrics/{text_prompt.value}_sq.npz'))
 
     # --- Guidance mode ---
     guidance_dropdown = server.gui.add_dropdown(
-        label="Guidance mode", options=['similarity', 'appearance'], order=6, initial_value='similarity')
+        label="Guidance mode",
+        options=['text-similarity', 'image-similarity', 'appearance'],
+        order=6,
+        initial_value='text-similarity')
     gui_elements['guidance_dropdown'] = guidance_dropdown
 
-    convert_checkbox = server.gui.add_checkbox("Convert Y-up → Z-up", initial_value=True, order=7)
-    gui_elements['convert_checkbox'] = convert_checkbox
+    global_shape = server.gui.add_text("Global shape", "chair", order=7)
+    gui_elements['global_shape'] = global_shape
 
-    # --- Similarity guidance inputs (visible by default) ---
-    gui_elements['folder_similarity'] = server.gui.add_folder(
-        "Similarity guidance", order=8, expand_by_default=True, visible=True)
-    with gui_elements['folder_similarity']:
-        appearance_text = server.gui.add_text("Appearance text", "", order=0)
-        gui_elements['appearance_text'] = appearance_text
-        sim_image_handle = server.gui.add_upload_button("Upload appearance image", color='gray', order=1)
-        sim_image_handle.on_upload(handle_upload_sim_image)
+    gui_elements['save_sq_button'].on_click(
+        lambda _: save_superquadric_to_file(
+            superquadrics, f'gui/superquadrics/{global_shape.value}_sq.npz'))
 
-    # --- Appearance guidance inputs (hidden by default) ---
+    # --- text-similarity: Global texture text field (visible by default) ---
+    gui_elements['folder_text_sim'] = server.gui.add_folder(
+        "Text similarity", order=8, expand_by_default=True, visible=True)
+    with gui_elements['folder_text_sim']:
+        global_texture = server.gui.add_text("Global texture", "", order=0)
+        gui_elements['global_texture'] = global_texture
+
+    # --- image-similarity: upload button only (hidden by default) ---
+    gui_elements['folder_image_sim'] = server.gui.add_folder(
+        "Image similarity", order=9, expand_by_default=True, visible=False)
+    with gui_elements['folder_image_sim']:
+        texture_image_handle = server.gui.add_upload_button("Upload texture image", color='gray', order=0)
+        texture_image_handle.on_upload(handle_upload_texture_image)
+        gui_elements['texture_image_handle'] = texture_image_handle
+
+    # --- Appearance: mesh dropdown + optional texture upload (hidden by default) ---
     app_meshes = get_all_appearance_meshes()
     gui_elements['folder_appearance'] = server.gui.add_folder(
-        "Appearance guidance", order=9, expand_by_default=True, visible=False)
+        "Appearance guidance", order=10, expand_by_default=True, visible=False)
     with gui_elements['folder_appearance']:
         appearance_mesh_dropdown = server.gui.add_dropdown(
-            label="Appearance mesh",
+            label="Select appearance mesh",
             options=list(app_meshes.values()),
             order=0,
             initial_value=list(app_meshes.values())[0] if app_meshes else "")
         gui_elements['appearance_mesh_dropdown'] = appearance_mesh_dropdown
-        app_image_handle = server.gui.add_upload_button("Upload appearance image (optional)", color='gray', order=1)
+        app_image_handle = server.gui.add_upload_button("Upload texture image (optional)", color='gray', order=1)
         app_image_handle.on_upload(handle_upload_app_image)
 
-    # Show/hide guidance sections when dropdown changes
+    # Show/hide exactly one guidance section when dropdown changes;
+    # also toggle per-SQ local controls (text-similarity ↔ image-similarity only).
     def _on_guidance_change(_):
         mode = guidance_dropdown.value
-        gui_elements['folder_similarity'].visible = (mode == 'similarity')
+        gui_elements['folder_text_sim'].visible = (mode == 'text-similarity')
+        gui_elements['folder_image_sim'].visible = (mode == 'image-similarity')
         gui_elements['folder_appearance'].visible = (mode == 'appearance')
+        for sq_id in superquadrics:
+            per = gui_elements.get(f'sq_{sq_id}')
+            if per is None:
+                continue
+            per['local_text_prompt'].visible = (mode == 'text-similarity')
+            per['local_image_upload'].visible = (mode == 'image-similarity')
     guidance_dropdown.on_update(_on_guidance_change)
 
     # --- Generate buttons ---
     def _collect_state():
         mode = guidance_dropdown.value
         selected_mesh = gui_elements['appearance_mesh_dropdown'].value
+        sq_ids = sorted(superquadrics.keys())
         return {
-            'text_prompt': text_prompt.value,
+            'text_prompt': global_shape.value,
             'shape_tau': t0_idx.value,
             'guidance_mode': mode,
             'convert_yup_to_zup': convert_checkbox.value,
-            'appearance_text': appearance_text.value,
+            'global_texture': global_texture.value,
             'appearance_image_path': gui_elements.get('_appearance_image_path'),
             'appearance_mesh': os.path.join('gui/appearance_meshes', selected_mesh) if selected_mesh else '',
+            'local_text_prompts': [
+                gui_elements[f'sq_{i}']['local_text_prompt'].value for i in sq_ids
+            ],
+            'local_image_paths': [
+                superquadrics[i].get('local_image_path') for i in sq_ids
+            ],
         }
 
     gui_elements['generate_button'] = server.gui.add_button(

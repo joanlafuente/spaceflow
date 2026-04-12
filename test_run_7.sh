@@ -6,8 +6,8 @@
 #SBATCH --time=00:30:00
 #SBATCH --export=ALL
 #SBATCH --job-name=spaceflow-test
-#SBATCH --output=/home/msayfiddinov/spaceflow/outputs_f/test_%j.out
-#SBATCH --error=/home/msayfiddinov/spaceflow/outputs_f/test_%j.err
+#SBATCH --output=/home/msayfiddinov/spaceflow/outputs/test_%j.out
+#SBATCH --error=/home/msayfiddinov/spaceflow/outputs/test_%j.err
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate /work/courses/3dv/team3/guideflow3d/envs/guideflow3d
@@ -16,7 +16,7 @@ export TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6;9.0;12.0"
 export BLENDER_HOME="/home/msayfiddinov/spaceflow/blender-3.0.1-linux-x64/blender"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-SPACEFLOW_SCRATCH="${SPACEFLOW_SCRATCH:-/work/scratch/fscharitzer}"
+SPACEFLOW_SCRATCH="${SPACEFLOW_SCRATCH:-/work/scratch/msayfiddinov}"
 export HF_HOME="${SPACEFLOW_SCRATCH}/huggingface"
 export HUGGINGFACE_HUB_CACHE="${HF_HOME}/hub"
 export TRANSFORMERS_CACHE="${HF_HOME}/transformers"
@@ -31,7 +31,7 @@ srun --ntasks=1 --export=ALL \
   /work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python run.py \
   --guidance_mode similarity \
   --appearance_image examples/ford_shelby.jpg \
-  --output_dir outputs_f/test1 \
+  --output_dir outputs/test7 \
   --convert_yup_to_zup \
   --shape_superquadric_path examples/superquadrics/car_sq.npz \
   --shape_tau 6.0 \

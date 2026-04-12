@@ -1,4 +1,6 @@
 from html import parser
+import copy
+import json
 import os.path as osp
 import gc
 import trimesh
@@ -66,6 +68,10 @@ def init_args():
                         help='Value of tau for superquadric control')
     parser.add_argument('--text_prompt', type=str, required=True,
                         help='Text prompt for 3D shape generation')
+    parser.add_argument('--local_text_prompts', type=str, default=None,
+                        help='JSON-encoded list of per-SQ local text prompts (text-similarity mode)')
+    parser.add_argument('--local_image_paths', type=str, default=None,
+                        help='JSON-encoded list of per-SQ local image file paths (image-similarity mode)')
 
     args = parser.parse_args()
 
@@ -178,6 +184,42 @@ def load_superquadrics(path, spatial_control_mesh_path):
     merged_mesh.scale(scale, (0,0,0))
     o3d.io.write_triangle_mesh(spatial_control_mesh_path, merged_mesh)
     log.info(f"Spatial control mesh generated from superquadrics: {spatial_control_mesh_path}")
+
+def build_individual_sq_meshes_normalized(npz_path):
+    """Build individual superquadric meshes in the same normalised space as the merged mesh.
+
+    The merged mesh is centred and scaled to unit size (same as load_superquadrics).
+    Returns a list of open3d TriangleMesh objects in the [-0.5, 0.5] coordinate space.
+    """
+    superquadrics = load_superquadric_from_file(npz_path)
+    meshes = []
+    for sq_id in superquadrics:
+        vertices, triangles = add_superquadric_compact_rot_mat(
+            superquadrics[sq_id]['scale'],
+            superquadrics[sq_id]['shape'],
+            superquadrics[sq_id]['translation'],
+            superquadrics[sq_id]['rotation'],
+            resolution=100)
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(vertices)
+        mesh.triangles = o3d.utility.Vector3iVector(triangles)
+        meshes.append(mesh)
+
+    # Compute normalization from merged mesh (mirrors load_superquadrics)
+    merged = merge_meshes(meshes)
+    all_verts = np.asarray(merged.vertices)
+    aabb = np.stack([all_verts.min(0), all_verts.max(0)])
+    center = (aabb[0] + aabb[1]) / 2
+    scale = 1.0 / ((aabb[1] - aabb[0]).max())
+
+    normalized = []
+    for mesh in meshes:
+        m = copy.deepcopy(mesh)
+        m.translate(-center)
+        m.scale(scale, (0, 0, 0))
+        normalized.append(m)
+    return normalized
+
 
 def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.glb"):
     """
@@ -425,9 +467,21 @@ def main():
 
         log.info(f"Using {app_type} for self-similarity guidance...")
 
+        # Parse per-SQ local conditioning args
+        local_text_prompts = json.loads(args.local_text_prompts) if args.local_text_prompts else None
+        local_image_paths  = json.loads(args.local_image_paths)  if args.local_image_paths  else None
+
+        local_prompts     = local_text_prompts if app_type == 'text' else local_image_paths
+        local_prompt_type = app_type if local_prompts else None
+        individual_sq_meshes = build_individual_sq_meshes_normalized(args.shape_superquadric_path) if local_prompts else None
 
         # Self-Similarity Optimization
-        self_similarity.optimize_self_similarity(cfg, app, app_type, args.output_dir)
+        self_similarity.optimize_self_similarity(
+            cfg, app, app_type, args.output_dir,
+            local_prompts=local_prompts,
+            local_prompt_type=local_prompt_type,
+            individual_sq_meshes=individual_sq_meshes,
+        )
 
     else:
         raise NotImplementedError(f"Guidance mode {args.guidance_mode} not implemented.")
