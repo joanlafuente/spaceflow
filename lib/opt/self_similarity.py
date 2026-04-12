@@ -29,10 +29,17 @@ def _voxelize_mesh(mesh):
     return coords_dense
 
 
-def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cuda'):
+def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cuda', vox_cluster_labels=None):
     """Map each 64^3 voxel to its nearest superquadric (1-indexed; 0=unassigned).
 
+    When vox_cluster_labels is provided (PartField cluster label per voxel), assigns
+    voxels via cluster centroids: each cluster centroid is matched to the nearest SQ,
+    and all voxels in that cluster inherit the SQ assignment. This is more accurate
+    than per-voxel geometric nearest neighbor because PartField clusters capture
+    semantic part structure.
+
     struct_coords: (M, 4) int tensor [batch, x, y, z] in 64x64x64 space.
+    vox_cluster_labels: (M,) int tensor of PartField cluster indices per voxel.
     Returns a (1, 1, 32, 32, 32) int32 tensor.
     """
     coords_dense_indices = torch.zeros(1, 1, 32, 32, 32, dtype=torch.int32, device=device)
@@ -42,16 +49,38 @@ def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cu
 
     generated_coords = struct_coords[:, 1:].float().to(device)  # (M, 3)
 
-    min_distances = torch.zeros(n_sq, struct_coords.shape[0], device=device)
-    for idx, mesh in enumerate(individual_sq_meshes):
+    # Precompute SQ surface voxel coords once
+    sq_coords_list = []
+    for mesh in individual_sq_meshes:
         sq_vox = _voxelize_mesh(mesh)  # (1,1,64,64,64)
-        sq_coords = torch.argwhere(sq_vox)[:, 2:].float().to(device)  # (N,3)
-        if sq_coords.shape[0] == 0:
-            min_distances[idx] = float('inf')
-        else:
-            min_distances[idx] = torch.cdist(sq_coords, generated_coords).min(0).values
+        sq_c = torch.argwhere(sq_vox)[:, 2:].float().to(device)  # (K,3)
+        sq_coords_list.append(sq_c)
 
-    min_distances_idx = min_distances.argmin(0) + 1  # 1-indexed, shape (M,)
+    if vox_cluster_labels is not None:
+        # PartField-based assignment: cluster centroid → nearest SQ → voxels
+        labels = vox_cluster_labels.to(device)
+        num_clusters = int(labels.max().item()) + 1
+        cluster_to_sq = torch.zeros(num_clusters, dtype=torch.long, device=device)
+        for c in range(num_clusters):
+            mask = labels == c
+            if not mask.any():
+                continue
+            centroid = generated_coords[mask].mean(0, keepdim=True)  # (1, 3)
+            min_dists = [
+                torch.cdist(sq_c, centroid).min().item() if sq_c.shape[0] > 0 else float('inf')
+                for sq_c in sq_coords_list
+            ]
+            cluster_to_sq[c] = int(np.argmin(min_dists))
+        min_distances_idx = cluster_to_sq[labels] + 1  # (M,), 1-indexed
+    else:
+        # Fallback: per-voxel geometric nearest neighbor
+        min_distances = torch.zeros(n_sq, struct_coords.shape[0], device=device)
+        for idx, sq_c in enumerate(sq_coords_list):
+            if sq_c.shape[0] == 0:
+                min_distances[idx] = float('inf')
+            else:
+                min_distances[idx] = torch.cdist(sq_c, generated_coords).min(0).values
+        min_distances_idx = min_distances.argmin(0) + 1  # 1-indexed, shape (M,)
 
     for i in range(struct_coords.shape[0]):
         x = struct_coords[i, 1] // 2
@@ -161,7 +190,8 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             ]
         cond_list = [global_emb] + local_embs
         log.info(f"Built cond_list with {len(cond_list)} entries (1 global + {len(local_embs)} local)")
-        coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda')
+        coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda',
+                                                             vox_cluster_labels=struct_labels)
         log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
 
     flow_model = generation_pipeline.models['slat_flow_model']
