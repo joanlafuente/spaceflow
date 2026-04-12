@@ -6,14 +6,14 @@
 #SBATCH --time=00:30:00
 #SBATCH --export=ALL
 #SBATCH --job-name=spaceflow-test
-#SBATCH --output=/work/courses/3dv/team3/spaceflow/outputs_f/test_%j.out
-#SBATCH --error=/work/courses/3dv/team3/spaceflow/outputs_f/test_%j.err
+#SBATCH --output=/home/msayfiddinov/spaceflow/outputs_f/test_%j.out
+#SBATCH --error=/home/msayfiddinov/spaceflow/outputs_f/test_%j.err
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate /work/courses/3dv/team3/guideflow3d/envs/guideflow3d
 module load cuda/12.8
 export TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6;9.0;12.0"
-export BLENDER_HOME="/work/courses/3dv/team3/guideflow3d/blender-3.0.1-linux-x64/blender"
+export BLENDER_HOME="/home/msayfiddinov/spaceflow/blender-3.0.1-linux-x64/blender"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 SPACEFLOW_SCRATCH="${SPACEFLOW_SCRATCH:-/work/scratch/fscharitzer}"
@@ -26,7 +26,7 @@ export XDG_CACHE_HOME="${SPACEFLOW_SCRATCH}/xdg_cache"
 mkdir -p "$HUGGINGFACE_HUB_CACHE" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" \
   "${TORCH_HOME}/hub" "${XDG_CACHE_HOME}"
 
-cd /work/courses/3dv/team3/spaceflow
+cd /home/msayfiddinov/spaceflow
 srun --ntasks=1 --export=ALL \
   /work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python run.py \
   --guidance_mode similarity \
