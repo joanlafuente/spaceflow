@@ -102,7 +102,7 @@ class SparseMultiHeadAttention(nn.Module):
         qkv = qkv.replace(torch.stack([q, k, v], dim=1)) 
         return qkv
     
-    def forward(self, x: Union[SparseTensor, torch.Tensor], context: Optional[Union[SparseTensor, torch.Tensor]] = None) -> Union[SparseTensor, torch.Tensor]:
+    def forward(self, x: Union[SparseTensor, torch.Tensor], context: Optional[Union[SparseTensor, torch.Tensor]] = None, context_list=None, coords_dense_indices=None) -> Union[SparseTensor, torch.Tensor]:
         if self._type == "self":
             qkv = self._linear(self.to_qkv, x)
             qkv = self._fused_pre(qkv, num_fused=3)
@@ -126,14 +126,43 @@ class SparseMultiHeadAttention(nn.Module):
         else:
             q = self._linear(self.to_q, x)
             q = self._reshape_chs(q, (self.num_heads, -1))
-            kv = self._linear(self.to_kv, context)
-            kv = self._fused_pre(kv, num_fused=2)
-            if self.qk_rms_norm:
-                q = self.q_rms_norm(q)
-                k, v = kv.unbind(dim=1)
-                k = self.k_rms_norm(k)
-                kv = kv.replace(torch.stack([k.feats, v.feats], dim=1))
-            h = sparse_scaled_dot_product_attention(q, kv)
+
+            if context_list is not None:
+                # Per-superquadric local routing: compute attention for every embedding in
+                # context_list, then assign each voxel to its corresponding SQ output.
+                # context_list[0]   = global/fallback embedding
+                # context_list[i+1] = local embedding for SQ i
+                # coords_dense_indices: (1,1,32,32,32) int tensor, 0=unassigned, 1..N=SQ index
+                hs = []
+                for ctx in context_list:
+                    kv = self._linear(self.to_kv, ctx.to(context.dtype))
+                    kv = self._fused_pre(kv, num_fused=2)
+                    if self.qk_rms_norm:
+                        q_n = self.q_rms_norm(q)
+                        k, v = kv.unbind(dim=1)
+                        k = self.k_rms_norm(k)
+                        kv = kv.replace(torch.stack([k.feats, v.feats], dim=1))
+                        hs.append(sparse_scaled_dot_product_attention(q_n, kv))
+                    else:
+                        hs.append(sparse_scaled_dot_product_attention(q, kv))
+                indices = coords_dense_indices[
+                    0, 0, q.coords[:, 1], q.coords[:, 2], q.coords[:, 3]]
+                # Vectorised routing: stack all per-context outputs and select
+                # the correct one for each voxel in a single gather operation.
+                # hs_feats: (num_ctx, N, ...)  indices: (N,)
+                hs_feats = torch.stack([hi.feats for hi in hs], dim=0)
+                vox_idx = torch.arange(hs_feats.shape[1], device=hs_feats.device)
+                selected = hs_feats[indices.long(), vox_idx]
+                h = hs[0].replace(selected)
+            else:
+                kv = self._linear(self.to_kv, context)
+                kv = self._fused_pre(kv, num_fused=2)
+                if self.qk_rms_norm:
+                    q = self.q_rms_norm(q)
+                    k, v = kv.unbind(dim=1)
+                    k = self.k_rms_norm(k)
+                    kv = kv.replace(torch.stack([k.feats, v.feats], dim=1))
+                h = sparse_scaled_dot_product_attention(q, kv)
         h = self._reshape_chs(h, (-1,))
         h = self._linear(self.to_out, h)
         return h

@@ -1,9 +1,11 @@
+import copy
 import os.path as osp
 from PIL import Image
 import numpy as np
 import torch
 import utils3d
 import logging
+import open3d_pycg as o3d
 
 import third_party.TRELLIS.trellis.modules.sparse as sp
 from third_party.TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline
@@ -11,6 +13,53 @@ from lib.util import generation, partfield
 
 # Global logger
 log = logging.getLogger(__name__)
+
+
+def _voxelize_mesh(mesh):
+    """Voxelize an Open3D mesh into a (1,1,64,64,64) binary float32 tensor on CPU."""
+    mesh = copy.deepcopy(mesh)
+    vertices = np.clip(np.asarray(mesh.vertices), -0.5 + 1e-6, 0.5 - 1e-6)
+    mesh.vertices = o3d.utility.Vector3dVector(vertices)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(
+        mesh, voxel_size=1/64, min_bound=(-0.5, -0.5, -0.5), max_bound=(0.5, 0.5, 0.5))
+    voxel_indices = np.array([v.grid_index for v in voxel_grid.get_voxels()])
+    coords_dense = torch.zeros(1, 1, 64, 64, 64, dtype=torch.float32)
+    if len(voxel_indices) > 0:
+        coords_dense[0, 0, voxel_indices[:, 0], voxel_indices[:, 1], voxel_indices[:, 2]] = 1.0
+    return coords_dense
+
+
+def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cuda'):
+    """Map each 64^3 voxel to its nearest superquadric (1-indexed; 0=unassigned).
+
+    struct_coords: (M, 4) int tensor [batch, x, y, z] in 64x64x64 space.
+    Returns a (1, 1, 32, 32, 32) int32 tensor.
+    """
+    coords_dense_indices = torch.zeros(1, 1, 32, 32, 32, dtype=torch.int32, device=device)
+    n_sq = len(individual_sq_meshes)
+    if n_sq == 0:
+        return coords_dense_indices
+
+    generated_coords = struct_coords[:, 1:].float().to(device)  # (M, 3)
+
+    min_distances = torch.zeros(n_sq, struct_coords.shape[0], device=device)
+    for idx, mesh in enumerate(individual_sq_meshes):
+        sq_vox = _voxelize_mesh(mesh)  # (1,1,64,64,64)
+        sq_coords = torch.argwhere(sq_vox)[:, 2:].float().to(device)  # (N,3)
+        if sq_coords.shape[0] == 0:
+            min_distances[idx] = float('inf')
+        else:
+            min_distances[idx] = torch.cdist(sq_coords, generated_coords).min(0).values
+
+    min_distances_idx = min_distances.argmin(0) + 1  # 1-indexed, shape (M,)
+
+    for i in range(struct_coords.shape[0]):
+        x = struct_coords[i, 1] // 2
+        y = struct_coords[i, 2] // 2
+        z = struct_coords[i, 3] // 2
+        coords_dense_indices[0, 0, x, y, z] = int(min_distances_idx[i].item())
+
+    return coords_dense_indices
 
 def attn_cosine_sim(x, eps=1e-08):
     x = x[0]  # TEMP: getting rid of redundant dimension, TBF
@@ -55,9 +104,11 @@ def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
     loss = -torch.log(numerator / (denominator + 1e-8))
     return loss[valid].mean()
 
-def optimize_self_similarity(cfg, app, app_type, output_dir):
+def optimize_self_similarity(cfg, app, app_type, output_dir,
+                             local_prompts=None, local_prompt_type=None,
+                             individual_sq_meshes=None):
     log.info("Starting self-similarity optimization...")
-    
+
     if app_type == 'image':
         generation_pipeline = TrellisImageTo3DPipeline.from_pretrained(cfg.trellis_img_model_name)
         app = Image.open(osp.join(output_dir, 'app_image.png')).convert('RGB')
@@ -92,6 +143,26 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
     feats = None
     
     cond = generation_pipeline.get_cond([app])
+
+    # Build per-SQ local conditioning if local prompts were provided.
+    cond_list = None
+    coords_dense_indices = None
+    if local_prompts and individual_sq_meshes:
+        global_emb = cond['cond']  # (1, seq_len, dim)
+        if local_prompt_type == 'text':
+            local_embs = [
+                generation_pipeline.encode_text([p]) if p and p.strip() else global_emb
+                for p in local_prompts
+            ]
+        else:  # 'image'
+            local_embs = [
+                generation_pipeline.encode_image([Image.open(p).convert('RGB')]) if p else global_emb
+                for p in local_prompts
+            ]
+        cond_list = [global_emb] + local_embs
+        log.info(f"Built cond_list with {len(cond_list)} entries (1 global + {len(local_embs)} local)")
+        coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda')
+        log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
 
     flow_model = generation_pipeline.models['slat_flow_model']
 
@@ -133,8 +204,13 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
             coords = struct_coords.int(),
         ).cuda()
         
+        local_kwargs = {}
+        if cond_list is not None:
+            local_kwargs['cond_list'] = cond_list
+            local_kwargs['coords_dense_indices'] = coords_dense_indices
+
         with torch.no_grad():
-            out = generation_pipeline.slat_sampler.sample_once(flow_model, noise, t, t_prev, **cond, **sampler_params)
+            out = generation_pipeline.slat_sampler.sample_once(flow_model, noise, t, t_prev, **cond, **sampler_params, **local_kwargs)
             
         sample = out.pred_x_prev
         struct_feats_params.data = sample.feats

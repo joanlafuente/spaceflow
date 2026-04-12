@@ -139,7 +139,7 @@ class ModulatedSparseTransformerCrossBlock(nn.Module):
                 nn.Linear(channels, 6 * channels, bias=True)
             )
 
-    def _forward(self, x: SparseTensor, mod: torch.Tensor, context: torch.Tensor) -> SparseTensor:
+    def _forward(self, x: SparseTensor, mod: torch.Tensor, context: torch.Tensor, context_list=None, coords_dense_indices=None) -> SparseTensor:
         if self.share_mod:
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = mod.chunk(6, dim=1)
         else:
@@ -150,7 +150,7 @@ class ModulatedSparseTransformerCrossBlock(nn.Module):
         h = h * gate_msa
         x = x + h
         h = x.replace(self.norm2(x.feats))
-        h = self.cross_attn(h, context)
+        h = self.cross_attn(h, context, context_list, coords_dense_indices)
         x = x + h
         h = x.replace(self.norm3(x.feats))
         h = h * (1 + scale_mlp) + shift_mlp
@@ -159,8 +159,8 @@ class ModulatedSparseTransformerCrossBlock(nn.Module):
         x = x + h
         return x
 
-    def forward(self, x: SparseTensor, mod: torch.Tensor, context: torch.Tensor) -> SparseTensor:
+    def forward(self, x: SparseTensor, mod: torch.Tensor, context: torch.Tensor, context_list=None, coords_dense_indices=None) -> SparseTensor:
         if self.use_checkpoint:
-            return torch.utils.checkpoint.checkpoint(self._forward, x, mod, context, use_reentrant=False)
+            return torch.utils.checkpoint.checkpoint(self._forward, x, mod, context, context_list, coords_dense_indices, use_reentrant=False)
         else:
-            return self._forward(x, mod, context)
+            return self._forward(x, mod, context, context_list, coords_dense_indices)
