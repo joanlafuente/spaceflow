@@ -218,8 +218,12 @@ def generate(superquadrics, gui_state) -> None:
                     with open(glb_path, 'rb') as f:
                         glb_data = f.read()
                     generated_mesh = server.scene.add_glb("generated_mesh", glb_data, visible=True)
-                    toggle_sq_mesh()
-                    toggle_sq_mesh()
+                    for key in scene_elements:
+                        if key.startswith('sq_'):
+                            scene_elements[key].visible = False
+                    if active_superquadric != -1:
+                        scene_elements[f'sqc_{active_superquadric}'].visible = False
+                    server.scene.set_environment_map('studio', background=False, environment_intensity=2.0)
                     print(f"Displaying {glb_path}", flush=True)
                 except Exception as e:
                     print(f"Could not display mesh: {e}", flush=True)
