@@ -156,8 +156,8 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
     zeros = torch.zeros((struct_coords.size(0), 1), dtype=struct_coords.dtype, device=struct_coords.device)
     struct_coords = torch.cat([zeros, struct_coords], dim=1)
     
-    # Load partfield planes
-    path = osp.join(output_dir, "partfield", "part_feat_struct_mesh_zup_batch_part_plane.npy")
+    # Load partfield planes (extracted from Blender's struct_renders/mesh.ply — same mesh as voxels)
+    path = osp.join(output_dir, "partfield", "part_feat_mesh_batch_part_plane.npy")
     struct_part_planes = torch.from_numpy(np.load(path, allow_pickle=True)).cuda()
 
     struct_labels = partfield.cluster_geoms(struct_coords, struct_part_planes, num_clusters=cfg.sim_guidance.num_part_clusters)
@@ -204,7 +204,7 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             struct_coords[:, 1] // 2,
             struct_coords[:, 2] // 2,
             struct_coords[:, 3] // 2].cpu().numpy()
-        _mesh_vis = trimesh.load(osp.join(output_dir, 'struct_mesh_normalized.ply'), force='mesh')
+        _mesh_vis = trimesh.load(osp.join(output_dir, 'struct_renders', 'mesh.ply'), force='mesh')
         _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv_norm, _sq_labels)
         visualize_and_save(_mesh_vis, _vtx_labels, output_dir, output_name='condition_routing.mp4')
         del _sv_norm, _sq_labels, _mesh_vis, _vtx_labels
