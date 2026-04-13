@@ -4,7 +4,6 @@ import logging as log
 import os.path as osp
 import random
 
-import imageio
 import numpy as np
 import torch
 import trimesh
@@ -14,21 +13,15 @@ from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import OmegaConf
 from skimage import measure
 from sklearn.neighbors import KDTree
-from tqdm import tqdm
 import open3d_pycg as o3d
 import argparse
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
 import sys
 sys.path.append('.')
 
 from third_party.PartField.partfield.model_trainer_pvcnn_only_demo import Model
-from third_party.TRELLIS.trellis.representations.mesh.cube2mesh import MeshExtractResult
-from third_party.TRELLIS.trellis.renderers.mesh_renderer import MeshRenderer
-from third_party.TRELLIS.trellis.utils.render_utils import yaw_pitch_r_fov_to_extrinsics_intrinsics
 from lib.util import partfield, common, pointcloud
+from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices as _map_voxel_labels_to_vertices
 from third_party.TRELLIS.trellis.pipelines import TrellisTextTo3DPipeline
 from utils import merge_meshes
 
@@ -177,79 +170,9 @@ def predict_part(obj_path, output_dir):
 # Visualization
 # ---------------------------------------------------------------------------
 
-def visualize_and_save(structure, partfield_clusters, output_folder,
-                       num_frames=300, resolution=512):
-    """Render a smooth rotating orbit video of the structure colored by PartField clusters.
-
-    Uses the TRELLIS MeshRenderer (nvdiffrast) for GPU-accelerated antialiased rendering
-    and the same yaw/pitch camera trajectory as run.py's Gaussian scene videos.
-
-    Args:
-        structure: trimesh.Trimesh — normalized structure mesh (vertices in [-0.5, 0.5])
-        partfield_clusters: np.ndarray (V,) — per-vertex int cluster labels,
-            where V matches structure.vertices.shape[0]
-        output_folder: str — directory in which to save cluster_visualization.mp4
-        num_frames: int — number of video frames (default 300)
-        resolution: int — output resolution in pixels (default 512)
-    """
-    partfield_clusters = np.asarray(partfield_clusters, dtype=int)
-    num_clusters = int(partfield_clusters.max()) + 1
-
-    # Assign maximally distinct colors by evenly spacing hues around the HSV wheel
-    # (high saturation + value ensures each cluster is visually unambiguous)
-    import matplotlib.colors as mcolors
-    hues = np.linspace(0, 1, num_clusters, endpoint=False)
-    cluster_colors = np.array([mcolors.hsv_to_rgb([h, 0.90, 0.95]) for h in hues],
-                               dtype=np.float32)  # (num_clusters, 3)
-    vertex_colors = cluster_colors[partfield_clusters]  # (V, 3)
-
-    # Build MeshExtractResult for the TRELLIS MeshRenderer
-    verts_t = torch.tensor(structure.vertices, dtype=torch.float32, device='cuda')
-    faces_t = torch.tensor(structure.faces, dtype=torch.long, device='cuda')
-    colors_t = torch.tensor(vertex_colors, dtype=torch.float32, device='cuda')
-    mesh_result = MeshExtractResult(vertices=verts_t, faces=faces_t, vertex_attrs=colors_t)
-
-    # Camera trajectory: identical to render_utils.render_video so all sides are visible
-    yaws = torch.linspace(0, 2 * torch.pi, num_frames).tolist()
-    pitch = (0.25 + 0.5 * torch.sin(torch.linspace(0, 2 * torch.pi, num_frames))).tolist()
-    extrinsics, intrinsics = yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitch, 2, 40)
-
-    renderer = MeshRenderer(rendering_options={
-        "resolution": resolution,
-        "near": 1,
-        "far": 100,
-        "ssaa": 4,  # 4× super-sampling for smooth edges
-    })
-
-    frames = []
-    log.info(f"Rendering {num_frames} frames for cluster visualization...")
-    with torch.no_grad():
-        for extr, intr in tqdm(zip(extrinsics, intrinsics), total=num_frames,
-                               desc='Rendering cluster visualization'):
-            res = renderer.render(mesh_result, extr, intr,
-                                  return_types=["color", "mask"])
-            # color: (3, H, W), mask: (1, H, W) — composite over black background
-            color = res['color']  # (3, H, W)
-            mask = res['mask']    # (1, H, W)
-            frame = (color * mask).permute(1, 2, 0).clamp(0.0, 1.0)
-            frame = (frame.cpu().numpy() * 255).astype(np.uint8)
-            frames.append(frame)
-
-    video_path = osp.join(output_folder, 'cluster_visualization.mp4')
-    imageio.mimsave(video_path, frames, fps=30)
-    log.info(f"Cluster visualization saved to {video_path}")
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
-def _map_voxel_labels_to_vertices(mesh_vertices, voxel_coords, voxel_labels):
-    """Assign each mesh vertex the cluster label of its nearest voxel."""
-    tree = KDTree(voxel_coords)
-    _, idx = tree.query(mesh_vertices, k=1)
-    return voxel_labels[idx.flatten()]
-
 
 def main():
     parser = argparse.ArgumentParser(
