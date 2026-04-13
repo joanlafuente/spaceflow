@@ -65,7 +65,9 @@ def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cu
             mask = labels == c
             if not mask.any():
                 continue
-            centroid = generated_coords[mask].mean(0, keepdim=True)  # (1, 3)
+            cluster_voxels = generated_coords[mask]
+            mean_pos = cluster_voxels.mean(0, keepdim=True)
+            centroid = cluster_voxels[torch.cdist(cluster_voxels, mean_pos).argmin()].unsqueeze(0)  # (1, 3) actual voxel
             min_dists = [
                 torch.cdist(sq_c, centroid).min().item() if sq_c.shape[0] > 0 else float('inf')
                 for sq_c in sq_coords_list
