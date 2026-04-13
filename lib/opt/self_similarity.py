@@ -196,6 +196,20 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
                                                              vox_cluster_labels=struct_labels)
         log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
 
+        log.info("Visualizing condition routing on structure mesh...")
+        import trimesh
+        from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+        _sv_norm = ((struct_coords[:, 1:].float() + 0.5) / 64 - 0.5).cpu().numpy()
+        _sq_labels = coords_dense_indices[0, 0,
+            struct_coords[:, 1] // 2,
+            struct_coords[:, 2] // 2,
+            struct_coords[:, 3] // 2].cpu().numpy()
+        _mesh_vis = trimesh.load(osp.join(output_dir, 'struct_mesh_normalized.ply'), force='mesh')
+        _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv_norm, _sq_labels)
+        visualize_and_save(_mesh_vis, _vtx_labels, output_dir, output_name='condition_routing.mp4')
+        del _sv_norm, _sq_labels, _mesh_vis, _vtx_labels
+        torch.cuda.empty_cache()
+
     flow_model = generation_pipeline.models['slat_flow_model']
 
     # get_cond() is done — only slat_flow_model is needed for the loop. Offload everything else.

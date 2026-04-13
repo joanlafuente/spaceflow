@@ -21,6 +21,8 @@ from pycg import vis, image
 from pycg import render as pycg_render
 import open3d_pycg as o3d
 
+import utils3d
+
 import sys
 sys.path.append('.')
 
@@ -346,11 +348,27 @@ def main():
     del pipeline
     gc.collect() # Free up memory
 
+    # Normalize to [-0.5, 0.5] — replicates Blender's normalize_scene.
+    # Required so that Python voxelization (which clips to [-0.5, 0.5]) captures the full mesh,
+    # and so that PartField planes and voxel coordinates share the same canonical space.
+    verts = struct_mesh.vertices
+    bbox_min, bbox_max = verts.min(0), verts.max(0)
+    center = (bbox_min + bbox_max) / 2
+    scale = 1.0 / (bbox_max - bbox_min).max()
+    struct_mesh.vertices = (verts - center) * scale
+
     # Canonical mesh for renders, voxels, and PartField must share one frame (Z-up if converting).
     if args.convert_yup_to_zup:
         struct_mesh = pointcloud.convert_mesh_yup_to_zup(struct_mesh)
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh_zup.glb'))
     struct_mesh_for_pipeline = osp.join(args.output_dir, 'struct_mesh_zup.glb')
+
+    # Save normalized PLY for direct Python voxelization.
+    # Using the Python-saved PLY (not Blender's mesh.ply) avoids the Y→Z coordinate
+    # transformation that Blender's GLTF importer applies, which would otherwise
+    # mismatch the PartField planes (trained in Y-up) against Z-up voxel coordinates.
+    struct_mesh_ply = osp.join(args.output_dir, 'struct_mesh_normalized.ply')
+    struct_mesh.export(struct_mesh_ply)
 
     log.info(f"Rendering structure mesh for {cfg.num_views // 10} views...")
     struct_render_dir = osp.join(args.output_dir, 'struct_renders')
@@ -360,12 +378,29 @@ def main():
     voxel_dir = osp.join(args.output_dir, 'voxels')
     common.ensure_dir(voxel_dir)
     log.info("Voxelizing structure mesh...")
-    pointcloud.voxelize_mesh(osp.join(struct_render_dir, 'mesh.ply'), save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
+    pointcloud.voxelize_mesh(struct_mesh_ply, save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
 
     log.info("Extracting Structure Mesh PartField feature planes...")
     partfield_dir = osp.join(args.output_dir, 'partfield')
     common.ensure_dir(partfield_dir)
     predict_part(struct_mesh_for_pipeline, partfield_dir)
+
+    log.info("Visualizing PartField clusters on structure mesh...")
+    from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+    from lib.util.partfield import cluster_geoms
+    _sv = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
+    _sc = torch.from_numpy(_sv).float().cuda()
+    _sc4d = torch.cat([torch.zeros(_sc.shape[0], 1, dtype=torch.long, device='cuda'),
+                       ((_sc + 0.5) * 64).long()], dim=1)
+    _planes = torch.from_numpy(np.load(
+        osp.join(partfield_dir, 'part_feat_struct_mesh_zup_batch_part_plane.npy'),
+        allow_pickle=True)).cuda()
+    _vlabels = cluster_geoms(_sc4d, _planes, num_clusters=cfg.sim_guidance.num_part_clusters)
+    _mesh_vis = trimesh.load(struct_mesh_ply, force='mesh')
+    _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv, _vlabels)
+    visualize_and_save(_mesh_vis, _vtx_labels, args.output_dir, output_name='partfield_clusters.mp4')
+    del _sv, _sc, _sc4d, _planes, _vlabels, _mesh_vis, _vtx_labels
+    gc.collect()
 
     if not out_renderviews:
         log.info("Structure rendering failed!")
