@@ -51,6 +51,21 @@ async function parseJson<T>(res: Response): Promise<T> {
       const text = await res.text().catch(() => '');
       if (text) msg += `: ${text.slice(0, 400)}`;
     }
+
+    const lower = msg.toLowerCase();
+    const looksLikeSlurmAlloc =
+      lower.includes('srun: error: unable to allocate resources') ||
+      lower.includes('invalid account') ||
+      lower.includes('account/partition') ||
+      lower.includes('invalid account or account/partition combination');
+    if (looksLikeSlurmAlloc) {
+      msg +=
+        `\n\n` +
+        `This is a Slurm allocation error. Fix by setting env vars for the SuperDec service, e.g.` +
+        `\n  SQ_SUPERDEC_SLURM_PARTITION=<your_partition>` +
+        `\n  SQ_SUPERDEC_SLURM_ACCOUNT=<your_account>` +
+        `\n(or run SuperDec on a GPU node and set SQ_SUPERDEC_FORCE_LOCAL=1 to disable srun wrapping).`;
+    }
     throw new Error(msg);
   }
   return await res.json() as T;

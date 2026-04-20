@@ -59,11 +59,14 @@ function identity3(): number[][] {
 }
 
 function defaultPrimitive(overrides?: Partial<Primitive>): Primitive {
+  // UI editing units: these are superquadric half-axes.
+  // Keep defaults modest so new primitives don't fill the whole viewport.
+  const DEFAULT_HALF_AXIS = 0.5;
   return {
     id: nextId(),
     name: `Primitive ${idCounter}`,
     visible: true,
-    scales: [1, 1, 1],
+    scales: [DEFAULT_HALF_AXIS, DEFAULT_HALF_AXIS, DEFAULT_HALF_AXIS],
     shapes: [1, 1],
     translation: [0, 0, 0],
     rotation: identity3(),
@@ -124,18 +127,18 @@ function sqPreset(
 }
 
 export const PRESETS: Record<string, () => Partial<Primitive>> = {
-  Ball: () => sqPreset([1, 1, 1], [1, 1], [0, 0, 0]),
-  Ellipsoid: () => sqPreset([0.5, 0.5, 1], [1, 1], [0, 0, 0]),
-  Cylinder: () => sqPreset([1, 1, 1], [0.05, 1], [90, 0, 0]),
-  Cube: () => sqPreset([1, 1, 1], [0.05, 0.05], [90, 0, 0]),
-  'Astroid (star)': () => sqPreset([1, 1, 1], [4, 4], [0, 0, 0]),
+  Ball: () => sqPreset([0.5, 0.5, 0.5], [1, 1], [0, 0, 0]),
+  Ellipsoid: () => sqPreset([0.25, 0.25, 0.5], [1, 1], [0, 0, 0]),
+  Cylinder: () => sqPreset([0.5, 0.5, 0.5], [0.05, 1], [90, 0, 0]),
+  Cube: () => sqPreset([0.5, 0.5, 0.5], [0.05, 0.05], [90, 0, 0]),
+  'Astroid (star)': () => sqPreset([0.5, 0.5, 0.5], [4, 4], [0, 0, 0]),
 };
 
 export const useStore = create<AppState>((set, get) => ({
   primitives: [],
   selectedId: null,
   previewResolution: 48,
-  showNormalized: true,
+  showNormalized: false,
   undoStack: [],
   redoStack: [],
 

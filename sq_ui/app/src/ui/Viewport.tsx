@@ -252,10 +252,13 @@ function Scene() {
   const showNormalized = useStore(s => s.showNormalized);
   const selectPrimitive = useStore(s => s.selectPrimitive);
 
-  const { normCenter, normScale } = useMemo(() => {
-    if (!showNormalized || primitives.length === 0) {
-      return { normCenter: [0, 0, 0] as [number, number, number], normScale: 1 };
-    }
+  // Pipeline normalization is useful for matching training/export conventions,
+  // but recomputing the center on every drag makes the whole scene "swim".
+  // Freeze the normalization transform for the duration of normalized mode.
+  const frozenNormRef = useRef<{ center: [number, number, number]; scale: number } | null>(null);
+
+  const computedNorm = useMemo(() => {
+    if (!showNormalized || primitives.length === 0) return null;
     const allVerts = primitives
       .filter(p => p.visible)
       .map(p => {
@@ -266,12 +269,31 @@ function Scene() {
         );
         return vertices;
       });
-    if (allVerts.length === 0) {
-      return { normCenter: [0, 0, 0] as [number, number, number], normScale: 1 };
-    }
-    const { center, scale } = normalizeMergedVertices(allVerts);
-    return { normCenter: center, normScale: scale };
+    if (allVerts.length === 0) return null;
+    return normalizeMergedVertices(allVerts);
   }, [primitives, resolution, showNormalized]);
+
+  useEffect(() => {
+    if (!showNormalized) {
+      frozenNormRef.current = null;
+      return;
+    }
+    // Only capture the normalization transform once when entering normalized mode.
+    // This avoids "world drift" while dragging/animating primitives.
+    if (computedNorm && frozenNormRef.current === null) {
+      frozenNormRef.current = computedNorm;
+    }
+  }, [computedNorm, showNormalized]);
+
+  const normCenter = frozenNormRef.current?.center ?? ([0, 0, 0] as [number, number, number]);
+  const normScale = frozenNormRef.current?.scale ?? 1;
+
+  // Match `gui/` conventions: Z-up world.
+  const camera = useThree(s => s.camera);
+  useEffect(() => {
+    camera.up.set(0, 0, 1);
+    camera.updateProjectionMatrix();
+  }, [camera]);
 
   const handleMiss = useCallback(() => {
     selectPrimitive(null);
@@ -285,7 +307,9 @@ function Scene() {
 
       <Grid
         args={[20, 20]}
-        position={[0, -0.5, 0]}
+        // drei/Grid is XZ (Y-up). Rotate to XY for Z-up.
+        rotation={[Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
         cellSize={0.5}
         cellThickness={0.5}
         cellColor="#333a48"
@@ -326,7 +350,8 @@ export default function Viewport() {
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
       <Canvas
-        camera={{ position: [2.5, 2, 2.5], fov: 50, near: 0.01, far: 100 }}
+        // Z-up camera position (like the viser GUI).
+        camera={{ position: [2.5, -2.2, 2.2], fov: 50, near: 0.01, far: 100 }}
         style={{ background: '#0e1014' }}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
       >

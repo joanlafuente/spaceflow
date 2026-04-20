@@ -59,12 +59,16 @@ def _build_child_env() -> dict[str, str]:
     xdg_cache = Path(env.get("XDG_CACHE_HOME", str(CACHE_ROOT)))
     hf_home = Path(env.get("HF_HOME", str(CACHE_ROOT / "huggingface")))
     torch_home = Path(env.get("TORCH_HOME", str(CACHE_ROOT / "torch")))
+    tmp_dir = TRELLIS_SCRATCH / "tmp"
+    pip_cache_dir = tmp_dir / "pip-cache"
 
     env["XDG_CACHE_HOME"] = str(xdg_cache)
     env["HF_HOME"] = str(hf_home)
     env.setdefault("HUGGINGFACE_HUB_CACHE", str(hf_home / "hub"))
     env.setdefault("TRANSFORMERS_CACHE", str(hf_home / "transformers"))
     env["TORCH_HOME"] = str(torch_home)
+    env["PIP_CACHE_DIR"] = env.get("PIP_CACHE_DIR") or str(pip_cache_dir)
+    env["TMPDIR"] = env.get("TMPDIR") or str(tmp_dir)
 
     for path in [
         TRELLIS_SCRATCH,
@@ -74,6 +78,8 @@ def _build_child_env() -> dict[str, str]:
         Path(env["HUGGINGFACE_HUB_CACHE"]),
         Path(env["TRANSFORMERS_CACHE"]),
         torch_home,
+        tmp_dir,
+        pip_cache_dir,
     ]:
         path.mkdir(parents=True, exist_ok=True)
 
