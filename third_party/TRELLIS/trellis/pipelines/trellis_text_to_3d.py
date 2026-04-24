@@ -67,7 +67,9 @@ class TrellisTextTo3DPipeline(Pipeline):
         new_pipeline.slat_normalization = args['slat_normalization']
 
         new_pipeline._init_text_cond_model(args['text_cond_model'])
-        new_pipeline._init_image_cond_model(args['image_cond_model'])
+        
+        if 'image_cond_model' in args:
+            new_pipeline._init_image_cond_model(args['image_cond_model'])
 
         return new_pipeline
     
@@ -178,12 +180,31 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         Encode the spatial control.
         """        
-        spatial_control = utils.voxelize_sq_francis(spatial_control_path).to(device=self.device)
-        spatial_control_latent = self.models['sparse_structure_encoder'](spatial_control)
+        spatial_control = utils.voxelize_sq_francis(spatial_control_path).to(device=self.device) # [1, 1, 64, 64, 64]
+        spatial_control_latent = self.models['sparse_structure_encoder'](spatial_control) # [1, 8, 16, 16, 16] 
         # Only for debugging:
         utils.save_voxelgrid_as_ply(spatial_control[0, 0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_voxlized.ply")
         utils.save_voxelgrid_as_ply(spatial_control_latent[0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_latent.ply")
         return spatial_control_latent
+
+    @torch.no_grad()
+    def load_mesh_high_control(self, mesh_path: str) -> torch.Tensor:
+        """
+        Load the high-control mesh and encode it to latent space.
+
+        Args:
+            mesh_path (str): The path to the high-control mesh.
+
+        Returns:
+            torch.Tensor: Latent space mask.
+        """
+
+        spatial_control = utils.voxelize_sq_francis(mesh_path).to(device=self.device) # [1, 1, 64, 64, 64]
+
+        # Reduce resolution to 16^3
+        spatial_control = F.interpolate(spatial_control, size=(16, 16, 16), mode='trilinear', align_corners=False) # [1, 1, 16, 16, 16]
+
+        return spatial_control  
 
     def get_cond_text(self, prompt: List[str]) -> dict:
         """
@@ -218,7 +239,7 @@ class TrellisTextTo3DPipeline(Pipeline):
             'cond': cond,
             'neg_cond': neg_cond,
         }
-
+    @torch.no_grad()
     def sample_sparse_structure(
         self,
         cond: dict,
@@ -250,6 +271,11 @@ class TrellisTextTo3DPipeline(Pipeline):
         # Decode occupancy latent
         decoder = self.models['sparse_structure_decoder']
         coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
+
+        # Save intermediate voxel structure for visualization
+        utils.save_voxelgrid_as_ply(
+            decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
+        )
 
         return coords
 
@@ -379,6 +405,39 @@ class TrellisTextTo3DPipeline(Pipeline):
         torch.manual_seed(seed)
         spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
         cond_text = {**cond_text, 'control': spatial_control_latent}  
+        coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params)
+
+        return coords
+
+    def gen_structure_v2(
+        self,
+        prompt: str,
+        num_samples: int = 1,
+        seed: int = 42,
+        sparse_structure_sampler_params: dict = {},
+        slat_sampler_params: dict = {},
+    ) -> dict:
+        """
+        Run the pipeline.
+
+        Args:
+            prompt (str): The text prompt.
+            num_samples (int): The number of samples to generate.
+            seed (int): The random seed.
+            sparse_structure_sampler_params (dict): Additional parameters for the sparse structure sampler.
+            slat_sampler_params (dict): Additional parameters for the structured latent sampler.
+        """
+        cond_text = self.get_cond_text([prompt])
+        torch.manual_seed(seed)
+        spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
+
+        high_control_spatial_control = None
+        if (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'guidance'):
+            high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+        elif (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'masking'):
+            high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            
+        cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control}
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params)
 
         return coords

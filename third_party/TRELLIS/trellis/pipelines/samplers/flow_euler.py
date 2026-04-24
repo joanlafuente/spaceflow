@@ -105,16 +105,29 @@ class FlowEulerSampler(Sampler):
             - 'pred_x_t': a list of prediction of x_t.
             - 'pred_x_0': a list of prediction of x_0.
         """
-
         sample = noise
         t_seq = np.linspace(1, 0, steps + 1)
         t_seq = rescale_t * t_seq / (1 + (rescale_t - 1) * t_seq)
         t_pairs = list((t_seq[i], t_seq[i + 1]) for i in range(steps))
 
         if 'control' in kwargs:
-          control = kwargs['control']
-          t0 = t_seq[int(kwargs['t0_idx_value'])]
-          sample = noise * t0 + control * (1 - t0)
+            control = kwargs['control']
+            t0 = t_seq[int(kwargs['t0_idx_value'])]
+            sample = noise * t0 + control * (1 - t0) # [1, 8, 16, 16, 16]
+
+        if (kwargs.get('control_high') is not None) and (kwargs.get('local_tau_mode', None) == 'guidance'):
+            control_high = kwargs['control_high']
+            t0_high = t_seq[int(kwargs['t0_idx_value_high_control'])]
+            control_high_mask = None
+        elif (kwargs.get('control_high') is not None) and (kwargs.get('local_tau_mode', None) == 'masking'):
+            control_high_mask = kwargs['control_high']
+            t0_high = t_seq[int(kwargs['t0_idx_value_high_control'])]
+            control_high = None
+        else:
+            print("No high control provided, skipping high control adjustment initialization.")
+            control_high_mask = None
+            control_high = None
+
         args = {'neg_cond': kwargs['neg_cond'],
                 'cfg_strength': kwargs['cfg_strength'],
                 'cfg_interval': kwargs['cfg_interval']}
@@ -122,14 +135,30 @@ class FlowEulerSampler(Sampler):
 
         print(f"Starting sampling with {steps} steps...", flush=True)
         for t, t_prev in tqdm(t_pairs, desc="Sampling", disable=not verbose):
+            # print(f"Current t: {t:.4f}, Previous t: {t_prev:.4f}" + (f", t0: {t0:.4f}" if t0 is not None else "") 
+            #         + (f", t0_high: {t0_high:.4f}" if t0_high is not None else ""), flush=True)
             if 'control' in kwargs and t > t0:
                print("Skipping step with control due to t > t0...", flush=True) 
                continue
+
             out = self.sample_once(model, sample, t, t_prev, cond, **args)
             sample = out.pred_x_prev
+
+            if (control_high is not None)and t > t0_high:
+                print("Applying high control adjustment...", flush=True)
+                # sample_high = noise * t + control_high * (1 - t) # [1, 8, 16, 16, 16]
+                sample = sample * (1 - kwargs['polyak_update_tau']) + control_high * kwargs['polyak_update_tau']
+            elif (control_high_mask is not None) and t > t0_high:
+                print("Applying high control masking...", flush=True)
+                noise = torch.randn_like(sample)
+                sample_gt_t = noise * t + control * (1 - t)
+                sample = sample * (1 - control_high_mask) + sample_gt_t * control_high_mask
+            else:
+                print("No high control adjustment applied for this step.", flush=True)
+
             ret.pred_x_t.append(out.pred_x_prev)
             ret.pred_x_0.append(out.pred_x_0)
-        ret.samples = sample
+        ret.samples = sample.detach()
         return ret
 
 

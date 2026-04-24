@@ -4,6 +4,7 @@
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 outputs/
 outputs_neil/
+outputs_f/
 examples/
 lightning_logs/
 models/
