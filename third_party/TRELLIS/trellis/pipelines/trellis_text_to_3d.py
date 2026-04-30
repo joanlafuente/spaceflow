@@ -2,17 +2,108 @@ from typing import *
 import torch
 import torch.nn as nn
 import numpy as np
+import copy
 from transformers import CLIPTextModel, AutoTokenizer
 from torchvision import transforms
 import torch.nn.functional as F
 import rembg
 from PIL import Image
 import open3d_pycg as o3d
+import os
+import time
+import imageio
 from .base import Pipeline
 from . import samplers
 from ..modules import sparse as sp
-import utils
+from ..representations import Gaussian
+from ..utils import render_utils
+# from gui import utils (Directly copied the functions here because of coliding dependencies)
 from pathlib import Path
+from sklearn.decomposition import PCA
+
+
+def merge_meshes(mesh_list):
+    merged = o3d.geometry.TriangleMesh()
+    v_offset = 0
+
+    for mesh in mesh_list:
+        vertices = np.asarray(mesh.vertices)
+        triangles = np.asarray(mesh.triangles) + v_offset
+
+        merged.vertices.extend(o3d.utility.Vector3dVector(vertices))
+        merged.triangles.extend(o3d.utility.Vector3iVector(triangles))
+
+        v_offset += len(vertices)
+
+    return merged
+
+
+def voxelgrid_to_open3d(voxels: np.ndarray, threshold=0.5):
+    if len(voxels.shape) > 3:
+        C, D, H, W = voxels.shape
+        flat_feats = voxels.reshape(C, -1).transpose(1,0)
+        pca = PCA(n_components=3)
+        reduced = pca.fit_transform(flat_feats)
+        # Compute feature norm and PCA color std
+
+        # Normalize for RGB
+        reduced -= reduced.min(0)
+        reduced /= reduced.max(0) + 1e-6
+
+        # Compute norms and color std
+        norms = np.linalg.norm(flat_feats, axis=1)
+        color_std = np.std(reduced, axis=1)
+
+        # Filter: active voxels with non-trivial color
+        mask = (norms > threshold) & (color_std > 1e-3)
+
+        # zz, yy, xx = np.meshgrid(np.arange(D), np.arange(H), np.arange(W), indexing='ij')
+        xx, yy, zz = np.meshgrid(np.arange(D), np.arange(H), np.arange(W), indexing='ij')
+        coords = np.stack([xx, yy, zz], axis=-1).reshape(-1, 3)
+        valid_coords = coords[mask]
+        valid_colors = reduced[mask]
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(valid_coords.astype(np.float32))
+        pcd.colors = o3d.utility.Vector3dVector(valid_colors.astype(np.float32))
+    else:
+        coords = np.argwhere(voxels > threshold)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(coords)
+    return pcd
+
+
+def save_voxelgrid_as_ply(voxels: np.ndarray, filename: str, threshold=0.5):
+    pcd = voxelgrid_to_open3d(voxels, threshold)
+    o3d.io.write_point_cloud(filename, pcd)
+
+
+def voxelize_sq_francis(file_name):
+    superquadric_mesh = o3d.io.read_triangle_mesh(file_name)
+    vertices = np.clip(np.asarray(superquadric_mesh.vertices), -0.5 + 1e-6, 0.5 - 1e-6)
+    superquadric_mesh.vertices = o3d.utility.Vector3dVector(vertices)
+    theta = np.pi / 2
+    #superquadric_mesh.rotate(R_x, center=(0, 0, 0))
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(
+        superquadric_mesh, voxel_size=1/64, min_bound=(-0.5, -0.5, -0.5), max_bound=(0.5, 0.5, 0.5))
+    
+    vertices = np.array([voxel.grid_index for voxel in voxel_grid.get_voxels()])
+    unique_points = np.unique(vertices, axis=0)
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(unique_points)
+    o3d.io.write_point_cloud("merged_mesh_voxelized.ply", pcd)
+
+    zeros = np.zeros((unique_points.shape[0], 1))
+    unique_points_4d = np.hstack((zeros, unique_points))  # shape [N, 4]
+    unique_points_4d_torch = torch.from_numpy(unique_points_4d).to(dtype=torch.int32, device='cpu')
+    my_coords_orig = unique_points_4d_torch
+
+    coords_dense = torch.ones(1, 1, 64, 64, 64).to(device='cpu', dtype=torch.float32) * 0.0
+    for i in range(my_coords_orig.shape[0]):
+      x, y, z = my_coords_orig[i, 1], my_coords_orig[i, 2], my_coords_orig[i, 3]
+      coords_dense[0, 0, x, y, z] = 1.0
+    return coords_dense
+
 
 class TrellisTextTo3DPipeline(Pipeline):
     """
@@ -180,11 +271,11 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         Encode the spatial control.
         """        
-        spatial_control = utils.voxelize_sq_francis(spatial_control_path).to(device=self.device) # [1, 1, 64, 64, 64]
+        spatial_control = voxelize_sq_francis(spatial_control_path).to(device=self.device) # [1, 1, 64, 64, 64]
         spatial_control_latent = self.models['sparse_structure_encoder'](spatial_control) # [1, 8, 16, 16, 16] 
         # Only for debugging:
-        utils.save_voxelgrid_as_ply(spatial_control[0, 0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_voxlized.ply")
-        utils.save_voxelgrid_as_ply(spatial_control_latent[0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_latent.ply")
+        save_voxelgrid_as_ply(spatial_control[0, 0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_voxlized.ply")
+        save_voxelgrid_as_ply(spatial_control_latent[0].cpu().numpy(), Path(spatial_control_path).parent / "spatial_control_latent.ply")
         return spatial_control_latent
 
     @torch.no_grad()
@@ -199,7 +290,7 @@ class TrellisTextTo3DPipeline(Pipeline):
             torch.Tensor: Latent space mask.
         """
 
-        spatial_control = utils.voxelize_sq_francis(mesh_path).to(device=self.device) # [1, 1, 64, 64, 64]
+        spatial_control = voxelize_sq_francis(mesh_path).to(device=self.device) # [1, 1, 64, 64, 64]
 
         # Reduce resolution to 16^3
         spatial_control = F.interpolate(spatial_control, size=(16, 16, 16), mode='trilinear', align_corners=False) # [1, 1, 16, 16, 16]
@@ -245,6 +336,7 @@ class TrellisTextTo3DPipeline(Pipeline):
         cond: dict,
         num_samples: int = 1,
         sampler_params: dict = {},
+        vis_output_dir: str = None,
     ) -> torch.Tensor:
         """
         Sample sparse structures with the given conditioning.
@@ -253,6 +345,7 @@ class TrellisTextTo3DPipeline(Pipeline):
             cond (dict): The conditioning information.
             num_samples (int): The number of samples to generate.
             sampler_params (dict): Additional parameters for the sampler.
+            vis_output_dir (str): The directory to save visualization outputs.
         """
         # Sample occupancy latent
         flow_model = self.models['sparse_structure_flow_model']
@@ -260,20 +353,25 @@ class TrellisTextTo3DPipeline(Pipeline):
         noise = torch.randn(num_samples, flow_model.in_channels, reso, reso, reso).to(self.device)
         sampler_params = {**self.sparse_structure_sampler_params, **sampler_params}
 
-        z_s = self.sparse_structure_sampler.sample(
+        ret = self.sparse_structure_sampler.sample(
             flow_model,
             noise,
             **cond,
             **sampler_params,
             verbose=True
-        ).samples
+        )
+        z_s = ret.samples
+
+        if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
+            video_path = os.path.join(vis_output_dir, 'denoising_evolution.mp4')
+            self._render_denoising_evolution(ret.pred_x_0, video_path)
         
         # Decode occupancy latent
         decoder = self.models['sparse_structure_decoder']
         coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
 
         # Save intermediate voxel structure for visualization
-        utils.save_voxelgrid_as_ply(
+        save_voxelgrid_as_ply(
             decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
         )
 
@@ -416,6 +514,7 @@ class TrellisTextTo3DPipeline(Pipeline):
         seed: int = 42,
         sparse_structure_sampler_params: dict = {},
         slat_sampler_params: dict = {},
+        vis_output_dir: str = None,
     ) -> dict:
         """
         Run the pipeline.
@@ -438,7 +537,7 @@ class TrellisTextTo3DPipeline(Pipeline):
             high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
             
         cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control}
-        coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params)
+        coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
         return coords
     
@@ -492,3 +591,50 @@ class TrellisTextTo3DPipeline(Pipeline):
         torch.manual_seed(seed)
         slat = self.sample_slat(cond, coords, slat_sampler_params)
         return self.decode_slat(slat, formats)
+
+    @torch.no_grad()
+    def _render_denoising_evolution(
+        self,
+        pred_x_0_list: list,
+        output_path: str,
+        total_frames: int = 1800,
+        resolution: int = 512,
+    ) -> None:
+        """Render each denoising step's pred_x_0 as a voxel cloud and compile into one video."""
+        decoder = self.models['sparse_structure_decoder']
+        num_steps = len(pred_x_0_list)
+        if num_steps == 0:
+            return
+        frames_per_step = max(1, total_frames // num_steps)
+
+        all_frames = []
+        for step_idx, latent in enumerate(pred_x_0_list):
+            occupancy = (decoder(latent) > 0).float()      # (B, 1, 64, 64, 64)
+            occupied_idx = torch.argwhere(occupancy[0, 0]) # (M, 3)
+
+            if occupied_idx.shape[0] == 0:
+                blank = np.zeros((resolution, resolution, 3), dtype=np.uint8)
+                all_frames.extend([blank] * frames_per_step)
+                continue
+
+            positions = (occupied_idx.float() + 0.5) / 64.0 - 0.5  # (M, 3) in [-0.5, 0.5]
+            n = positions.shape[0]
+            gs = Gaussian(aabb=[-0.5, -0.5, -0.5, 1.0, 1.0, 1.0], sh_degree=0, device='cuda')
+            gs.from_xyz(positions)
+            identity = torch.zeros(n, 4, device=self.device)
+            identity[:, 0] = 1.0
+            gs.from_rotation(identity)
+            gs.from_scaling(torch.full((n, 3), 1.0 / 128, device=self.device))
+            gs.from_opacity(torch.full((n, 1), 0.9, device=self.device))
+            gs._features_dc   = torch.zeros(n, 1, 3, device=self.device)
+            gs._features_rest = None
+
+            step_frames = render_utils.render_video(
+                gs, num_frames=frames_per_step, resolution=resolution, r=2, fov=40,
+            )['color']
+            all_frames.extend(step_frames)
+            print(f"[evolution] step {step_idx+1}/{num_steps}: {n} voxels")
+
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        imageio.mimsave(output_path, all_frames, fps=30)
+        print(f"[evolution] saved {output_path}  ({len(all_frames)} frames)")

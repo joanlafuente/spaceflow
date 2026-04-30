@@ -171,7 +171,6 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadric_dict['shape'] = shapes[k]
         superquadric_dict['rotation'] = rotate[k, :]
         superquadric_dict['translation'] = trans[k, :]
-        print("translation:", superquadric_dict['translation'])
         superquadric_dict['color'] = [90, 200, 255]
         superquadrics[k] = superquadric_dict
     return superquadrics
@@ -343,7 +342,7 @@ def main():
     text_prompt = args.text_prompt
 
     # Sparse voxels
-    coords = pipeline.gen_structure_v2(text_prompt, seed=1, sparse_structure_sampler_params={
+    coords = pipeline.gen_structure_v2(text_prompt, seed=1, vis_output_dir=args.output_dir, sparse_structure_sampler_params={
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,
