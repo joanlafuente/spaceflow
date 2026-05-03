@@ -129,12 +129,13 @@ echo "PartField arm -> $PARTFIELD_DIR"
 echo "============================================================"
 
 # --- 1. Confirm we are on feature/superdec-correspondence ---
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$CURRENT_BRANCH" != "feature/superdec-correspondence" ]]; then
-  echo "Expected branch feature/superdec-correspondence, got $CURRENT_BRANCH" >&2
+ORIG_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$ORIG_BRANCH" != "feature/superdec-correspondence" ]]; then
+  echo "Expected branch feature/superdec-correspondence, got $ORIG_BRANCH" >&2
   echo "Run: git checkout feature/superdec-correspondence" >&2
   exit 4
 fi
+CURRENT_BRANCH="$ORIG_BRANCH"
 
 # --- 2. SUPERDEC arm ---
 RUN_ARGS=(
@@ -160,17 +161,31 @@ echo ">>> [SUPERDEC arm] diagnostics:"
 ls -la "$SUPERDEC_DIR/superdec/" 2>/dev/null || true
 
 # --- 3. PartField arm: stash, switch, run, restore ---
+# run.py / TRELLIS may touch tracked files in the repo root (e.g. .gitignore,
+# merged_mesh_voxelized.ply). We must reset the working tree before checkout.
+#
+# IMPORTANT: `git stash create` + `git stash store` does NOT modify the working
+# tree — it only records a stash entry — so `git checkout main` still fails
+# with "would be overwritten by checkout". Use `git stash push`, which stashes
+# and cleans the tree. `-u` includes untracked files that would block checkout.
+STASHED=0
 if [[ -n "$(git status --porcelain)" ]]; then
   echo
   echo ">>> stashing local working-tree changes before switching branches"
-  STASH_REF=$(git stash create "ab_compare_${USER}_$(date +%s)")
-  git stash store -m "ab_compare_pre_main" "$STASH_REF" || true
-  STASHED=1
-else
-  STASHED=0
+  if git stash push -u -m "ab_compare_pre_main_${USER}_$(date +%s)"; then
+    STASHED=1
+  else
+    echo "[ab] error: git stash push failed — cannot switch to main cleanly." >&2
+    exit 6
+  fi
 fi
 
-trap 'echo "[ab] restoring branch + stash..."; git checkout - >/dev/null 2>&1 || true; if [[ "$STASHED" == "1" ]]; then git stash pop >/dev/null 2>&1 || true; fi' EXIT
+trap 'set +e
+echo "[ab] restoring branch + stash..."
+git checkout "$ORIG_BRANCH" >/dev/null 2>&1
+if [[ "$STASHED" == "1" ]]; then
+  git stash pop >/dev/null 2>&1 || git stash pop
+fi' EXIT
 
 git checkout main
 echo
