@@ -7,9 +7,22 @@
 #
 # Usage:
 #   bash scripts/ab_compare_superdec_vs_partfield.sh \
-#       --text "wooden desk lamp" \
-#       --appearance assets/lamp_appearance.glb \
-#       --out_root /work/scratch/$USER/spaceflow/ab_runs/lamp
+#       --text_prompt "A wooden chair" \
+#       --appearance_mesh examples/lamp.glb \
+#       --shape_superquadric examples/superquadrics/chair_sq.npz \
+#       --shape_tau 6.0 \
+#       --convert_yup_to_zup \
+#       --out_root /work/scratch/$USER/spaceflow/ab_runs/lamp_to_chair
+#
+# Notes on inputs:
+#   * --shape_superquadric is the *structure* shape (the geometric
+#     scaffolding that drives generation together with the text prompt);
+#     it is independent of the appearance mesh. Pre-built files under
+#     examples/superquadrics/: chair_sq.npz, plane_sq.npz, sofa_sq.npz,
+#     car_sq.npz (no lamp_sq.npz exists yet — generate one with
+#     sq_ui/scripts/superdec_infer.py if you want a lamp structure).
+#   * The appearance mesh contributes only material/texture features;
+#     mismatching geometry between structure and appearance is OK.
 #
 # Required env (defaults below assume the cluster layout used by
 # sq_ui/setup_superdec.sh):
@@ -45,23 +58,57 @@ cd "$REPO_ROOT"
 TEXT_PROMPT=""
 APP_PATH=""
 OUT_ROOT=""
+SHAPE_SQ_PATH=""
+SHAPE_TAU="6.0"
+CONVERT_YUP_TO_ZUP=0
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --text|--text_prompt) TEXT_PROMPT="$2"; shift 2 ;;
     --appearance|--appearance_mesh) APP_PATH="$2"; shift 2 ;;
+    --shape_superquadric|--shape_superquadric_path) SHAPE_SQ_PATH="$2"; shift 2 ;;
+    --shape_tau) SHAPE_TAU="$2"; shift 2 ;;
+    --convert_yup_to_zup) CONVERT_YUP_TO_ZUP=1; shift ;;
     --out_root) OUT_ROOT="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '1,40p' "$0" | sed 's/^# //'
+      exit 0
+      ;;
     *) EXTRA_ARGS+=("$1"); shift ;;
   esac
 done
 
-if [[ -z "$TEXT_PROMPT" || -z "$APP_PATH" || -z "$OUT_ROOT" ]]; then
-  echo "Usage: $0 --text \"<prompt>\" --appearance <path/to/app_mesh.glb> --out_root <dir> [run.py extra args...]" >&2
+usage() {
+  cat <<USAGE >&2
+Usage: $0 \\
+    --text_prompt "<prompt>" \\
+    --appearance_mesh <path/to/app_mesh.glb> \\
+    --shape_superquadric <path/to/structure_sq.npz> \\
+    [--shape_tau 6.0] \\
+    [--convert_yup_to_zup] \\
+    --out_root <dir> \\
+    [extra run.py args ...]
+
+Pre-built superquadric files under examples/superquadrics/:
+  chair_sq.npz, plane_sq.npz, sofa_sq.npz, car_sq.npz, ...
+  (no lamp_sq.npz exists; generate one via sq_ui/scripts/superdec_infer.py
+   if you need a lamp structure).
+USAGE
+}
+
+if [[ -z "$TEXT_PROMPT" || -z "$APP_PATH" || -z "$OUT_ROOT" || -z "$SHAPE_SQ_PATH" ]]; then
+  usage
   exit 2
 fi
 if [[ ! -f "$APP_PATH" ]]; then
   echo "appearance mesh not found: $APP_PATH" >&2
+  exit 2
+fi
+if [[ ! -f "$SHAPE_SQ_PATH" ]]; then
+  echo "shape superquadric NPZ not found: $SHAPE_SQ_PATH" >&2
+  echo "  available files:" >&2
+  ls "$REPO_ROOT/examples/superquadrics" 2>/dev/null | sed 's/^/    /' >&2
   exit 2
 fi
 
@@ -90,13 +137,22 @@ if [[ "$CURRENT_BRANCH" != "feature/superdec-correspondence" ]]; then
 fi
 
 # --- 2. SUPERDEC arm ---
+RUN_ARGS=(
+  --text_prompt "$TEXT_PROMPT"
+  --appearance_mesh "$APP_PATH"
+  --shape_superquadric_path "$SHAPE_SQ_PATH"
+  --shape_tau "$SHAPE_TAU"
+  --guidance_mode appearance
+)
+if [[ "$CONVERT_YUP_TO_ZUP" == "1" ]]; then
+  RUN_ARGS+=(--convert_yup_to_zup)
+fi
+
 echo
 echo ">>> [SUPERDEC arm] running run.py on $CURRENT_BRANCH"
 "$PYTHON_BIN" run.py \
-  --text_prompt "$TEXT_PROMPT" \
-  --appearance_mesh "$APP_PATH" \
   --output_dir "$SUPERDEC_DIR" \
-  --guidance_mode appearance \
+  "${RUN_ARGS[@]}" \
   "${EXTRA_ARGS[@]}"
 
 echo ">>> [SUPERDEC arm] done. out_app.glb: $SUPERDEC_DIR/out_app.glb"
@@ -120,10 +176,8 @@ git checkout main
 echo
 echo ">>> [PartField arm] running run.py on main"
 "$PYTHON_BIN" run.py \
-  --text_prompt "$TEXT_PROMPT" \
-  --appearance_mesh "$APP_PATH" \
   --output_dir "$PARTFIELD_DIR" \
-  --guidance_mode appearance \
+  "${RUN_ARGS[@]}" \
   "${EXTRA_ARGS[@]}"
 echo ">>> [PartField arm] done. out_app.glb: $PARTFIELD_DIR/out_app.glb"
 
