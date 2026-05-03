@@ -32,8 +32,9 @@
 # This script:
 #   1) Confirms we are on feature/superdec-correspondence.
 #   2) Runs ./run.py with --guidance_mode appearance into <out_root>/superdec/.
-#   3) Stashes any local changes, switches to main, runs the same command into
-#      <out_root>/partfield/.
+#   3) Removes TRELLIS's repo-root merged_mesh_voxelized.ply, stashes *tracked*
+#      local edits only (not `stash -u`, which breaks on third_party perms),
+#      switches to main, runs the same command into <out_root>/partfield/.
 #   4) Switches back and pops the stash.
 #   5) Prints the paths to the two out_app.glb files plus the SUPERDEC
 #      diagnostics so the human can render both and compare boundary
@@ -161,21 +162,27 @@ echo ">>> [SUPERDEC arm] diagnostics:"
 ls -la "$SUPERDEC_DIR/superdec/" 2>/dev/null || true
 
 # --- 3. PartField arm: stash, switch, run, restore ---
-# run.py / TRELLIS may touch tracked files in the repo root (e.g. .gitignore,
-# merged_mesh_voxelized.ply). We must reset the working tree before checkout.
+# run.py / TRELLIS may touch tracked files in the repo root (e.g. .gitignore).
+# TRELLIS also dumps merged_mesh_voxelized.ply in the repo cwd — remove it so
+# it does not block checkout and so we never need `git stash -u`.
 #
+# Do NOT use `git stash push -u` on shared checkouts: it tries to stash *all*
+# untracked files and then delete them from the tree; removal fails with
+# "Permission denied" under third_party/ if those paths are not owned by you,
+# and the whole stash aborts (exit 6).
+rm -f "$REPO_ROOT/merged_mesh_voxelized.ply"
+
 # IMPORTANT: `git stash create` + `git stash store` does NOT modify the working
-# tree — it only records a stash entry — so `git checkout main` still fails
-# with "would be overwritten by checkout". Use `git stash push`, which stashes
-# and cleans the tree. `-u` includes untracked files that would block checkout.
+# tree — use `git stash push` for tracked/index changes only.
 STASHED=0
 if [[ -n "$(git status --porcelain)" ]]; then
   echo
-  echo ">>> stashing local working-tree changes before switching branches"
-  if git stash push -u -m "ab_compare_pre_main_${USER}_$(date +%s)"; then
+  echo ">>> stashing local tracked changes before switching branches"
+  if git stash push -m "ab_compare_pre_main_${USER}_$(date +%s)"; then
     STASHED=1
   else
     echo "[ab] error: git stash push failed — cannot switch to main cleanly." >&2
+    echo "[ab] hint: fix permissions or commit manually, then rerun." >&2
     exit 6
   fi
 fi
