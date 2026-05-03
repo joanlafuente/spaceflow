@@ -10,6 +10,13 @@ export interface SuperquadricParams {
   rotation: number[][];                 // 3×3
 }
 
+/** Tapering + bending (SuperFlex packed layout) applied in local space before world rotation. */
+export interface SuperquadricDeform {
+  tapering: [number, number];
+  /** [k_z, α_z, k_x, α_x, k_y, α_y] — matches Python visualization order. */
+  bending: [number, number, number, number, number, number];
+}
+
 function f(o: number, m: number): number {
   return Math.sign(Math.sin(o)) * Math.pow(Math.abs(Math.sin(o)), m);
 }
@@ -26,12 +33,87 @@ function det3(R: number[][]): number {
   );
 }
 
+function applyTaperToArrays(
+  x: Float64Array,
+  y: Float64Array,
+  z: Float64Array,
+  C: number,
+  kx: number,
+  ky: number,
+): void {
+  for (let k = 0; k < x.length; k++) {
+    const zNorm = z[k] / C;
+    const fx = kx * zNorm + 1;
+    const fy = ky * zNorm + 1;
+    x[k] *= fx;
+    y[k] *= fy;
+  }
+}
+
+function applyBendingAxisArrays(
+  x: Float64Array,
+  y: Float64Array,
+  z: Float64Array,
+  valKb: number,
+  valAlpha: number,
+  axis: 'x' | 'y' | 'z',
+): void {
+  if (Math.abs(valKb) < 1e-3) return;
+  const sinAlpha = Math.sin(valAlpha);
+  const cosAlpha = Math.cos(valAlpha);
+  for (let k = 0; k < x.length; k++) {
+    let u: number;
+    let vCoord: number;
+    let w: number;
+    const xi = x[k];
+    const yi = y[k];
+    const zi = z[k];
+    if (axis === 'z') {
+      u = xi;
+      vCoord = yi;
+      w = zi;
+    } else if (axis === 'x') {
+      u = yi;
+      vCoord = zi;
+      w = xi;
+    } else {
+      u = zi;
+      vCoord = xi;
+      w = yi;
+    }
+    const beta = Math.atan2(vCoord, u);
+    const r = Math.sqrt(u * u + vCoord * vCoord) * Math.cos(valAlpha - beta);
+    const invKb = 1.0 / valKb;
+    const gamma = w * valKb;
+    const rho = invKb - r;
+    const Rb = invKb - rho * Math.cos(gamma);
+    const expr = Rb - r;
+    u += expr * cosAlpha;
+    vCoord += expr * sinAlpha;
+    w = rho * Math.sin(gamma);
+    if (axis === 'z') {
+      x[k] = u;
+      y[k] = vCoord;
+      z[k] = w;
+    } else if (axis === 'x') {
+      x[k] = w;
+      y[k] = u;
+      z[k] = vCoord;
+    } else {
+      x[k] = vCoord;
+      y[k] = w;
+      z[k] = u;
+    }
+  }
+}
+
 export function createSuperquadricMesh(
   A: number, B: number, C: number,
   e1: number, e2: number,
   rotation: number[][],
   translation: [number, number, number],
   N: number,
+  deform?: SuperquadricDeform,
 ): { vertices: Float64Array; indices: Uint32Array } {
   const u = new Float64Array(N);
   const v = new Float64Array(N);
@@ -70,6 +152,15 @@ export function createSuperquadricMesh(
   for (let k = 0; k < N; k++) {
     x[k] = 0.0;
     x[totalVerts - N + k] = 0.0;
+  }
+
+  if (deform) {
+    const [kx, ky] = deform.tapering;
+    const b = deform.bending;
+    applyTaperToArrays(x, y, z, C, kx, ky);
+    applyBendingAxisArrays(x, y, z, b[4], b[5], 'y');
+    applyBendingAxisArrays(x, y, z, b[2], b[3], 'x');
+    applyBendingAxisArrays(x, y, z, b[0], b[1], 'z');
   }
 
   // Apply rotation and translation: vertices = (R @ verts.T).T + translation

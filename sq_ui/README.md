@@ -2,7 +2,7 @@
 
 Web-based editor for composing 3D shapes from superquadric primitives and exporting `.npz` files for the Spaceflow pipeline.
 
-This document is the **full setup guide** for running the UI with **SuperDec**, **TRELLIS (Create)**, and **Ollama / Gemma (Edit)** on a typical ETH Slurm cluster with scratch storage.
+This document is the **full setup guide** for running the UI with **SuperDec**, **SuperFlex**, **TRELLIS (Create)**, and **Ollama / Gemma (Edit)** on a typical ETH Slurm cluster with scratch storage.
 
 ---
 
@@ -11,10 +11,13 @@ This document is the **full setup guide** for running the UI with **SuperDec**, 
 | UI capability | What it does | Python service | Default port |
 |---------------|--------------|----------------|--------------|
 | **SuperDec** button | Fit superquadrics to an uploaded point cloud / mesh | `superdec_service.py` | `11435` |
+| **SuperFlex** button | Same as SuperDec plus tapering + bending (SuperFlex repo / heads) | `superflex_service.py` | `11436` |
 | **Create** (AI Generate) | Text → point cloud (TRELLIS) → fit (SuperDec) | `trellis_service.py` **and** `superdec_service.py` | TRELLIS `11437`, SuperDec `11435` |
 | **Edit** (AI Generate) | Change the current scene with natural language | `ollama_proxy.py` → Gemma on GPU | proxy `11434` |
 
-The React app calls HTTP endpoints. **Development (`npm run dev`)**: Vite proxies `/superdec`, `/trellis`, and `/api` to `127.0.0.1` on the **login node**, so you can open the UI via the **Network** URL (e.g. `http://129.x:5173`) from your laptop without “failed to fetch” — as long as the Python services run on that same host. **Production build** (`npm run build`): set absolute `VITE_*_URL` values (or put the UI behind a reverse proxy). Optional: override proxy targets with `VITE_DEV_PROXY_SUPERDEC`, `VITE_DEV_PROXY_TRELLIS`, `VITE_DEV_PROXY_OLLAMA` when starting Vite.
+The React app calls HTTP endpoints. **Development (`npm run dev`)**: Vite proxies `/superdec`, `/superflex`, `/trellis`, and `/api` to `127.0.0.1` on the **login node**, so you can open the UI via the **Network** URL (e.g. `http://129.x:5173`) from your laptop without “failed to fetch” — as long as the Python services run on that same host. **Production build** (`npm run build`): set absolute `VITE_*_URL` values (or put the UI behind a reverse proxy). Optional: override proxy targets with `VITE_DEV_PROXY_SUPERDEC`, `VITE_DEV_PROXY_SUPERFLEX`, `VITE_DEV_PROXY_TRELLIS`, `VITE_DEV_PROXY_OLLAMA` when starting Vite.
+
+**Vite proxy:** dev/preview use `sq_ui/app/vite.config.spaceflow.ts` (via `--config` in `package.json`). It includes `/superflex` → `http://127.0.0.1:11436` (override with `VITE_DEV_PROXY_SUPERFLEX`). The older `vite.config.ts` may be ACL-frozen on shared disks; do not rely on it unless it matches.
 
 ---
 
@@ -23,7 +26,7 @@ The React app calls HTTP endpoints. **Development (`npm run dev`)**: Vite proxie
 - **Node.js** (for `sq_ui/app`): `npm install` / `npm run dev`
 - **Slurm account** that can request GPUs on your cluster (defaults in the scripts use partition `interactive`, account `3dv`—change if yours differ)
 - **Scratch space** under `/work/scratch/$USER/...` for weights, Ollama, caches (large downloads)
-- **SuperDec**: run `setup_superdec.sh` once (clone, venv, checkpoints)
+- **SuperFlex** (optional): `bash sq_ui/setup_superflex.sh` links or clones the **`superflex/`** tree, venv, and checkpoints; use a **SuperFlex-trained** `ckpt.pt` for non-zero taper/bend outputs
 - **TRELLIS**: a Python env with TRELLIS dependencies. The repo expects **`envs/guideflow3d/bin/python`** at the **Spaceflow repo root** (set `SQ_TRELLIS_PYTHON` if yours differs)
 - **Edit**: run `setup_ollama.sh` once (Ollama binary + Gemma weights in your scratch)
 
@@ -38,6 +41,7 @@ Do this from the **Spaceflow repo root** (the directory that contains `sq_ui/` a
 ```bash
 cd /work/courses/3dv/team3/spaceflow
 
+python3.10 -m venv /work/scratch/$USER/spaceflow/superdec_ui/venv # sometimes necesary so it use
 # Optional: own scratch root (default is /work/scratch/$USER/spaceflow/superdec_ui)
 # export SQ_SUPERDEC_SCRATCH=/work/scratch/$USER/spaceflow/superdec_ui
 
@@ -45,6 +49,16 @@ bash sq_ui/setup_superdec.sh
 ```
 
 Remember the printed **`Install root`** (below called `$SUPERDEC_BASE`). The script copies **`superdec_service.py`** and **`superdec_infer.py`** into `$SUPERDEC_BASE/scripts/` with paths filled in—**prefer starting that copy**, not the raw file under `sq_ui/scripts/`, unless you always set `SUPERDEC_BASE` yourself.
+
+#### SuperFlex (optional, separate venv / service)
+
+From the same Spaceflow repo root (uses `superflex/` by default via `SQ_SUPERFLEX_REPO`):
+
+```bash
+bash sq_ui/setup_superflex.sh
+```
+
+Then start **`superflex_service.py`** as in **Running the three services → A2**.
 
 ### 2) Ollama + Gemma for Edit (one-time)
 
@@ -73,13 +87,14 @@ Add **`sq_ui/app/.env.local`** only if you want to override that (e.g. different
 
 ```bash
 VITE_SUPERDEC_URL=http://127.0.0.1:11435
+VITE_SUPERFLEX_URL=http://127.0.0.1:11436
 VITE_TRELLIS_URL=http://127.0.0.1:11437
 VITE_OLLAMA_URL=http://127.0.0.1:11434/api/chat
 ```
 
 **Note:** Typing `VITE_…=…` in a shell does **nothing** for Vite — variables must be in `.env.local` or the environment **when** you start `npm run dev`.
 
-Restart `npm run dev` after changing env vars or `vite.config.ts`.
+Restart `npm run dev` after changing env vars or `vite.config.spaceflow.ts`.
 
 ---
 
@@ -102,6 +117,25 @@ python3 "$SUPERDEC_BASE/scripts/superdec_service.py"
 - **Health check:** `curl -s http://127.0.0.1:11435/superdec/health | head`
 - **Slurm:** inference is wrapped in `srun` with **`--gpus=1`** by default (`SQ_SUPERDEC_SLURM_GPUS` to change count or syntax your site expects).
 - Other useful vars: `SQ_SUPERDEC_SLURM_PARTITION`, `SQ_SUPERDEC_SLURM_ACCOUNT`, `SQ_SUPERDEC_SLURM_TIME`, `SQ_SUPERDEC_SLURM_EXTRA_ARGS`, `SQ_SUPERDEC_TORCH_CUDA_ARCH_LIST`, `SQ_SUPERDEC_FORCE_LOCAL=1` (already on a GPU node).
+
+### A2) SuperFlex service (optional)
+
+Uses the **SuperFlex** codebase at `spaceflow/superflex/`. Running `bash sq_ui/setup_superflex.sh` from the Spaceflow repo creates **`spaceflow/superflex_ui/`** (venv, weights, runs, copied scripts)—no scratch path unless you set `SQ_SUPERFLEX_INSTALL` or legacy `SQ_SUPERFLEX_SCRATCH`.
+
+```bash
+# After setup_superflex.sh (defaults shown; set SUPERFLEX_BASE only if you moved superflex_ui)
+export SUPERFLEX_BASE=/work/courses/3dv/team3/spaceflow/superflex_ui
+export SQ_SUPERFLEX_CHECKPOINT_DIR="$SUPERFLEX_BASE/weights/normalized"
+export SQ_SUPERFLEX_WORK_DIR=/work/courses/3dv/team3/spaceflow/superflex
+
+"$SUPERFLEX_BASE/venv/bin/python" "$SUPERFLEX_BASE/scripts/superflex_service.py"
+```
+
+- **Health:** `curl -s http://127.0.0.1:11436/superflex/health | head`
+- **Slurm / GPU:** same pattern as SuperDec — `SQ_SUPERFLEX_SLURM_*`, `SQ_SUPERFLEX_FORCE_LOCAL=1`, etc.
+- **`fast_sampler._sampler` missing:** minimal installs skip the Cython extension; the SuperFlex tree falls back to pure Python in `superdec/fast_sampler/_pure.py`. Pull latest Spaceflow. For the faster native sampler, install **Cython**, a C++17 compiler, and run `python setup_sampler.py build_ext --inplace` from `superflex/` inside the same venv.
+- **`Ninja is required to load C++ extensions`:** install **`ninja`** in the SuperFlex venv (`pip install ninja`); it is listed in `sq_ui/scripts/superflex_min_requirements.txt`. The PVCNN backend also compiles **CUDA** (`.cu`); if compile fails, run inference on a **GPU node** with **`nvcc`** matching your PyTorch CUDA, or set `TORCH_CUDA_ARCH_LIST` as needed.
+- **All-zero `tapering` / `bending` in NPZ:** `superflex_infer.py` **merges `superdec.extended: true`** into the checkpoint’s `config.yaml` by default so the forward pass runs the deform heads (weights still come from `ckpt.pt`; missing head keys stay at init). Set **`SQ_SUPERFLEX_NO_FORCE_EXTENDED=1`** on the service environment to use the YAML value as-shipped instead.
 
 ### B) TRELLIS service (Create)
 
@@ -156,17 +190,21 @@ Open the printed URL (often `http://localhost:5173`). If you develop over SSH fr
 
 | File | In repo | After setup |
 |------|---------|-------------|
-| SuperDec HTTP service | `sq_ui/scripts/superdec_service.py` (template; use with `SUPERDEC_BASE` or scratch copy) | `$SUPERDEC_BASE/scripts/superdec_service.py` |
-| SuperDec worker | `sq_ui/scripts/superdec_infer.py` | copied to `$SUPERDEC_BASE/scripts/` |
+| SuperDec HTTP service | `sq_ui/scripts/superdec_service.py` | `$SUPERDEC_BASE/scripts/` |
+| SuperFlex HTTP service | `sq_ui/scripts/superflex_service.py` | `$SUPERFLEX_BASE/scripts/` |
+| SuperFlex worker | `sq_ui/scripts/superflex_infer.py` | `$SUPERFLEX_BASE/scripts/` |
+| SuperDec worker | `sq_ui/scripts/superdec_infer.py` | `$SUPERDEC_BASE/scripts/` |
 | TRELLIS HTTP service | `sq_ui/scripts/trellis_service.py` | run from repo (no copy step) |
 | TRELLIS worker | `sq_ui/scripts/trellis_infer.py` | used by service above |
 | Ollama proxy + GPU wrapper | `sq_ui/scripts_templates/ollama_proxy.py`, `ollama_infer.sh` | `$OLLAMA_BASE/scripts/` after `setup_ollama.sh` |
 
 ---
 
-## SuperDec: supported uploads
+## SuperDec / SuperFlex: supported uploads
 
-The UI uploads to the SuperDec service. Supported inputs include `.ply`, `.pcd`, `.xyz`, `.xyzn`, `.xyzrgb`, `.pts`, `.obj`, `.stl`.
+The UI uploads to the respective HTTP services. Supported inputs include `.ply`, `.pcd`, `.xyz`, `.xyzn`, `.xyzrgb`, `.pts`, `.obj`, `.stl`, `.glb`, and `.gltf` (meshes are sampled to vertices for inference).
+
+SuperFlex NPZ outputs may include **`tapering`** and **`bending`** arrays; the editor loads them and renders deformed superquadrics. Plain SuperDec weights under SuperFlex code still run, but taper/bend heads are often near zero until you use a checkpoint trained with those losses.
 
 - **Z-up** applies a basis fix to the editor’s Y-up frame.
 - **Normalize point cloud** matches the generic-object inference path from the SuperDec demo.
@@ -239,6 +277,8 @@ The `.npz` contains arrays compatible with `run.py`’s `load_superquadric_from_
 | `shapes` | `(N, 2)` | Exponents e₁, e₂ |
 | `translations` | `(N, 3)` | Translations |
 | `rotations` | `(N, 3, 3)` | Rotation matrices |
+| `tapering` | `(N, 2)` | Optional; SuperFlex linear taper |
+| `bending` | `(N, 6)` | Optional; packed `[k_z, α_z, k_x, α_x, k_y, α_y]` |
 
 ---
 
@@ -271,6 +311,15 @@ python sq_ui/scripts/test_npz_compat.py path/to/exported.npz
 - `SQ_SUPERDEC_SCRATCH` — install root (default `/work/scratch/$USER/spaceflow/superdec_ui`)
 - `SUPERDEC_REPO_URL`, `SUPERDEC_REPO_REF`
 - `SKIP_CLONE=1`, `SKIP_PIP=1`, `SKIP_CHECKPOINTS=1` to reuse trees
+
+**SuperFlex setup**
+
+- `SQ_SUPERFLEX_INSTALL` — install root (default: `<spaceflow>/superflex_ui` next to `sq_ui/`)
+- `SQ_SUPERFLEX_SCRATCH` — legacy override for install root (used only if `SQ_SUPERFLEX_INSTALL` is unset)
+- `SQ_SUPERFLEX_REPO` — path to SuperFlex checkout (default `spaceflow/superflex`)
+- `SUPERFLEX_REPO_URL`, `SUPERFLEX_REPO_REF` if cloning instead of linking
+- Service/runtime: `SUPERFLEX_BASE`, `SQ_SUPERFLEX_CHECKPOINT_DIR`, `SQ_SUPERFLEX_PORT`, `SQ_SUPERFLEX_*` Slurm vars (mirror `SQ_SUPERDEC_*`)
+- `SQ_SUPERFLEX_NO_FORCE_EXTENDED=1` — use `config.yaml`’s `superdec.extended` as-is (default: infer script forces `extended: true` so deform heads run)
 
 **Ollama setup**
 

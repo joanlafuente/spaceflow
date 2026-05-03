@@ -27,6 +27,10 @@ SUPERDEC_REPO_REF="${SUPERDEC_REPO_REF:-main}"
 
 echo "Install root: $BASE"
 mkdir -p "$BASE"/{scripts,logs,runs,tmp,weights}
+# Cluster: avoid filling $HOME (~/.cache/pip) or small /tmp during installs.
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$BASE/tmp/pip-cache}"
+export TMPDIR="${TMPDIR:-$BASE/tmp}"
+mkdir -p "$PIP_CACHE_DIR"
 
 if [[ "${SKIP_CLONE:-0}" != "1" ]]; then
   if [[ ! -d "$REPO_DIR/.git" ]]; then

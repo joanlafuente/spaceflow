@@ -92,6 +92,20 @@ export default function ParameterPanel() {
     updatePrimitive(prim.id, { eulerDeg: e });
   }, [prim, updatePrimitive]);
 
+  const updateTaper = useCallback((idx: number, val: number) => {
+    if (!prim || prim.tapering === undefined) return;
+    const t: [number, number] = [...prim.tapering];
+    t[idx] = val;
+    updatePrimitive(prim.id, { tapering: t });
+  }, [prim, updatePrimitive]);
+
+  const updateBend = useCallback((idx: number, val: number) => {
+    if (!prim || prim.bending === undefined) return;
+    const b: [number, number, number, number, number, number] = [...prim.bending];
+    b[idx] = val;
+    updatePrimitive(prim.id, { bending: b });
+  }, [prim, updatePrimitive]);
+
   const updateName = useCallback((name: string) => {
     if (!prim) return;
     updatePrimitive(prim.id, { name });
@@ -306,6 +320,69 @@ export default function ParameterPanel() {
           </div>
         )}
       </div>
+
+      {(prim.tapering !== undefined || prim.bending !== undefined) && (
+        <div className="section">
+          <div className="section-title">
+            SuperFlex deform
+            <span
+              className="help-badge"
+              title="Linear taper (Kx, Ky) along local Z and bending packed as [k_z, α_z, k_x, α_x, k_y, α_y] in local space (α in radians)."
+            >
+              ?
+            </span>
+          </div>
+          {prim.tapering !== undefined && (
+            <>
+              <SliderRow
+                label="Kx (taper)"
+                value={prim.tapering[0]}
+                onChange={(v) => updateTaper(0, v)}
+                min={-3}
+                max={3}
+                step={0.001}
+                tooltip="Taper along X vs normalized Z (see SuperFlex viz)"
+                inputDecimals={6}
+              />
+              <SliderRow
+                label="Ky (taper)"
+                value={prim.tapering[1]}
+                onChange={(v) => updateTaper(1, v)}
+                min={-3}
+                max={3}
+                step={0.001}
+                tooltip="Taper along Y vs normalized Z"
+                inputDecimals={6}
+              />
+            </>
+          )}
+          {prim.bending !== undefined && (
+            <>
+              {(
+                [
+                  ['kz', 0],
+                  ['αz (rad)', 1],
+                  ['kx', 2],
+                  ['αx (rad)', 3],
+                  ['ky', 4],
+                  ['αy (rad)', 5],
+                ] as const
+              ).map(([label, j]) => (
+                <SliderRow
+                  key={label}
+                  label={label}
+                  value={prim.bending![j]}
+                  onChange={(v) => updateBend(j, v)}
+                  min={label.startsWith('α') ? -3.15 : -2}
+                  max={label.startsWith('α') ? 3.15 : 2}
+                  step={label.startsWith('α') ? 0.01 : 0.001}
+                  inputDecimals={label.startsWith('α') ? 4 : 6}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="section">
         <div className="section-title">Preview</div>

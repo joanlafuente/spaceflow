@@ -9,6 +9,7 @@ import { eulerToMatrix, matrixToEuler } from '../state/rotation';
 import { editFromText } from '../state/generate';
 import { createFromTextViaSuperdec } from '../state/createPipeline';
 import { generateWithSuperdec } from '../state/superdec';
+import { generateWithSuperflex } from '../state/superflex';
 import {
   captureViewportDataUrl,
   captureViewportImageForLlm,
@@ -53,6 +54,15 @@ export default function TopBar() {
   const [superdecLmOptimization, setSuperdecLmOptimization] = useState(false);
   const [superdecMaxPrimitives, setSuperdecMaxPrimitives] = useState('16');
   const [superdecExistThreshold, setSuperdecExistThreshold] = useState('0.5');
+  const [showSuperflex, setShowSuperflex] = useState(false);
+  const [superflexGenerating, setSuperflexGenerating] = useState(false);
+  const [superflexFile, setSuperflexFile] = useState<File | null>(null);
+  const [superflexName, setSuperflexName] = useState('');
+  const [superflexZUp, setSuperflexZUp] = useState(false);
+  const [superflexNormalize, setSuperflexNormalize] = useState(true);
+  const [superflexLmOptimization, setSuperflexLmOptimization] = useState(false);
+  const [superflexMaxPrimitives, setSuperflexMaxPrimitives] = useState('16');
+  const [superflexExistThreshold, setSuperflexExistThreshold] = useState('0.5');
   const [projectName, setProjectName] = useState('superquadrics');
   const [genMode, setGenMode] = useState<'create' | 'edit'>('create');
   const [editFocusNames, setEditFocusNames] = useState<string[]>([]);
@@ -62,6 +72,7 @@ export default function TopBar() {
   const [viewportModalUrl, setViewportModalUrl] = useState<string | null>(null);
   const genInputRef = useRef<HTMLInputElement>(null);
   const superdecNameRef = useRef<HTMLInputElement>(null);
+  const superflexNameRef = useRef<HTMLInputElement>(null);
 
   const refreshViewportPreview = useCallback(async () => {
     if (!includeViewportInEdit) {
@@ -96,6 +107,12 @@ export default function TopBar() {
       setTimeout(() => superdecNameRef.current?.focus(), 50);
     }
   }, [showSuperdec]);
+
+  useEffect(() => {
+    if (showSuperflex) {
+      setTimeout(() => superflexNameRef.current?.focus(), 50);
+    }
+  }, [showSuperflex]);
 
   useEffect(() => {
     if (!viewportPreviewModal) return;
@@ -142,6 +159,17 @@ export default function TopBar() {
     setSuperdecLmOptimization(false);
     setSuperdecMaxPrimitives('16');
     setSuperdecExistThreshold('0.5');
+  }, []);
+
+  const resetSuperflex = useCallback(() => {
+    setShowSuperflex(false);
+    setSuperflexFile(null);
+    setSuperflexName('');
+    setSuperflexZUp(false);
+    setSuperflexNormalize(true);
+    setSuperflexLmOptimization(false);
+    setSuperflexMaxPrimitives('16');
+    setSuperflexExistThreshold('0.5');
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -267,6 +295,51 @@ export default function TopBar() {
     superdecZUp,
   ]);
 
+  const handleSuperflexGenerate = useCallback(async () => {
+    if (!superflexFile || superflexGenerating) return;
+    setSuperflexGenerating(true);
+    const baseName =
+      superflexName.trim() ||
+      superflexFile.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') ||
+      'superflex';
+    try {
+      const maxPrimitives = Math.max(0, Number.parseInt(superflexMaxPrimitives || '0', 10) || 0);
+      const existThreshold = Math.min(
+        1,
+        Math.max(0, Number.parseFloat(superflexExistThreshold || '0.5') || 0.5),
+      );
+      const result = await generateWithSuperflex({
+        file: superflexFile,
+        name: baseName,
+        zUp: superflexZUp,
+        normalize: superflexNormalize,
+        lmOptimization: superflexLmOptimization,
+        maxPrimitives,
+        existThreshold,
+      });
+      loadPreset(result.primitives);
+      setProjectName(baseName);
+      showToast(`Generated ${result.primitiveCount} primitives with SuperFlex`);
+      resetSuperflex();
+    } catch (err) {
+      showToast(`SuperFlex failed: ${err instanceof Error ? err.message : err}`, 10000);
+    } finally {
+      setSuperflexGenerating(false);
+    }
+  }, [
+    loadPreset,
+    resetSuperflex,
+    setProjectName,
+    superflexExistThreshold,
+    superflexFile,
+    superflexGenerating,
+    superflexLmOptimization,
+    superflexMaxPrimitives,
+    superflexName,
+    superflexNormalize,
+    superflexZUp,
+  ]);
+
   const handleDownloadNpz = useCallback(async () => {
     try {
       const exports: PrimitiveExport[] = primitives.map(p => ({
@@ -274,6 +347,8 @@ export default function TopBar() {
         shapes: p.shapes,
         translation: p.translation,
         rotation: p.rotation,
+        ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
+        ...(p.bending !== undefined ? { bending: p.bending } : {}),
       }));
       const blob = await exportNpz(exports);
       const filename = `${projectName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'superquadrics'}.npz`;
@@ -292,6 +367,8 @@ export default function TopBar() {
       shapes: p.shapes,
       translation: p.translation,
       eulerDeg: p.eulerDeg,
+      ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
+      ...(p.bending !== undefined ? { bending: p.bending } : {}),
     }));
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     showToast('Copied JSON preset to clipboard');
@@ -314,6 +391,8 @@ export default function TopBar() {
           translation: [number, number, number];
           eulerDeg?: [number, number, number];
           rotation?: number[][];
+          tapering?: [number, number];
+          bending?: [number, number, number, number, number, number];
         }>;
         const prims: Primitive[] = data.map((d) => {
           const euler: [number, number, number] = d.eulerDeg ?? (d.rotation ? matrixToEuler(d.rotation) : [0, 0, 0]);
@@ -327,6 +406,8 @@ export default function TopBar() {
             translation: d.translation,
             rotation,
             eulerDeg: euler,
+            ...(d.tapering !== undefined ? { tapering: d.tapering } : {}),
+            ...(d.bending !== undefined ? { bending: d.bending } : {}),
           };
         });
         loadPreset(maybeRescalePrimitivesForEditor(prims));
@@ -525,8 +606,13 @@ export default function TopBar() {
           {!showGenerate ? (
             <button
               className="btn-generate"
-              onClick={() => { setShowGenerate(true); setTimeout(() => genInputRef.current?.focus(), 50); }}
-              disabled={generating}
+              onClick={() => {
+                resetSuperdec();
+                resetSuperflex();
+                setShowGenerate(true);
+                setTimeout(() => genInputRef.current?.focus(), 50);
+              }}
+              disabled={generating || superdecGenerating || superflexGenerating}
               title="Create via TRELLIS + SuperDec, or edit via Ollama"
             >
               {generating ? '...' : 'AI Generate'}
@@ -716,8 +802,12 @@ export default function TopBar() {
           {!showSuperdec ? (
             <button
               className="btn-generate btn-superdec"
-              onClick={() => setShowSuperdec(true)}
-              disabled={superdecGenerating}
+              onClick={() => {
+                setShowGenerate(false);
+                resetSuperflex();
+                setShowSuperdec(true);
+              }}
+              disabled={superdecGenerating || superflexGenerating}
               title="Generate superquadrics from a point cloud with SuperDec"
             >
               {superdecGenerating ? '...' : 'SuperDec'}
@@ -772,14 +862,14 @@ export default function TopBar() {
                   <label className="superdec-file-picker">
                     <input
                       type="file"
-                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl"
+                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl,.glb,.gltf"
                       onChange={(e) => setSuperdecFile(e.target.files?.[0] ?? null)}
                       disabled={superdecGenerating}
                     />
                     <span>{superdecFile ? superdecFile.name : 'Choose point cloud or mesh file'}</span>
                   </label>
                   <p className="edit-focus-hint">
-                    Supports `.ply` directly and also common formats such as `.pcd`, `.xyz`, `.pts`, `.obj`, and `.stl` via the service-side loader.
+                    Supports `.ply` directly and also common formats such as `.pcd`, `.xyz`, `.pts`, `.obj`, `.stl`, `.glb`, and `.gltf` via the service-side loader.
                   </p>
                 </div>
 
@@ -851,6 +941,178 @@ export default function TopBar() {
                     disabled={superdecGenerating || !superdecFile}
                   >
                     {superdecGenerating ? (
+                      <svg
+                        className="spinner-svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        aria-hidden={true}
+                      >
+                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6.5"
+                          fill="none"
+                          stroke="#fff"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeDasharray="10 31"
+                        />
+                      </svg>
+                    ) : (
+                      'Generate'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <div className={`generate-group ${showSuperflex ? 'is-open' : ''}`}>
+          {!showSuperflex ? (
+            <button
+              className="btn-generate btn-superflex"
+              onClick={() => {
+                setShowGenerate(false);
+                resetSuperdec();
+                setShowSuperflex(true);
+              }}
+              disabled={superdecGenerating || superflexGenerating}
+              title="SuperFlex: superquadrics with tapering and bending (separate service)"
+            >
+              {superflexGenerating ? '...' : 'SuperFlex'}
+            </button>
+          ) : (
+            <>
+              <div
+                className="generate-popover-backdrop"
+                onClick={() => {
+                  if (!superflexGenerating) resetSuperflex();
+                }}
+                aria-hidden
+              />
+              <div className="generate-open-bar">
+                <div className="gen-mode-row" role="group" aria-label="SuperFlex mode">
+                  <span className="superdec-open-label">Taper + bend</span>
+                </div>
+                <button
+                  className="toolbar-btn"
+                  onClick={resetSuperflex}
+                  disabled={superflexGenerating}
+                  title="Close (Esc)"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+              <div
+                className="generate-popover superdec-popover"
+                role="dialog"
+                aria-label="SuperFlex from point cloud or mesh"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <label className="generate-popover-label" htmlFor="sq-superflex-name-input">
+                  Scene name
+                </label>
+                <input
+                  id="sq-superflex-name-input"
+                  ref={superflexNameRef}
+                  type="text"
+                  className="generate-input generate-input-popover"
+                  placeholder="e.g. chair_scan"
+                  value={superflexName}
+                  onChange={(e) => setSuperflexName(e.target.value)}
+                  disabled={superflexGenerating}
+                />
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Input point cloud or mesh</span>
+                  </div>
+                  <label className="superdec-file-picker">
+                    <input
+                      type="file"
+                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl,.glb,.gltf"
+                      onChange={(e) => setSuperflexFile(e.target.files?.[0] ?? null)}
+                      disabled={superflexGenerating}
+                    />
+                    <span>{superflexFile ? superflexFile.name : 'Choose file'}</span>
+                  </label>
+                  <p className="edit-focus-hint">
+                    Same formats as SuperDec. Use a SuperFlex-trained checkpoint so tapering and bending heads are
+                    populated (generic SuperDec weights still run but may predict zeros for bend/taper).
+                  </p>
+                </div>
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Inference options</span>
+                  </div>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superflexZUp}
+                      onChange={(e) => setSuperflexZUp(e.target.checked)}
+                      disabled={superflexGenerating}
+                    />
+                    <span>Treat input as Z-up and convert it into the editor&apos;s Y-up frame</span>
+                  </label>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superflexNormalize}
+                      onChange={(e) => setSuperflexNormalize(e.target.checked)}
+                      disabled={superflexGenerating}
+                    />
+                    <span>Normalize point cloud before inference</span>
+                  </label>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={superflexLmOptimization}
+                      onChange={(e) => setSuperflexLmOptimization(e.target.checked)}
+                      disabled={superflexGenerating}
+                    />
+                    <span>Enable LM optimization for a slower but potentially better fit</span>
+                  </label>
+                  <div className="superdec-number-grid">
+                    <label className="superdec-number-field">
+                      <span>Max primitives</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="num-input"
+                        value={superflexMaxPrimitives}
+                        onChange={(e) => setSuperflexMaxPrimitives(e.target.value)}
+                        disabled={superflexGenerating}
+                      />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>Exist threshold</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        className="num-input"
+                        value={superflexExistThreshold}
+                        onChange={(e) => setSuperflexExistThreshold(e.target.value)}
+                        disabled={superflexGenerating}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="generate-popover-footer">
+                  <button
+                    className="btn-generate-go"
+                    type="button"
+                    onClick={handleSuperflexGenerate}
+                    disabled={superflexGenerating || !superflexFile}
+                  >
+                    {superflexGenerating ? (
                       <svg
                         className="spinner-svg"
                         width="16"

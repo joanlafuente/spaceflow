@@ -36,7 +36,7 @@ python run.py \
   --appearance_mesh examples/B07QC84LP1.glb \
   --structure_mesh examples/example1.glb \
   --output_dir outputs/experiment2 \
-  --appearance_image examples/B07QC84LP1_orig.png \
+  --image_prompt examples/B07QC84LP1_orig.png \
   --convert_yup_to_zup
 
 # Similarity Guidance (with text prompt)
@@ -52,5 +52,5 @@ python run.py \
   --guidance_mode similarity \
   --structure_mesh examples/example1.glb \
   --output_dir outputs/experiment4 \
-  --appearance_image examples/B07QC84LP1_orig.png \
+  --image_prompt examples/B07QC84LP1_orig.png \
   --convert_yup_to_zup

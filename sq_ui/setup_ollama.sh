@@ -8,6 +8,7 @@
 #   bash sq_ui/setup_ollama.sh
 #
 # Optional environment:
+#   SQ_OLLAMA_SCRATCH — install root (default /work/scratch/$USER/spaceflow/superquadric_ui)
 #   OLLAMA_VERSION   — release tag (default v0.20.2)
 #   OLLAMA_MODEL     — model to pull (default gemma4:e2b)
 #   SKIP_DOWNLOAD    — if set to 1, skip tarball download (reuse existing bin)
@@ -20,10 +21,14 @@ BASE="${SQ_OLLAMA_SCRATCH:-/work/scratch/$USER/spaceflow/superquadric_ui}"
 OLLAMA_VERSION="${OLLAMA_VERSION:-v0.20.2}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:e2b}"
 TARBALL_URL="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
-TARBALL="/tmp/ollama-linux-amd64-${OLLAMA_VERSION}.tar.zst"
 
 echo "Install root: $BASE"
-mkdir -p "$BASE"/{ollama_bin,ollama_models,scripts,logs}
+mkdir -p "$BASE"/{ollama_bin,ollama_models,scripts,logs,tmp}
+# Keep large downloads and any pip/temp usage off $HOME and small /tmp (clusters).
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$BASE/tmp/pip-cache}"
+export TMPDIR="${TMPDIR:-$BASE/tmp}"
+mkdir -p "$PIP_CACHE_DIR"
+TARBALL="$BASE/tmp/ollama-linux-amd64-${OLLAMA_VERSION}.tar.zst"
 
 if [[ "${SKIP_DOWNLOAD:-0}" != "1" ]]; then
   echo "Downloading Ollama ${OLLAMA_VERSION} ..."
@@ -59,12 +64,12 @@ if [[ "${SKIP_PULL:-0}" != "1" ]]; then
   echo "Pulling model $OLLAMA_MODEL (large download) ..."
   export OLLAMA_MODELS="$BASE/ollama_models"
   export OLLAMA_HOST=127.0.0.1:11436
-  "$BASE/ollama_bin/ollama" serve >/tmp/ollama_setup_serve.log 2>&1 &
+  "$BASE/ollama_bin/ollama" serve >"$BASE/tmp/ollama_setup_serve.log" 2>&1 &
   PID=$!
   sleep 3
   if ! kill -0 "$PID" 2>/dev/null; then
     echo "ollama serve failed to start. Last log:" >&2
-    tail -20 /tmp/ollama_setup_serve.log >&2 || true
+    tail -20 "$BASE/tmp/ollama_setup_serve.log" >&2 || true
     exit 1
   fi
   OLLAMA_HOST=http://127.0.0.1:11436 "$BASE/ollama_bin/ollama" pull "$OLLAMA_MODEL"

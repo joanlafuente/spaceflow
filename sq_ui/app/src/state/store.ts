@@ -10,6 +10,10 @@ export interface Primitive {
   translation: [number, number, number];
   rotation: number[][];
   eulerDeg: [number, number, number]; // cached Euler ZYX in degrees
+  /** SuperFlex-style linear taper along local Z (dimensionless); omitted for plain superquadrics. */
+  tapering?: [number, number];
+  /** Packed [k_z, α_z, k_x, α_x, k_y, α_y] for SuperFlex bending; omitted for plain superquadrics. */
+  bending?: [number, number, number, number, number, number];
 }
 
 interface HistoryEntry {
@@ -78,6 +82,7 @@ function defaultPrimitive(overrides?: Partial<Primitive>): Primitive {
 function clonePrimitive(p: Primitive): Primitive {
   return {
     ...p,
+    ...cloneDeformFields(p),
     id: nextId(),
     name: `${p.name} (copy)`,
     scales: [...p.scales],
@@ -88,10 +93,18 @@ function clonePrimitive(p: Primitive): Primitive {
   };
 }
 
+function cloneDeformFields(p: Primitive): Pick<Primitive, 'tapering' | 'bending'> {
+  return {
+    ...(p.tapering !== undefined ? { tapering: [...p.tapering] as [number, number] } : {}),
+    ...(p.bending !== undefined ? { bending: [...p.bending] as [number, number, number, number, number, number] } : {}),
+  };
+}
+
 function snapshot(state: { primitives: Primitive[]; selectedId: string | null }): HistoryEntry {
   return {
     primitives: state.primitives.map(p => ({
       ...p,
+      ...cloneDeformFields(p),
       scales: [...p.scales],
       shapes: [...p.shapes],
       translation: [...p.translation],

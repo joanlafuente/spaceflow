@@ -168,6 +168,8 @@ export function npzArraysToExports(
   shapes: ParsedNpy,
   translations: ParsedNpy,
   rotations: ParsedNpy,
+  tapering?: ParsedNpy | null,
+  bending?: ParsedNpy | null,
 ): PrimitiveExport[] {
   const scalesSq = squeezeSingletonAxis(scales, [3], 'scales.npy');
   const shapesSq = squeezeSingletonAxis(shapes, [2], 'shapes.npy');
@@ -184,14 +186,41 @@ export function npzArraysToExports(
   const transM = reshape2(translationsSq.values, N, 3);
   const rotM = reshape3(rotationsSq.values, N, 3, 3);
 
+  let taperM: number[][] | null = null;
+  if (tapering) {
+    const tSq = squeezeSingletonAxis(tapering, [2], 'tapering.npy');
+    if (tSq.shape[0] !== N) {
+      throw new Error(`tapering.npy length ${tSq.shape[0]} != scales ${N}`);
+    }
+    taperM = reshape2(tSq.values, N, 2);
+  }
+
+  let bendM: number[][] | null = null;
+  if (bending) {
+    const bSq = squeezeSingletonAxis(bending, [6], 'bending.npy');
+    if (bSq.shape[0] !== N) {
+      throw new Error(`bending.npy length ${bSq.shape[0]} != scales ${N}`);
+    }
+    bendM = reshape2(bSq.values, N, 6);
+  }
+
   const out: PrimitiveExport[] = [];
   for (let i = 0; i < N; i++) {
-    out.push({
+    const row: PrimitiveExport = {
       scales: [scalesM[i][0], scalesM[i][1], scalesM[i][2]],
       shapes: [shapesM[i][0], shapesM[i][1]],
       translation: [transM[i][0], transM[i][1], transM[i][2]],
       rotation: rotM[i],
-    });
+    };
+    if (taperM) {
+      row.tapering = [taperM[i][0], taperM[i][1]];
+    }
+    if (bendM) {
+      row.bending = [
+        bendM[i][0], bendM[i][1], bendM[i][2], bendM[i][3], bendM[i][4], bendM[i][5],
+      ];
+    }
+    out.push(row);
   }
   return out;
 }
@@ -232,6 +261,18 @@ export function maybeRescalePrimitivesForEditor(primitives: Primitive[]): Primit
       number,
       number,
     ],
+    ...(p.bending !== undefined
+      ? {
+          bending: [
+            p.bending[0] / k,
+            p.bending[1],
+            p.bending[2] / k,
+            p.bending[3],
+            p.bending[4] / k,
+            p.bending[5],
+          ] as [number, number, number, number, number, number],
+        }
+      : {}),
   }));
 }
 
@@ -240,6 +281,22 @@ export interface ImportNpzOptions {
   basisZUpToYUp?: boolean;
   /** If true, skip expanding tiny normalized fits for slider range (default false). */
   skipEditorRescale?: boolean;
+  /**
+   * SuperFlex HTTP path: ensure every primitive has `tapering` + `bending` so the editor shows
+   * deform controls and JSON export matches NPZ. Fills zeros if legacy NPZ omits those arrays.
+   */
+  inferSuperflex?: boolean;
+}
+
+function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
+  const direct = zip.file(basename);
+  if (direct && !direct.dir) return direct;
+  for (const k of Object.keys(zip.files)) {
+    const entry = zip.files[k];
+    if (!entry || entry.dir) continue;
+    if (k === basename || k.endsWith(`/${basename}`)) return entry;
+  }
+  return null;
 }
 
 export async function importNpzToPrimitives(
@@ -262,7 +319,12 @@ export async function importNpzToPrimitives(
     readNpy('rotations.npy'),
   ]);
 
-  let exports = npzArraysToExports(scales, shapes, translations, rotations);
+  const taperFile = findZipNpy(zip, 'tapering.npy');
+  const bendFile = findZipNpy(zip, 'bending.npy');
+  const tapering = taperFile ? await taperFile.async('arraybuffer').then(parseNpyBuffer) : null;
+  const bending = bendFile ? await bendFile.async('arraybuffer').then(parseNpyBuffer) : null;
+
+  let exports = npzArraysToExports(scales, shapes, translations, rotations, tapering, bending);
   if (options?.basisZUpToYUp) {
     exports = exports.map(e => {
       const { rotation, translation } = applyWorldBasisZUpToYUp(e.rotation, e.translation);
@@ -273,6 +335,14 @@ export async function importNpzToPrimitives(
   const t = Date.now();
   let prims: Primitive[] = exports.map((e, i): Primitive => {
     const euler = matrixToEuler(e.rotation);
+    const hasTaper = e.tapering !== undefined || options?.inferSuperflex;
+    const hasBend = e.bending !== undefined || options?.inferSuperflex;
+    const tapering: [number, number] | undefined = hasTaper
+      ? ([...(e.tapering ?? [0, 0])] as [number, number])
+      : undefined;
+    const bending: [number, number, number, number, number, number] | undefined = hasBend
+      ? ([...(e.bending ?? [0, 0, 0, 0, 0, 0])] as [number, number, number, number, number, number])
+      : undefined;
     return {
       id: `npz_${i}_${t}`,
       name: `${namePrefix}_${i}`,
@@ -282,6 +352,8 @@ export async function importNpzToPrimitives(
       translation: e.translation,
       rotation: e.rotation,
       eulerDeg: euler,
+      ...(tapering !== undefined ? { tapering } : {}),
+      ...(bending !== undefined ? { bending } : {}),
     };
   });
   if (!options?.skipEditorRescale) {

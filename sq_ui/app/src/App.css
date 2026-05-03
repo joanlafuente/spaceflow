@@ -348,10 +348,16 @@ body {
   border-color: rgba(34, 197, 94, 0.35);
 }
 
-.btn-superdec:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.28), rgba(56, 189, 248, 0.28));
-  border-color: rgba(34, 197, 94, 0.52);
-  color: #dcfce7;
+.btn-superflex {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(45, 212, 191, 0.16));
+  color: #e9d5ff;
+  border-color: rgba(167, 139, 250, 0.42);
+}
+
+.btn-superflex:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.32), rgba(45, 212, 191, 0.24));
+  border-color: rgba(167, 139, 250, 0.55);
+  color: #f3e8ff;
 }
 
 .btn-generate:disabled {

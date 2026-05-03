@@ -9,6 +9,21 @@ import type { Primitive } from '../state/store';
 import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superquadric';
 import { setViewportCapture } from '../state/viewportCapture';
 
+function superflexDeformForPrimitive(p: Primitive) {
+  if (p.tapering === undefined && p.bending === undefined) return undefined;
+  return {
+    tapering: (p.tapering ?? [0, 0]) as [number, number],
+    bending: (p.bending ?? [0, 0, 0, 0, 0, 0]) as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ],
+  };
+}
+
 /** Registers WebGL canvas readback for AI Edit viewport screenshots. */
 function ViewportCaptureRegister() {
   const gl = useThree(s => s.gl);
@@ -79,6 +94,7 @@ function SuperquadricMesh({
       primitive.rotation,
       primitive.translation,
       resolution,
+      superflexDeformForPrimitive(primitive),
     );
 
     const geo = new THREE.BufferGeometry();
@@ -266,6 +282,7 @@ function Scene() {
           p.scales[0], p.scales[1], p.scales[2],
           p.shapes[0], p.shapes[1],
           p.rotation, p.translation, resolution,
+          superflexDeformForPrimitive(p),
         );
         return vertices;
       });
