@@ -32,9 +32,24 @@
 
 set -euo pipefail
 
-# --- Cluster env, identical to test_run_test.sh ---
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate /work/courses/3dv/team3/guideflow3d/envs/guideflow3d
+# --- Cluster env (functionally identical to test_run_test.sh, but does
+# not assume `source ~/miniconda3/etc/profile.d/conda.sh` exists for
+# every user). The env at $GUIDEFLOW3D_ENV is a regular venv-layout
+# directory so we just put its bin/ on PATH and run python directly. ---
+GUIDEFLOW3D_ENV="${GUIDEFLOW3D_ENV:-/work/courses/3dv/team3/guideflow3d/envs/guideflow3d}"
+if [[ ! -x "$GUIDEFLOW3D_ENV/bin/python" ]]; then
+  # Per-user fallback: the local clone may have its own env at
+  # /work/courses/3dv/team3/spaceflow/envs/guideflow3d.
+  if [[ -x /work/courses/3dv/team3/spaceflow/envs/guideflow3d/bin/python ]]; then
+    GUIDEFLOW3D_ENV="/work/courses/3dv/team3/spaceflow/envs/guideflow3d"
+  else
+    echo "[sbatch_ab] could not locate the GuideFlow3D venv. Set GUIDEFLOW3D_ENV." >&2
+    exit 5
+  fi
+fi
+export PATH="$GUIDEFLOW3D_ENV/bin:$PATH"
+export PYTHON_BIN="$GUIDEFLOW3D_ENV/bin/python"
+
 module load cuda/12.8
 export TORCH_CUDA_ARCH_LIST="6.1;7.5;8.0;8.6;9.0;12.0"
 export BLENDER_HOME="/work/courses/3dv/team3/guideflow3d/blender-3.0.1-linux-x64/blender"
