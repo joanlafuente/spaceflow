@@ -314,7 +314,7 @@ def main():
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
 
-    pipeline = TrellisTextTo3DPipeline.from_pretrained("gui")
+    pipeline = TrellisTextTo3DPipeline.from_pretrained(cfg.trellis_text_model_name)
     pipeline.cuda()
 
     text_prompt = args.text_prompt
