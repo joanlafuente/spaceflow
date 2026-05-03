@@ -29,6 +29,7 @@ sys.path.append('.')
 from third_party.PartField.partfield.model_trainer_pvcnn_only_demo import Model
 from lib.opt import appearance, self_similarity
 from lib.util import generation, common, render, pointcloud
+from lib.superdec import predict_superdec
 import third_party.TRELLIS.trellis.models as models
 from third_party.TRELLIS.trellis.pipelines import TrellisTextTo3DPipeline
 from third_party.TRELLIS.trellis.utils import postprocessing_utils
@@ -470,9 +471,29 @@ def main():
         del encoder
         gc.collect() # Free up memory
 
-        # Extract PartField features for appearance mesh
-        log.info("Extracting Appearance Mesh PartField feature planes...")
-        predict_part(osp.join(args.output_dir, 'app_mesh_zup.glb'), partfield_dir)
+        # SUPERDEC inference for both shapes (replaces the appearance-side
+        # PartField extraction; the structure-side PartField pass above is
+        # kept only because self_similarity mode still depends on it).
+        log.info("Running SUPERDEC on structure and appearance voxel point clouds...")
+        superdec_dir = osp.join(args.output_dir, 'superdec')
+        common.ensure_dir(superdec_dir)
+        struct_voxels_xyz = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
+        app_voxels_xyz = utils3d.io.read_ply(osp.join(voxel_dir, 'app_voxels.ply'))[0]
+        # Voxels live in [-0.5, 0.5]^3 in the *Blender-normalised* frame produced
+        # by render.render_all_views (no further Z-up rotation is applied), so
+        # we pass z_up=False regardless of args.convert_yup_to_zup.
+        predict_superdec(
+            struct_voxels_xyz,
+            output_npz=osp.join(superdec_dir, 'outdict_q.npz'),
+            name='struct',
+            z_up=False,
+        )
+        predict_superdec(
+            app_voxels_xyz,
+            output_npz=osp.join(superdec_dir, 'outdict_a.npz'),
+            name='app',
+            z_up=False,
+        )
 
         # Appearance Optimization
         appearance.optimize_appearance(cfg, args.output_dir)

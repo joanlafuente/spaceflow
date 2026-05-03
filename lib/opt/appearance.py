@@ -8,7 +8,14 @@ import logging
 
 import third_party.TRELLIS.trellis.modules.sparse as sp
 from third_party.TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline
-from lib.util import partfield, generation
+from lib.util import generation
+from lib.superdec import (
+    build_correspondence,
+    load_superdec_npz,
+    save_segment_visualisations,
+    save_summary,
+    UNMATCHED,
+)
 
 # Global logger
 log = logging.getLogger(__name__)
@@ -33,22 +40,74 @@ def optimize_appearance(cfg, output_dir):
     
     zeros = torch.zeros((struct_coords.size(0), 1), dtype=struct_coords.dtype, device=struct_coords.device)
     struct_coords = torch.cat([zeros, struct_coords], dim=1)
-    
-    # Load partfield planes
-    path = osp.join(output_dir, 'partfield', 'part_feat_struct_mesh_zup_batch_part_plane.npy')
-    struct_part_planes = torch.from_numpy(np.load(path, allow_pickle=True)).cuda()
 
-    path = osp.join(output_dir, 'partfield', 'part_feat_app_mesh_zup_batch_part_plane.npy')
-    app_part_planes = torch.from_numpy(np.load(path, allow_pickle=True)).cuda()
+    # ------------------------------------------------------------------
+    # SUPERDEC-driven correspondence (replaces PartField + k-means).
+    # outdict_q.npz / outdict_a.npz are produced by run.py via
+    # lib.superdec.predict_superdec on the active voxel point clouds.
+    #
+    # Voxel float positions in [-0.5, 0.5]^3 are reconstructed from the
+    # already-loaded integer voxel indices: x_float = (x_int + 0.5)/64 - 0.5.
+    # For voxels_a_xyz we deliberately use app_coords (the SLAT-latent
+    # row order) so that the matched index m(i) can directly index
+    # app_feats below.
+    # ------------------------------------------------------------------
+    superdec_q = load_superdec_npz(osp.join(output_dir, 'superdec', 'outdict_q.npz'))
+    superdec_a = load_superdec_npz(osp.join(output_dir, 'superdec', 'outdict_a.npz'))
+    voxels_q_xyz = (struct_coords[:, 1:].float() + 0.5) / 64.0 - 0.5      # (N_q, 3)
+    voxels_a_xyz = (app_coords[:, 1:].float() + 0.5) / 64.0 - 0.5         # (N_a, 3)
 
-    app_labels, struct_labels, point_feat1, point_feat2 = partfield.cosegment_part(app_coords, app_part_planes, struct_coords, struct_part_planes, cfg.app_guidance.num_part_clusters)
-        
-    # Optimization Starts
-    app_labels = torch.from_numpy(app_labels.flatten()).cuda()
-    struct_labels = torch.from_numpy(struct_labels.flatten()).cuda()
+    sd_cfg = cfg.app_guidance
+    correspondence = build_correspondence(
+        voxels_q_xyz, voxels_a_xyz, superdec_q, superdec_a,
+        exist_threshold=float(sd_cfg.get('superdec_exist_threshold', 0.5)),
+        refine_boundary=bool(sd_cfg.get('superdec_boundary_refine', True)),
+        boundary_softmax_beta=float(sd_cfg.get('superdec_boundary_softmax_beta', 50.0)),
+        sinkhorn_eps=float(sd_cfg.get('superdec_match_eps', 0.05)),
+        sinkhorn_iters=int(sd_cfg.get('superdec_match_iters', 30)),
+        conf_threshold=float(sd_cfg.get('superdec_conf_threshold', 0.15)),
+        inside_threshold=float(sd_cfg.get('superdec_inside_threshold', 0.0)),
+        include_translation_descriptor=bool(sd_cfg.get('superdec_include_translation', False)),
+    )
 
-    point_feat1 = torch.from_numpy(point_feat1).cuda()
-    point_feat2 = torch.from_numpy(point_feat2).cuda()
+    valid_idx = correspondence.valid.nonzero(as_tuple=False).flatten()
+    m_valid = correspondence.m[valid_idx]
+    n_pq = int(superdec_q['scale'].shape[0])
+    n_pa = int(superdec_a['scale'].shape[0])
+    n_q = int(struct_coords.shape[0])
+    n_unmatched_seg = int((correspondence.tau == UNMATCHED).sum().item())
+    log.info(
+        "[SUPERDEC] P_q=%d P_a=%d  unmatched_segments=%d  |L_q|=%d/%d (%.1f%%)  mean_conf=%.3f",
+        n_pq, n_pa, n_unmatched_seg, int(valid_idx.numel()), n_q,
+        100.0 * float(valid_idx.numel()) / max(n_q, 1),
+        float(correspondence.conf.mean().item()),
+    )
+    # Diagnostic dumps for visual QC. These are cheap (write 4 small PLYs +
+    # one JSON) and independent of the optimisation loop, so always on.
+    save_segment_visualisations(
+        voxels_q_xyz, voxels_a_xyz,
+        correspondence.s_q, correspondence.s_a,
+        correspondence.tau,
+        output_dir,
+    )
+    save_summary(
+        output_dir,
+        n_pq=n_pq,
+        n_pa=n_pa,
+        n_voxels_q=n_q,
+        n_voxels_a=int(voxels_a_xyz.shape[0]),
+        tau=correspondence.tau,
+        conf=correspondence.conf,
+        valid_mask=correspondence.valid,
+        nn_dist=correspondence.nn_dist,
+    )
+    log.info("[SUPERDEC] diagnostics written to %s/superdec/", output_dir)
+
+    if int(valid_idx.numel()) == 0:
+        raise RuntimeError(
+            "SUPERDEC matcher produced |L_q|=0; lower app_guidance.superdec_conf_threshold "
+            "or inspect superdec/superdec_summary.json + segment_correspondence_*.ply."
+        )
 
     struct_feats_params = torch.nn.Parameter(torch.randn((struct_coords.shape[0], cfg.flow_model_in_channels)), requires_grad=True)
 
@@ -94,37 +153,30 @@ def optimize_appearance(cfg, output_dir):
         sample = out.pred_x_prev
         struct_feats_params.data = sample.feats
 
-        # Optimization
+        # Optimization — SUPERDEC-driven appearance loss:
+        #
+        #     L_app^SUPERDEC = (1 / |L_q|) Σ_{i ∈ L_q} || z_q(i) - z_a(m(i)) ||²
+        #
+        # where m(i) was computed once via build_correspondence() above. Voxels
+        # whose input primitive is unmatched (tau(s_q[i]) == UNMATCHED) are
+        # outside L_q and contribute zero gradient — no global-NN fallback.
         if iteration < len(t_pairs) - 1:
-            app_loss, num_labels = torch.tensor(0.0, requires_grad=True).cuda(), 0.0
-            for label in torch.unique(app_labels):
-                app_mask = (app_labels == label)
-                struct_mask = (struct_labels == label)
-                
-                if app_mask.sum() == 0 or struct_mask.sum() == 0:
-                    continue
-                
-                # Appearance Loss
-                cos_sim = torch.matmul(point_feat2[struct_mask], point_feat1[app_mask].T)
-                cos_dist = (1 - cos_sim) / 2.
-                nearest = torch.argmin(cos_dist, dim=1)
-                
-                matched = app_feats[app_mask][nearest]
-                curr_loss = F.mse_loss(struct_feats_params[struct_mask], matched)
-                
-                app_loss += curr_loss
-                num_labels += 1
-
-            app_loss = cfg.app_guidance.loss_weight * (app_loss / num_labels)
+            matched_z_a = app_feats[m_valid]
+            app_loss_raw = F.mse_loss(struct_feats_params[valid_idx], matched_z_a)
+            app_loss = cfg.app_guidance.loss_weight * app_loss_raw
 
             total_loss = app_loss
-            
+
             total_loss.backward()
             optimizer.step()
             scheduler.step()
 
             if (iteration == 0) or (iteration + 1) % cfg.log_every == 0:
-                message = f"Step: {iteration}, Appearance Loss: {app_loss.item():.4f}, Total Loss: {total_loss.item():.4f}"
+                message = (
+                    f"Step: {iteration}, |L_q|={int(valid_idx.numel())}, "
+                    f"Appearance Loss: {app_loss.item():.4f}, "
+                    f"Total Loss: {total_loss.item():.4f}"
+                )
                 log.info(message)
 
             if total_loss < best_loss:
