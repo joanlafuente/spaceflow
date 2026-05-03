@@ -1,9 +1,11 @@
+import copy
 import os.path as osp
 from PIL import Image
 import numpy as np
 import torch
 import utils3d
 import logging
+import open3d_pycg as o3d
 
 import third_party.TRELLIS.trellis.modules.sparse as sp
 from third_party.TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline
@@ -11,6 +13,84 @@ from lib.util import generation, partfield
 
 # Global logger
 log = logging.getLogger(__name__)
+
+
+def _voxelize_mesh(mesh):
+    """Voxelize an Open3D mesh into a (1,1,64,64,64) binary float32 tensor on CPU."""
+    mesh = copy.deepcopy(mesh)
+    vertices = np.clip(np.asarray(mesh.vertices), -0.5 + 1e-6, 0.5 - 1e-6)
+    mesh.vertices = o3d.utility.Vector3dVector(vertices)
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(
+        mesh, voxel_size=1/64, min_bound=(-0.5, -0.5, -0.5), max_bound=(0.5, 0.5, 0.5))
+    voxel_indices = np.array([v.grid_index for v in voxel_grid.get_voxels()])
+    coords_dense = torch.zeros(1, 1, 64, 64, 64, dtype=torch.float32)
+    if len(voxel_indices) > 0:
+        coords_dense[0, 0, voxel_indices[:, 0], voxel_indices[:, 1], voxel_indices[:, 2]] = 1.0
+    return coords_dense
+
+
+def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cuda', vox_cluster_labels=None):
+    """Map each 64^3 voxel to its nearest superquadric (1-indexed; 0=unassigned).
+
+    When vox_cluster_labels is provided (PartField cluster label per voxel), assigns
+    voxels via cluster centroids: each cluster centroid is matched to the nearest SQ,
+    and all voxels in that cluster inherit the SQ assignment. This is more accurate
+    than per-voxel geometric nearest neighbor because PartField clusters capture
+    semantic part structure.
+
+    struct_coords: (M, 4) int tensor [batch, x, y, z] in 64x64x64 space.
+    vox_cluster_labels: (M,) int tensor of PartField cluster indices per voxel.
+    Returns a (1, 1, 32, 32, 32) int32 tensor.
+    """
+    coords_dense_indices = torch.zeros(1, 1, 32, 32, 32, dtype=torch.int32, device=device)
+    n_sq = len(individual_sq_meshes)
+    if n_sq == 0:
+        return coords_dense_indices
+
+    generated_coords = struct_coords[:, 1:].float().to(device)  # (M, 3)
+
+    # Precompute SQ surface voxel coords once
+    sq_coords_list = []
+    for mesh in individual_sq_meshes:
+        sq_vox = _voxelize_mesh(mesh)  # (1,1,64,64,64)
+        sq_c = torch.argwhere(sq_vox)[:, 2:].float().to(device)  # (K,3)
+        sq_coords_list.append(sq_c)
+
+    if vox_cluster_labels is not None:
+        # PartField-based assignment: cluster centroid → nearest SQ → voxels
+        labels = vox_cluster_labels.to(device)
+        num_clusters = int(labels.max().item()) + 1
+        cluster_to_sq = torch.zeros(num_clusters, dtype=torch.long, device=device)
+        for c in range(num_clusters):
+            mask = labels == c
+            if not mask.any():
+                continue
+            cluster_voxels = generated_coords[mask]
+            mean_pos = cluster_voxels.mean(0, keepdim=True)
+            centroid = cluster_voxels[torch.cdist(cluster_voxels, mean_pos).argmin()].unsqueeze(0)  # (1, 3) actual voxel
+            min_dists = [
+                torch.cdist(sq_c, centroid).min().item() if sq_c.shape[0] > 0 else float('inf')
+                for sq_c in sq_coords_list
+            ]
+            cluster_to_sq[c] = int(np.argmin(min_dists))
+        min_distances_idx = cluster_to_sq[labels] + 1  # (M,), 1-indexed
+    else:
+        # Fallback: per-voxel geometric nearest neighbor
+        min_distances = torch.zeros(n_sq, struct_coords.shape[0], device=device)
+        for idx, sq_c in enumerate(sq_coords_list):
+            if sq_c.shape[0] == 0:
+                min_distances[idx] = float('inf')
+            else:
+                min_distances[idx] = torch.cdist(sq_c, generated_coords).min(0).values
+        min_distances_idx = min_distances.argmin(0) + 1  # 1-indexed, shape (M,)
+
+    for i in range(struct_coords.shape[0]):
+        x = struct_coords[i, 1] // 2
+        y = struct_coords[i, 2] // 2
+        z = struct_coords[i, 3] // 2
+        coords_dense_indices[0, 0, x, y, z] = int(min_distances_idx[i].item())
+
+    return coords_dense_indices
 
 def attn_cosine_sim(x, eps=1e-08):
     x = x[0]  # TEMP: getting rid of redundant dimension, TBF
@@ -55,9 +135,11 @@ def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
     loss = -torch.log(numerator / (denominator + 1e-8))
     return loss[valid].mean()
 
-def optimize_self_similarity(cfg, app, app_type, output_dir):
+def optimize_self_similarity(cfg, app, app_type, output_dir,
+                             local_prompts=None, local_prompt_type=None,
+                             individual_sq_meshes=None):
     log.info("Starting self-similarity optimization...")
-    
+
     if app_type == 'image':
         generation_pipeline = TrellisImageTo3DPipeline.from_pretrained(cfg.trellis_img_model_name)
         app = Image.open(osp.join(output_dir, 'app_image.png')).convert('RGB')
@@ -74,8 +156,8 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
     zeros = torch.zeros((struct_coords.size(0), 1), dtype=struct_coords.dtype, device=struct_coords.device)
     struct_coords = torch.cat([zeros, struct_coords], dim=1)
     
-    # Load partfield planes
-    path = osp.join(output_dir, "partfield", "part_feat_struct_mesh_zup_batch_part_plane.npy")
+    # Load partfield planes (extracted from Blender's struct_renders/mesh.ply — same mesh as voxels)
+    path = osp.join(output_dir, "partfield", "part_feat_mesh_batch_part_plane.npy")
     struct_part_planes = torch.from_numpy(np.load(path, allow_pickle=True)).cuda()
 
     struct_labels = partfield.cluster_geoms(struct_coords, struct_part_planes, num_clusters=cfg.sim_guidance.num_part_clusters)
@@ -91,7 +173,42 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
     best_loss = float('inf')
     feats = None
     
-    cond = generation_pipeline.get_cond([app])
+    cond = generation_pipeline.get_cond_text([app]) if app_type != "image" else generation_pipeline.get_cond([app])
+
+    # Build per-SQ local conditioning if local prompts were provided.
+    cond_list = None
+    coords_dense_indices = None
+    if local_prompts and individual_sq_meshes:
+        global_emb = cond['cond']  # (1, seq_len, dim)
+        if local_prompt_type == 'text':
+            local_embs = [
+                generation_pipeline.encode_text([p]) if p and p.strip() else global_emb
+                for p in local_prompts
+            ]
+        else:  # 'image'
+            local_embs = [
+                generation_pipeline.encode_image([Image.open(p).convert('RGB')]) if p else global_emb
+                for p in local_prompts
+            ]
+        cond_list = [global_emb] + local_embs
+        log.info(f"Built cond_list with {len(cond_list)} entries (1 global + {len(local_embs)} local)")
+        coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda',
+                                                             vox_cluster_labels=struct_labels)
+        log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
+
+        log.info("Visualizing condition routing on structure mesh...")
+        import trimesh
+        from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+        _sv_norm = ((struct_coords[:, 1:].float() + 0.5) / 64 - 0.5).cpu().numpy()
+        _sq_labels = coords_dense_indices[0, 0,
+            struct_coords[:, 1] // 2,
+            struct_coords[:, 2] // 2,
+            struct_coords[:, 3] // 2].cpu().numpy()
+        _mesh_vis = trimesh.load(osp.join(output_dir, 'struct_renders', 'mesh.ply'), force='mesh')
+        _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv_norm, _sq_labels)
+        visualize_and_save(_mesh_vis, _vtx_labels, output_dir, output_name='condition_routing.mp4')
+        del _sv_norm, _sq_labels, _mesh_vis, _vtx_labels
+        torch.cuda.empty_cache()
 
     flow_model = generation_pipeline.models['slat_flow_model']
 
@@ -133,8 +250,13 @@ def optimize_self_similarity(cfg, app, app_type, output_dir):
             coords = struct_coords.int(),
         ).cuda()
         
+        local_kwargs = {}
+        if cond_list is not None:
+            local_kwargs['cond_list'] = cond_list
+            local_kwargs['coords_dense_indices'] = coords_dense_indices
+
         with torch.no_grad():
-            out = generation_pipeline.slat_sampler.sample_once(flow_model, noise, t, t_prev, **cond, **sampler_params)
+            out = generation_pipeline.slat_sampler.sample_once(flow_model, noise, t, t_prev, **cond, **sampler_params, **local_kwargs)
             
         sample = out.pred_x_prev
         struct_feats_params.data = sample.feats

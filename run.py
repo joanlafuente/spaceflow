@@ -1,4 +1,6 @@
 from html import parser
+import copy
+import json
 import os.path as osp
 import gc
 import trimesh
@@ -18,6 +20,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from pycg import vis, image
 from pycg import render as pycg_render
 import open3d_pycg as o3d
+
+import utils3d
 
 import sys
 sys.path.append('.')
@@ -60,10 +64,16 @@ def init_args():
     # SapceControl parameters
     parser.add_argument('--shape_superquadric_path', type=str, required=True,
                         help='Path to shape superquadrics file')
+    parser.add_argument('--spatial_control_mesh_path', type=str, default=None,
+                        help='Path to save the spatial control mesh (defaults to <output_dir>/spatial_control_mesh.ply)')
     parser.add_argument('--shape_tau', type=float, default=6.0, required=True,
                         help='Value of tau for superquadric control')
     parser.add_argument('--text_prompt', type=str, required=True,
                         help='Text prompt for 3D shape generation')
+    parser.add_argument('--local_text_prompts', type=str, default=None,
+                        help='JSON-encoded list of per-SQ local text prompts (text-similarity mode)')
+    parser.add_argument('--local_image_paths', type=str, default=None,
+                        help='JSON-encoded list of per-SQ local image file paths (image-similarity mode)')
 
     args = parser.parse_args()
 
@@ -152,24 +162,9 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadrics[k] = superquadric_dict
     return superquadrics
 
-def load_superquadrics(path, args):
-    # Implementation for loading superquadrics
-
+def load_superquadrics(path, spatial_control_mesh_path):
+    # Generate spatial control mesh from superquadric primitives and write to spatial_control_mesh_path
     superquadrics = load_superquadric_from_file(path)
-    
-        # Loading the spatial control mesh generated from the superquadrics provided and check that it all right
-    if not osp.exists(args.spatial_control_mesh_path):
-        log.error(f"Spatial control mesh not found: {args.spatial_control_mesh_path}")
-        return
-    else:
-        log.info(f"Spatial control mesh found: {args.spatial_control_mesh_path}")
-        mesh = o3d.io.read_triangle_mesh(args.spatial_control_mesh_path)
-        if mesh.is_empty():
-            log.error(f"Spatial control mesh is empty: {args.spatial_control_mesh_path}")
-            return
-        else:
-            log.info(f"Spatial control mesh loaded successfully: {args.spatial_control_mesh_path}")
-
 
     meshes = []
     for superquadric_id in superquadrics.keys():
@@ -189,8 +184,44 @@ def load_superquadrics(path, args):
 
     merged_mesh.translate(-center)
     merged_mesh.scale(scale, (0,0,0))
-    spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
     o3d.io.write_triangle_mesh(spatial_control_mesh_path, merged_mesh)
+    log.info(f"Spatial control mesh generated from superquadrics: {spatial_control_mesh_path}")
+
+def build_individual_sq_meshes_normalized(npz_path):
+    """Build individual superquadric meshes in the same normalised space as the merged mesh.
+
+    The merged mesh is centred and scaled to unit size (same as load_superquadrics).
+    Returns a list of open3d TriangleMesh objects in the [-0.5, 0.5] coordinate space.
+    """
+    superquadrics = load_superquadric_from_file(npz_path)
+    meshes = []
+    for sq_id in superquadrics:
+        vertices, triangles = add_superquadric_compact_rot_mat(
+            superquadrics[sq_id]['scale'],
+            superquadrics[sq_id]['shape'],
+            superquadrics[sq_id]['translation'],
+            superquadrics[sq_id]['rotation'],
+            resolution=100)
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(vertices)
+        mesh.triangles = o3d.utility.Vector3iVector(triangles)
+        meshes.append(mesh)
+
+    # Compute normalization from merged mesh (mirrors load_superquadrics)
+    merged = merge_meshes(meshes)
+    all_verts = np.asarray(merged.vertices)
+    aabb = np.stack([all_verts.min(0), all_verts.max(0)])
+    center = (aabb[0] + aabb[1]) / 2
+    scale = 1.0 / ((aabb[1] - aabb[0]).max())
+
+    normalized = []
+    for mesh in meshes:
+        m = copy.deepcopy(mesh)
+        m.translate(-center)
+        m.scale(scale, (0, 0, 0))
+        normalized.append(m)
+    return normalized
+
 
 def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.glb"):
     """
@@ -225,8 +256,8 @@ def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.gl
     print("Generating mesh and exporting to GLB...")
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
 
-    # Smoothing of the mesh
-    trimesh.smoothing.filter_taubin(mesh, iterations=50)
+    # # Smoothing of the mesh
+    # trimesh.smoothing.filter_taubin(mesh, iterations=50)
 
     # Export to GLB format
     mesh.export(output_filename)
@@ -275,10 +306,12 @@ def main():
 
     common.ensure_dir(args.output_dir)
 
+    # Generate spatial control mesh from superquadrics
+    spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
+    load_superquadrics(args.shape_superquadric_path, spatial_control_mesh_path)
+
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
-
-    load_superquadrics(args.shape_superquadric_path, args)
 
     pipeline = TrellisTextTo3DPipeline.from_pretrained("gui")
     pipeline.cuda()
@@ -290,7 +323,7 @@ def main():
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,
-        "spatial_control_mesh_path": osp.join(args.output_dir, 'spatial_control_mesh.ply')
+        "spatial_control_mesh_path": spatial_control_mesh_path
     })
 
     # Convert sparse voxels to mesh
@@ -326,15 +359,39 @@ def main():
     common.ensure_dir(struct_render_dir)
     out_renderviews = render.render_all_views(struct_mesh_for_pipeline, struct_render_dir, num_views=cfg.num_views // 10)
 
+    # struct_renders/mesh.ply is the Blender-normalized mesh; use it as the single source of truth
+    # for both voxelization and PartField feature extraction so that both operate in the same
+    # coordinate system (Blender's normalize_scene + GLTF→Blender axis convention).
+    struct_blender_ply = osp.join(struct_render_dir, 'mesh.ply')
+
     voxel_dir = osp.join(args.output_dir, 'voxels')
     common.ensure_dir(voxel_dir)
     log.info("Voxelizing structure mesh...")
-    pointcloud.voxelize_mesh(osp.join(struct_render_dir, 'mesh.ply'), save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
+    pointcloud.voxelize_mesh(struct_blender_ply, save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
 
     log.info("Extracting Structure Mesh PartField feature planes...")
     partfield_dir = osp.join(args.output_dir, 'partfield')
     common.ensure_dir(partfield_dir)
-    predict_part(struct_mesh_for_pipeline, partfield_dir)
+    # Use the same Blender-normalized PLY so the PartField triplane canonical space
+    # matches the coordinate system of struct_voxels.ply.
+    predict_part(struct_blender_ply, partfield_dir)
+
+    # log.info("Visualizing PartField clusters on structure mesh...")
+    # from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+    # from lib.util.partfield import cluster_geoms
+    # _sv = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
+    # _sc = torch.from_numpy(_sv).float().cuda()
+    # _sc4d = torch.cat([torch.zeros(_sc.shape[0], 1, dtype=torch.long, device='cuda'),
+    #                    ((_sc + 0.5) * 64).long()], dim=1)
+    # _planes = torch.from_numpy(np.load(
+    #     osp.join(partfield_dir, 'part_feat_mesh_batch_part_plane.npy'),
+    #     allow_pickle=True)).cuda()
+    # _vlabels = cluster_geoms(_sc4d, _planes, num_clusters=cfg.sim_guidance.num_part_clusters)
+    # _mesh_vis = trimesh.load(struct_blender_ply, force='mesh')
+    # _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv, _vlabels)
+    # visualize_and_save(_mesh_vis, _vtx_labels, args.output_dir, output_name='partfield_clusters.mp4')
+    # del _sv, _sc, _sc4d, _planes, _vlabels, _mesh_vis, _vtx_labels
+    # gc.collect()
 
     if not out_renderviews:
         log.info("Structure rendering failed!")
@@ -436,9 +493,21 @@ def main():
 
         log.info(f"Using {app_type} for self-similarity guidance...")
 
+        # Parse per-SQ local conditioning args
+        local_text_prompts = json.loads(args.local_text_prompts) if args.local_text_prompts else None
+        local_image_paths  = json.loads(args.local_image_paths)  if args.local_image_paths  else None
+
+        local_prompts     = local_text_prompts if app_type == 'text' else local_image_paths
+        local_prompt_type = app_type if local_prompts else None
+        individual_sq_meshes = build_individual_sq_meshes_normalized(args.shape_superquadric_path) if local_prompts else None
 
         # Self-Similarity Optimization
-        self_similarity.optimize_self_similarity(cfg, app, app_type, args.output_dir)
+        self_similarity.optimize_self_similarity(
+            cfg, app, app_type, args.output_dir,
+            local_prompts=local_prompts,
+            local_prompt_type=local_prompt_type,
+            individual_sq_meshes=individual_sq_meshes,
+        )
 
     else:
         raise NotImplementedError(f"Guidance mode {args.guidance_mode} not implemented.")
