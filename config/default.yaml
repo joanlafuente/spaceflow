@@ -26,7 +26,7 @@ text_model:
 
 # appearance guidance
 app_guidance:
-  num_part_clusters: 30
+  num_part_clusters: 100
   steps: 300
   learning_rate: 5e-4
   loss_weight: 10.0
