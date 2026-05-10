@@ -3,7 +3,7 @@
 #SBATCH --partition=interactive
 #SBATCH --nodes=1
 #SBATCH --gpus=1
-#SBATCH --time=00:30:00
+#SBATCH --time=00:50:00
 #SBATCH --export=ALL
 #SBATCH --job-name=spaceflow-test
 #SBATCH --output=/home/msayfiddinov/spaceflow/outputs/test_%j.out
@@ -26,13 +26,20 @@ export XDG_CACHE_HOME="${SPACEFLOW_SCRATCH}/xdg_cache"
 mkdir -p "$HUGGINGFACE_HUB_CACHE" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" \
   "${TORCH_HOME}/hub" "${XDG_CACHE_HOME}"
 
+
+
 cd /home/msayfiddinov/spaceflow
-srun --ntasks=1 --export=ALL \
-  /work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python run.py \
-  --guidance_mode similarity \
-  --appearance_image examples/ford_shelby.jpg \
-  --output_dir outputs/test7 \
-  --convert_yup_to_zup \
-  --shape_superquadric_path examples/superquadrics/car_sq.npz \
-  --shape_tau 0.0 \
-  --text_prompt "A supercar" \
+
+for nc in 100 20 30 50 10; do
+    sed -i -E "36s/^(\s*num_part_clusters:\s*).*/\1${nc}/" config/default.yaml
+    srun --ntasks=1 --export=ALL \
+        /work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python run.py \
+        --guidance_mode similarity \
+        --appearance_image examples/fighter_jet.png \
+        --output_dir outputs/jet_cluster_${nc} \
+        --convert_yup_to_zup \
+        --shape_superquadric_path examples/superquadrics/plane_sq.npz \
+        --shape_tau 0.0 \
+        --text_prompt "A fighter jet" 
+done
+

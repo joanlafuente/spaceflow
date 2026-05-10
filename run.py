@@ -377,6 +377,7 @@ def main():
     predict_part(struct_blender_ply, partfield_dir)
 
     log.info("Visualizing PartField clusters on structure mesh...")
+    # log.info(f"Overall, {cfg.sim_guidance.num_part_clusters} clusters present for similarity")
     from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
     from lib.util.partfield import cluster_geoms
     _sv = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
