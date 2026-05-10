@@ -397,6 +397,7 @@ def setup_gui(server, superquadrics):
         gui_elements['folder_text_sim'].visible = (mode == 'text-similarity')
         gui_elements['folder_image_sim'].visible = (mode == 'image-similarity')
         gui_elements['folder_appearance'].visible = (mode == 'appearance')
+        gui_elements['global_shape'].visible = (mode == 'text-similarity')
         for sq_id in superquadrics:
             per = gui_elements.get(f'sq_{sq_id}')
             if per is None:
@@ -410,8 +411,12 @@ def setup_gui(server, superquadrics):
         mode = guidance_dropdown.value
         selected_mesh = gui_elements['appearance_mesh_dropdown'].value
         sq_ids = sorted(superquadrics.keys())
+        text_prompt = global_shape.value
+        if mode == 'image-similarity':
+            img_path = gui_elements.get('_appearance_image_path')
+            text_prompt = os.path.splitext(os.path.basename(img_path))[0] if img_path else 'image_similarity'
         return {
-            'text_prompt': global_shape.value,
+            'text_prompt': text_prompt,
             'shape_tau': t0_idx.value,
             'guidance_mode': mode,
             'convert_yup_to_zup': convert_checkbox.value,
@@ -419,7 +424,7 @@ def setup_gui(server, superquadrics):
             'appearance_image_path': gui_elements.get('_appearance_image_path'),
             'appearance_mesh': os.path.join('gui/appearance_meshes', selected_mesh) if selected_mesh else '',
             'local_text_prompts': [
-                gui_elements[f'sq_{i}']['local_text_prompt'].value for i in sq_ids
+            gui_elements[f'sq_{i}']['local_text_prompt'].value for i in sq_ids
             ],
             'local_image_paths': [
                 superquadrics[i].get('local_image_path') for i in sq_ids

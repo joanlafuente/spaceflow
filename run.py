@@ -68,8 +68,8 @@ def init_args():
                         help='Path to save the spatial control mesh (defaults to <output_dir>/spatial_control_mesh.ply)')
     parser.add_argument('--shape_tau', type=float, default=6.0, required=True,
                         help='Value of tau for superquadric control')
-    parser.add_argument('--text_prompt', type=str, required=True,
-                        help='Text prompt for 3D shape generation')
+    parser.add_argument('--text_prompt', type=str, default='',
+                        help='Text prompt for 3D shape generation (optional when --appearance_image is provided in similarity mode)')
     parser.add_argument('--local_text_prompts', type=str, default=None,
                         help='JSON-encoded list of per-SQ local text prompts (text-similarity mode)')
     parser.add_argument('--local_image_paths', type=str, default=None,
@@ -318,8 +318,30 @@ def main():
 
     text_prompt = args.text_prompt
 
+    # When an appearance image is provided (image-similarity, or appearance mode with
+    # uploaded texture image), use it as the global condition for structure generation.
+    # In appearance mode without an uploaded image, render the appearance mesh upfront
+    # and reuse it (mirrors the fallback at the appearance branch below).
+    structure_image = None
+    if args.appearance_image:
+        structure_image = Image.open(args.appearance_image).convert('RGB')
+    elif (args.guidance_mode == 'appearance' and args.appearance_mesh
+          and args.appearance_mesh.endswith('.glb') and osp.exists(args.appearance_mesh)):
+        rendered_path = osp.join(args.output_dir, 'app_image.png')
+        mesh = vis.from_file(args.appearance_mesh, load_obj_textures=True)
+        mesh.paint_uniform_color([0.5, 0.5, 0.5])
+        scene = pycg_render.Scene(up_axis='+Y')
+        scene.add_object(mesh)
+        scene.quick_camera(w=512, h=512, pitch_angle=30, plane_angle=-45.0, fov=40)
+        pycg_render.ThemeDiffuseShadow(None, sun_tilt_right=0.0, sun_tilt_back=0.0, sun_angle=60.0).apply_to(scene)
+        rendering = scene.render_blender(quality=512)
+        rendering = image.alpha_compositing(rendering, image.solid(rendering.shape[1], rendering.shape[0]))
+        image.write(rendered_path, rendering)
+        structure_image = Image.open(rendered_path).convert('RGB')
+        args.appearance_image = rendered_path
+
     # Sparse voxels
-    coords = pipeline.gen_structure(text_prompt, seed=1, sparse_structure_sampler_params={
+    coords = pipeline.gen_structure(text_prompt, image=structure_image, seed=1, sparse_structure_sampler_params={
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,

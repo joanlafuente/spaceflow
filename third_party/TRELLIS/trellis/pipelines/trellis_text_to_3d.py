@@ -234,7 +234,10 @@ class TrellisTextTo3DPipeline(Pipeline):
             sampler_params (dict): Additional parameters for the sampler.
         """
         # Sample occupancy latent
-        flow_model = self.models['sparse_structure_flow_model']
+        if cond['cond'].shape[-1] == 768:
+            flow_model = self.models['sparse_structure_flow_model']
+        else:
+            flow_model = self.models['sparse_structure_flow_model_image']
         reso = flow_model.resolution
         noise = torch.randn(num_samples, flow_model.in_channels, reso, reso, reso).to(self.device)
         sampler_params = {**self.sparse_structure_sampler_params, **sampler_params}
@@ -360,26 +363,35 @@ class TrellisTextTo3DPipeline(Pipeline):
     def gen_structure(
         self,
         prompt: str,
+        image: Image.Image = None,
         num_samples: int = 1,
         seed: int = 42,
         sparse_structure_sampler_params: dict = {},
         slat_sampler_params: dict = {},
+        preprocess_image: bool = True,
     ) -> dict:
         """
         Run the pipeline.
 
         Args:
-            prompt (str): The text prompt.
+            prompt (str): The text prompt (used when image is None).
+            image (Image.Image): Optional image prompt; when provided, used as the
+                global condition for sparse-structure generation instead of text.
             num_samples (int): The number of samples to generate.
             seed (int): The random seed.
             sparse_structure_sampler_params (dict): Additional parameters for the sparse structure sampler.
             slat_sampler_params (dict): Additional parameters for the structured latent sampler.
         """
-        cond_text = self.get_cond_text([prompt])
+        if image is not None:
+            if preprocess_image:
+                image = self.preprocess_image(image)
+            cond = self.get_cond_image([image])
+        else:
+            cond = self.get_cond_text([prompt])
         torch.manual_seed(seed)
         spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
-        cond_text = {**cond_text, 'control': spatial_control_latent}  
-        coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params)
+        cond = {**cond, 'control': spatial_control_latent}
+        coords = self.sample_sparse_structure(cond, num_samples, sparse_structure_sampler_params)
 
         return coords
     

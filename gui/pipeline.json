@@ -5,6 +5,7 @@
             "sparse_structure_decoder": "microsoft/TRELLIS-image-large/ckpts/ss_dec_conv3d_16l8_fp16",
             "sparse_structure_encoder": "microsoft/TRELLIS-image-large/ckpts/ss_enc_conv3d_16l8_fp16",
             "sparse_structure_flow_model": "microsoft/TRELLIS-text-xlarge/ckpts/ss_flow_txt_dit_XL_16l8_fp16",
+            "sparse_structure_flow_model_image": "JeffreyXiang/TRELLIS-image-large/ckpts/ss_flow_img_dit_L_16l8_fp16",
             "slat_decoder_gs": "microsoft/TRELLIS-image-large/ckpts/slat_dec_gs_swin8_B_64l8gs32_fp16",
             "slat_decoder_rf": "microsoft/TRELLIS-image-large/ckpts/slat_dec_rf_swin8_B_64l8r16_fp16",
             "slat_decoder_mesh": "microsoft/TRELLIS-image-large/ckpts/slat_dec_mesh_swin8_B_64l8m256c_fp16",
