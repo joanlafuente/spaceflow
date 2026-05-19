@@ -291,9 +291,11 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
 
         spatial_control = voxelize_sq_francis(mesh_path).to(device=self.device) # [1, 1, 64, 64, 64]
+        print(f"Loaded high-control mesh from {mesh_path}, voxelized shape: {spatial_control.shape}, non-zero voxels: {(spatial_control > 0).sum().item()}")
 
         # Reduce resolution to 16^3
-        spatial_control = F.interpolate(spatial_control, size=(16, 16, 16), mode='trilinear', align_corners=False) # [1, 1, 16, 16, 16]
+        # spatial_control = F.interpolate(spatial_control, size=(16, 16, 16), mode='trilinear', align_corners=False) # [1, 1, 16, 16, 16]
+        spatial_control = F.avg_pool3d(spatial_control, kernel_size=4, stride=4) # [1, 1, 16, 16, 16]
 
         return spatial_control  
 
@@ -531,12 +533,22 @@ class TrellisTextTo3DPipeline(Pipeline):
         spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
 
         high_control_spatial_control = None
+        low_control_spatial_control = None
+        lantent_high_control = None
         if (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'guidance'):
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
         elif (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'masking'):
             high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
+            print("High control sum:", high_control_spatial_control.sum().item())
+            print("Low control sum:", low_control_spatial_control.sum().item())            
+            low_control_spatial_control = low_control_spatial_control - high_control_spatial_control
+            print("Low control after subtracting high control sum:", low_control_spatial_control.sum().item())
+            lantent_high_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+
+
             
-        cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control}
+        cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control}
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
         return coords

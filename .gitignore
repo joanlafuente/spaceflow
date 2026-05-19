@@ -5,6 +5,9 @@
 *.err
 *.out
 superflex/
+examples/
+outputs/
+sbatch_files_j/
 outputs_old/
 outputs_neil/
 outputs_f/
