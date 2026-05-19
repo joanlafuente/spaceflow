@@ -277,9 +277,12 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             
         sample = out.pred_x_prev
         struct_feats_params.data = sample.feats
+
+        # when loss is switched off, this should switch on
+        # feats = struct_feats_params.detach() * std + mean
         
         # Optimization - Structure Loss
-        if iteration < len(t_pairs) - 1:
+        if cfg.sim_guidance.loss_weight > 0 and iteration < len(t_pairs) - 1:
             struct_loss = chunked_contrastive_loss(struct_feats_params[None, None, ...], struct_labels)
 
             total_loss = cfg.sim_guidance.loss_weight * struct_loss
