@@ -19,7 +19,7 @@ export function serviceBaseUrl(
     if (u.origin !== window.location.origin) {
       console.warn(
         `[sq-ui] Ignoring service base URL in dev (not same origin as this page): ${trimmed}\n` +
-          '→ using same-origin paths so Vite can proxy. Remove or fix VITE_SUPERDEC_URL / VITE_SUPERFLEX_URL / VITE_TRELLIS_URL in .env.local.',
+          '→ using same-origin paths so Vite can proxy. Remove or fix VITE_SUPERDEC_URL / VITE_SUPERFLEX_URL / VITE_TRELLIS_URL / VITE_SPACEFLOW_URL in .env.local.',
       );
       return '';
     }

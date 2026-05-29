@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = Path(os.environ.get("SQ_TRELLIS_REPO_ROOT", str(SCRIPT_PATH.parents[2])))
 TRELLIS_SCRATCH = Path(
-    os.environ.get("SQ_TRELLIS_SCRATCH", str(Path("/work/scratch") / os.environ.get("USER", "user") / "spaceflow" / "trellis_ui"))
+    os.environ.get("SQ_TRELLIS_SCRATCH", str(REPO_ROOT / "spaceflow_runtime" / "trellis_ui"))
 )
 
 

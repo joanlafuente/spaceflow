@@ -60,7 +60,7 @@ function squeezeSingletonAxis(
   trailingShape: number[],
   label: string,
 ): ParsedNpy {
-  let shape = [...parsed.shape];
+  const shape = [...parsed.shape];
   while (shape.length > trailingShape.length + 1 && shape[1] === 1) {
     shape.splice(1, 1);
   }
@@ -94,6 +94,28 @@ function parseNpyHeader(headerText: string): { descr: string; shape: number[]; f
           });
   const fortran = /'fortran_order':\s*True/.test(headerText);
   return { descr, shape, fortran };
+}
+
+function parseNpyScalarBool(buffer: ArrayBuffer): boolean | null {
+  const u8 = new Uint8Array(buffer);
+  if (u8.length < 10 || u8[0] !== 0x93 || u8[1] !== 0x4e || u8[2] !== 0x55 || u8[3] !== 0x4d || u8[4] !== 0x50 || u8[5] !== 0x59) {
+    return null;
+  }
+  if (u8[6] !== 1 || u8[7] !== 0) return null;
+  const headerLen = u8[8] | (u8[9] << 8);
+  const headerText = new TextDecoder('latin1').decode(u8.slice(10, 10 + headerLen));
+  const { descr, shape, fortran } = parseNpyHeader(headerText);
+  if (fortran) return null;
+  const n = shape.reduce((acc, value) => acc * value, 1);
+  if (n !== 1) return null;
+  const offset = 10 + headerLen;
+  if (descr === '|b1' || descr === '?' || descr === '<b1') {
+    return u8[offset] !== 0;
+  }
+  if (descr === '<f8' || descr === '<f4') {
+    return readValues(u8, offset, descr, 1)[0] !== 0;
+  }
+  return null;
 }
 
 function readValues(
@@ -278,7 +300,7 @@ export function maybeRescalePrimitivesForEditor(primitives: Primitive[]): Primit
 
 export interface ImportNpzOptions {
   /** If true, apply S @ R and S @ t so Z-up pipeline assets sit upright in Y-up Three.js. */
-  basisZUpToYUp?: boolean;
+  basisZUpToYUp?: boolean | 'auto';
   /** If true, skip expanding tiny normalized fits for slider range (default false). */
   skipEditorRescale?: boolean;
   /**
@@ -299,33 +321,79 @@ function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
   return null;
 }
 
+function parsedVector(parsed: ParsedNpy, expectedLength: number, label: string): number[] {
+  const shape = parsed.shape;
+  const isVector = shape.length === 1 && shape[0] === expectedLength;
+  const isColumn = shape.length === 2 && shape[0] === expectedLength && shape[1] === 1;
+  if (!isVector && !isColumn) {
+    throw new Error(`${label} expected shape (${expectedLength}) or (${expectedLength},1), got (${shape.join(',')})`);
+  }
+  return Array.from(parsed.values);
+}
+
+function filterByConfidence(exports: PrimitiveExport[], confidence: ParsedNpy, threshold = 0.5): PrimitiveExport[] {
+  const scores = parsedVector(confidence, exports.length, 'confidence/exist');
+  let keep = scores
+    .map((score, index) => ({ score, index }))
+    .filter(item => item.score > threshold);
+  if (keep.length === 0 && scores.length > 0) {
+    let bestIndex = 0;
+    for (let i = 1; i < scores.length; i++) {
+      if (scores[i]! > scores[bestIndex]!) bestIndex = i;
+    }
+    keep = [{ score: scores[bestIndex]!, index: bestIndex }];
+  }
+  keep.sort((a, b) => b.score - a.score);
+  return keep.map(item => exports[item.index]!).filter(Boolean);
+}
+
 export async function importNpzToPrimitives(
   blob: Blob,
   namePrefix = 'npz',
   options?: ImportNpzOptions,
 ): Promise<Primitive[]> {
   const zip = await JSZip.loadAsync(blob);
-  const readNpy = async (name: string): Promise<ParsedNpy> => {
-    const f = zip.file(name);
-    if (!f) throw new Error(`Missing ${name} in archive`);
+  const readNpy = async (names: string | string[]): Promise<ParsedNpy> => {
+    const candidates = Array.isArray(names) ? names : [names];
+    const f = candidates.map(name => findZipNpy(zip, name)).find((entry): entry is JSZip.JSZipObject => !!entry);
+    if (!f) throw new Error(`Missing ${candidates[0]} in archive`);
     const buf = await f.async('arraybuffer');
     return parseNpyBuffer(buf);
   };
 
+  const isRawSuperflex = !!findZipNpy(zip, 'scale.npy') && !!findZipNpy(zip, 'shape.npy')
+    && !!findZipNpy(zip, 'trans.npy') && !!findZipNpy(zip, 'rotate.npy');
   const [scales, shapes, translations, rotations] = await Promise.all([
-    readNpy('scales.npy'),
-    readNpy('shapes.npy'),
-    readNpy('translations.npy'),
-    readNpy('rotations.npy'),
+    readNpy(['scales.npy', 'scale.npy']),
+    readNpy(['shapes.npy', 'shape.npy']),
+    readNpy(['translations.npy', 'trans.npy']),
+    readNpy(['rotations.npy', 'rotate.npy']),
   ]);
 
   const taperFile = findZipNpy(zip, 'tapering.npy');
   const bendFile = findZipNpy(zip, 'bending.npy');
+  const controlLevelsFile = findZipNpy(zip, 'control_levels.npy');
+  const confidenceFile = findZipNpy(zip, 'confidence.npy') ?? findZipNpy(zip, 'exist.npy');
+  const zUpFile = findZipNpy(zip, 'z_up.npy');
   const tapering = taperFile ? await taperFile.async('arraybuffer').then(parseNpyBuffer) : null;
   const bending = bendFile ? await bendFile.async('arraybuffer').then(parseNpyBuffer) : null;
+  const controlLevels = controlLevelsFile ? await controlLevelsFile.async('arraybuffer').then(parseNpyBuffer) : null;
+  const confidence = confidenceFile ? await confidenceFile.async('arraybuffer').then(parseNpyBuffer) : null;
+  const zUp = zUpFile ? await zUpFile.async('arraybuffer').then(parseNpyScalarBool).catch(() => null) : null;
 
   let exports = npzArraysToExports(scales, shapes, translations, rotations, tapering, bending);
-  if (options?.basisZUpToYUp) {
+  if (controlLevels) {
+    const levels = parsedVector(controlLevels, exports.length, 'control_levels');
+    exports = exports.map((e, i) => ({
+      ...e,
+      controlLevel: levels[i]! <= 0.5 ? 'low' : 'high',
+    }));
+  }
+  if (isRawSuperflex && confidence) {
+    exports = filterByConfidence(exports, confidence);
+  }
+  const basisZUpToYUp = options?.basisZUpToYUp === true || (options?.basisZUpToYUp === 'auto' && zUp === true);
+  if (basisZUpToYUp) {
     exports = exports.map(e => {
       const { rotation, translation } = applyWorldBasisZUpToYUp(e.rotation, e.translation);
       return { ...e, rotation, translation };
@@ -347,6 +415,7 @@ export async function importNpzToPrimitives(
       id: `npz_${i}_${t}`,
       name: `${namePrefix}_${i}`,
       visible: true,
+      controlLevel: e.controlLevel ?? 'high',
       scales: e.scales,
       shapes: e.shapes,
       translation: e.translation,

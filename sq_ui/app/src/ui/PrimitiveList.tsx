@@ -1,5 +1,10 @@
 import { useCallback, useState, useRef } from 'react';
 import { useStore, PRESETS } from '../state/store';
+import {
+  LOW_CONTROL_BBOX_MARGIN_MAX,
+  LOW_CONTROL_BBOX_MARGIN_MIN,
+  LOW_CONTROL_BBOX_MARGIN_STEP,
+} from '../state/spaceflowConfig';
 
 const PRIM_COLORS = [
   '#4fc3f7', '#81c784', '#ffb74d', '#e57373',
@@ -16,6 +21,9 @@ export default function PrimitiveList() {
   const selectPrimitive = useStore(s => s.selectPrimitive);
   const updatePrimitive = useStore(s => s.updatePrimitive);
   const reorderPrimitives = useStore(s => s.reorderPrimitives);
+  const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
+  const setLowControlBBoxMargin = useStore(s => s.setLowControlBBoxMargin);
+  const lowControlBBoxMarginPercent = Math.round(lowControlBBoxMargin * 100);
 
   const [showPresets, setShowPresets] = useState(false);
   const dragItem = useRef<number | null>(null);
@@ -73,6 +81,9 @@ export default function PrimitiveList() {
               style={{ background: PRIM_COLORS[i % PRIM_COLORS.length] }}
             />
             <span className="prim-name">{p.name}</span>
+            <span className={`control-badge ${p.controlLevel}`}>
+              {p.controlLevel === 'high' ? 'High' : 'Low'}
+            </span>
             <div className="prim-actions">
               <button
                 className="icon-btn"
@@ -98,6 +109,25 @@ export default function PrimitiveList() {
             </div>
           </div>
         ))}
+
+        {primitives.length > 0 && (
+          <div className="scene-list-control">
+            <div className="scene-list-control-label">
+              <span>Low bbox margin</span>
+              <span>{lowControlBBoxMarginPercent}%</span>
+            </div>
+            <input
+              className="slider"
+              type="range"
+              min={LOW_CONTROL_BBOX_MARGIN_MIN}
+              max={LOW_CONTROL_BBOX_MARGIN_MAX}
+              step={LOW_CONTROL_BBOX_MARGIN_STEP}
+              value={lowControlBBoxMargin}
+              onChange={(e) => setLowControlBBoxMargin(Number.parseFloat(e.target.value))}
+              title="0% is the tight bounding box touching the low-control superquadrics."
+            />
+          </div>
+        )}
       </div>
 
       <div className="add-section">

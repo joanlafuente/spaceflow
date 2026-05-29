@@ -4,12 +4,25 @@ import type { Primitive } from '../state/store';
 import { exportNpz } from '../mesh/npzExport';
 import type { PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
+import { primitiveToExport } from '../mesh/spaceflowExport';
 import { isOrthogonal } from '../state/rotation';
 import { eulerToMatrix, matrixToEuler } from '../state/rotation';
 import { editFromText } from '../state/generate';
 import { createFromTextViaSuperdec } from '../state/createPipeline';
 import { generateWithSuperdec } from '../state/superdec';
 import { generateWithSuperflex } from '../state/superflex';
+import {
+  fetchSpaceflowHistory,
+  getSpaceflowRunStatus,
+  openSpaceflowAsset,
+  resolveSpaceflowUrl,
+  saveSpaceflowAsset,
+  startSpaceflowRun,
+  type SpaceflowHistoryEntry,
+  type SpaceflowOutputFile,
+  type SpaceflowRunStatus,
+} from '../state/spaceflow';
+import { npzEditorUrl } from '../state/npzUrl';
 import {
   captureViewportDataUrl,
   captureViewportImageForLlm,
@@ -27,6 +40,60 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+function outputFileLabel(file: SpaceflowOutputFile) {
+  switch (file.relative_path) {
+    case 'sample.glb':
+      return 'Structure mesh';
+    case 'struct_mesh_zup.glb':
+      return 'Structure mesh Z-up';
+    case 'struct_mesh.glb':
+      return 'Structure mesh Y-up';
+    case 'spatial_control_mesh.ply':
+      return 'All SQ control mesh';
+    case 'high_control_spatial_control_mesh.ply':
+      return 'High-control mesh';
+    case 'low_control_superquadric_mask.ply':
+      return 'Low-control mask';
+    case 'voxels/struct_voxels.ply':
+      return 'Structure voxels';
+    case 'struct_renders/000.png':
+      return 'Structure preview';
+    case 'denoising_evolution.mp4':
+      return 'Denoising video';
+    default:
+      return file.relative_path;
+  }
+}
+
+const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
+  'struct_mesh_zup.glb',
+  'sample.glb',
+  'struct_mesh.glb',
+  'app_mesh_zup.glb',
+  'app_mesh.glb',
+];
+
+function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
+  const byPath = new Map(files.map(file => [file.relative_path.toLowerCase(), file]));
+  for (const relativePath of SPACEFLOW_INSPECTION_MESH_PRIORITY) {
+    const file = byPath.get(relativePath);
+    if (file) return file;
+  }
+  return (
+    files.find(file => file.kind === 'mesh' && /\.(glb|gltf)$/i.test(file.relative_path))
+  );
+}
+
 let nextPresetId = 0;
 
 export default function TopBar() {
@@ -34,11 +101,13 @@ export default function TopBar() {
   const selectedId = useStore(s => s.selectedId);
   const selectPrimitive = useStore(s => s.selectPrimitive);
   const loadPreset = useStore(s => s.loadPreset);
+  const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
   const redoStack = useStore(s => s.redoStack);
+  const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
   const [toast, setToast] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showRotateAll, setShowRotateAll] = useState(false);
@@ -63,6 +132,25 @@ export default function TopBar() {
   const [superflexLmOptimization, setSuperflexLmOptimization] = useState(false);
   const [superflexMaxPrimitives, setSuperflexMaxPrimitives] = useState('16');
   const [superflexExistThreshold, setSuperflexExistThreshold] = useState('0.5');
+  const [showSpaceflow, setShowSpaceflow] = useState(false);
+  const [spaceflowSaving, setSpaceflowSaving] = useState(false);
+  const [spaceflowRunning, setSpaceflowRunning] = useState(false);
+  const [spaceflowHistory, setSpaceflowHistory] = useState<SpaceflowHistoryEntry[]>([]);
+  const [spaceflowHistoryLoading, setSpaceflowHistoryLoading] = useState(false);
+  const [showSpaceflowHistoryPanel, setShowSpaceflowHistoryPanel] = useState(false);
+  const [spaceflowRun, setSpaceflowRun] = useState<SpaceflowRunStatus | null>(null);
+  const [spaceflowLogTail, setSpaceflowLogTail] = useState('');
+  const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
+  const [spaceflowAppearanceMode, setSpaceflowAppearanceMode] = useState<'text' | 'image'>('text');
+  const [spaceflowAppearanceText, setSpaceflowAppearanceText] = useState('');
+  const [spaceflowAppearanceImagePath, setSpaceflowAppearanceImagePath] = useState('');
+  const [spaceflowAppearanceImageFile, setSpaceflowAppearanceImageFile] = useState<File | null>(null);
+  const [spaceflowLowTau, setSpaceflowLowTau] = useState('3.0');
+  const [spaceflowHighTau, setSpaceflowHighTau] = useState('10.0');
+  const [spaceflowPolyakTau, setSpaceflowPolyakTau] = useState('0.18');
+  const [spaceflowOutputName, setSpaceflowOutputName] = useState('');
+  const [spaceflowConvertYupToZup, setSpaceflowConvertYupToZup] = useState(true);
+  const [spaceflowDryRun, setSpaceflowDryRun] = useState(false);
   const [projectName, setProjectName] = useState('superquadrics');
   const [genMode, setGenMode] = useState<'create' | 'edit'>('create');
   const [editFocusNames, setEditFocusNames] = useState<string[]>([]);
@@ -73,6 +161,8 @@ export default function TopBar() {
   const genInputRef = useRef<HTMLInputElement>(null);
   const superdecNameRef = useRef<HTMLInputElement>(null);
   const superflexNameRef = useRef<HTMLInputElement>(null);
+  const spaceflowPromptRef = useRef<HTMLInputElement>(null);
+  const inspectedSpaceflowRunRef = useRef<string | null>(null);
 
   const refreshViewportPreview = useCallback(async () => {
     if (!includeViewportInEdit) {
@@ -115,6 +205,12 @@ export default function TopBar() {
   }, [showSuperflex]);
 
   useEffect(() => {
+    if (showSpaceflow) {
+      setTimeout(() => spaceflowPromptRef.current?.focus(), 50);
+    }
+  }, [showSpaceflow]);
+
+  useEffect(() => {
     if (!viewportPreviewModal) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setViewportPreviewModal(false);
@@ -122,6 +218,40 @@ export default function TopBar() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [viewportPreviewModal]);
+
+  useEffect(() => {
+    if (!spaceflowRun?.run_id || spaceflowRun.status !== 'running') return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const status = await getSpaceflowRunStatus(spaceflowRun.run_id);
+        if (cancelled) return;
+        setSpaceflowRun(status.run);
+        setSpaceflowLogTail(status.logTail);
+        if (status.run.status !== 'running') {
+          setSpaceflowRunning(false);
+          const inspectedFile =
+            status.run.status === 'succeeded'
+              ? inspectSpaceflowRunMesh(status.run, true)
+              : null;
+          showToast(
+            inspectedFile
+              ? `SpaceFlow succeeded: loaded ${outputFileLabel(inspectedFile)}`
+              : `SpaceFlow ${status.run.status}: ${status.run.output_dir ?? spaceflowRun.run_id}`,
+            8000,
+          );
+        }
+      } catch (err) {
+        if (!cancelled) setSpaceflowLogTail(`Status check failed: ${err instanceof Error ? err.message : err}`);
+      }
+    };
+    const id = window.setInterval(() => void poll(), 5000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [spaceflowRun?.run_id, spaceflowRun?.status]);
 
   const openViewportPreviewModal = useCallback(() => {
     const full = captureViewportDataUrl();
@@ -131,11 +261,34 @@ export default function TopBar() {
 
   const allOrtho = primitives.every(p => isOrthogonal(p.rotation));
   const hasWarnings = !allOrtho;
-
+  const spaceflowOutputFiles = spaceflowRun?.output_files ?? [];
+  const spaceflowInspectionMesh = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
+  const spaceflowPreviewImage =
+    spaceflowOutputFiles.find(file => file.relative_path === 'struct_renders/000.png') ??
+    spaceflowOutputFiles.find(file => file.kind === 'image');
+  const spaceflowVisibleOutputs = spaceflowOutputFiles
+    .filter(file => file.kind !== 'log')
+    .slice(0, 14);
   const showToast = (msg: string, durationMs = 3000) => {
     setToast(msg);
     setTimeout(() => setToast(null), durationMs);
   };
+
+  function inspectSpaceflowRunMesh(run: SpaceflowRunStatus, automatic = false) {
+    const meshFile = pickSpaceflowInspectionMesh(run.output_files ?? []);
+    if (!meshFile) return null;
+    if (automatic && inspectedSpaceflowRunRef.current === run.run_id) return meshFile;
+    inspectedSpaceflowRunRef.current = run.run_id;
+    setMeshInspection({
+      url: resolveSpaceflowUrl(meshFile.url),
+      name: outputFileLabel(meshFile),
+      runId: run.run_id,
+      path: meshFile.path,
+      relativePath: meshFile.relative_path,
+    });
+    setShowSpaceflow(false);
+    return meshFile;
+  }
 
   const toggleEditFocus = useCallback((name: string) => {
     setEditFocusNames(prev =>
@@ -171,6 +324,136 @@ export default function TopBar() {
     setSuperflexMaxPrimitives('16');
     setSuperflexExistThreshold('0.5');
   }, []);
+
+  const refreshSpaceflowHistory = useCallback(async () => {
+    setSpaceflowHistoryLoading(true);
+    try {
+      const entries = await fetchSpaceflowHistory(30);
+      setSpaceflowHistory(entries);
+    } catch (err) {
+      showToast(`History failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setSpaceflowHistoryLoading(false);
+    }
+  }, []);
+
+  const handleSaveSpaceflowInputs = useCallback(async () => {
+    if (spaceflowSaving || primitives.length === 0) return;
+    setSpaceflowSaving(true);
+    try {
+      const lowTau = Number.parseFloat(spaceflowLowTau) || 3;
+      const highTau = Number.parseFloat(spaceflowHighTau) || 10;
+      const { entry, bundle } = await saveSpaceflowAsset({
+        projectName,
+        primitives,
+        lowTau,
+        highTau,
+        lowControlBBoxMargin,
+      });
+      showToast(
+        `Saved SpaceFlow inputs (${bundle.counts.high} high, ${bundle.counts.low} low)\n${entry.asset_dir}`,
+        8000,
+      );
+      if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
+    } catch (err) {
+      showToast(`SpaceFlow save failed: ${err instanceof Error ? err.message : err}`, 10000);
+    } finally {
+      setSpaceflowSaving(false);
+    }
+  }, [
+    primitives,
+    projectName,
+    refreshSpaceflowHistory,
+    showSpaceflowHistoryPanel,
+    spaceflowHighTau,
+    spaceflowLowTau,
+    spaceflowSaving,
+    lowControlBBoxMargin,
+  ]);
+
+  const handleOpenSpaceflowHistory = useCallback(async (entry: SpaceflowHistoryEntry) => {
+    try {
+      const prims = await openSpaceflowAsset(entry);
+      loadPreset(prims);
+      setProjectName(entry.project_name || projectName);
+      showToast(`Loaded ${prims.length} primitives from ${entry.project_name}`);
+      setShowSpaceflow(false);
+    } catch (err) {
+      showToast(`Open saved asset failed: ${err instanceof Error ? err.message : err}`, 8000);
+    }
+  }, [loadPreset, projectName]);
+
+  const handleStartSpaceflowRun = useCallback(async () => {
+    if (spaceflowRunning || primitives.length === 0) return;
+    const lowTau = Number.parseFloat(spaceflowLowTau);
+    const highTau = Number.parseFloat(spaceflowHighTau);
+    const polyakTau = Number.parseFloat(spaceflowPolyakTau);
+    if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
+      showToast('High tau must be greater than low tau.', 5000);
+      return;
+    }
+    if (!spaceflowTextPrompt.trim()) {
+      showToast('Enter a SpaceFlow text prompt.', 5000);
+      return;
+    }
+    setSpaceflowRunning(true);
+    setSpaceflowLogTail('');
+    try {
+      const outputName =
+        spaceflowOutputName.trim() ||
+        projectName.replace(/[^a-zA-Z0-9_-]/g, '_') ||
+        'spaceflow_run';
+      const { run, bundle } = await startSpaceflowRun({
+        projectName,
+        primitives,
+        appearanceImageFile: spaceflowAppearanceImageFile,
+        runConfig: {
+          textPrompt: spaceflowTextPrompt.trim(),
+          appearanceMode: spaceflowAppearanceMode,
+          appearanceText: spaceflowAppearanceText.trim() || spaceflowTextPrompt.trim(),
+          appearanceImagePath: spaceflowAppearanceImagePath.trim(),
+          lowTau,
+          highTau,
+          polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
+          outputName,
+          convertYupToZup: spaceflowConvertYupToZup,
+          lowControlBBoxMargin,
+          dryRun: spaceflowDryRun,
+        },
+      });
+      setSpaceflowRun(run);
+      if (run.status === 'succeeded') {
+        inspectSpaceflowRunMesh(run, true);
+      }
+      showToast(
+        `${spaceflowDryRun ? 'Prepared' : 'Started'} SpaceFlow (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
+        8000,
+      );
+      if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
+      if (run.status !== 'running') setSpaceflowRunning(false);
+    } catch (err) {
+      showToast(`SpaceFlow run failed: ${err instanceof Error ? err.message : err}`, 10000);
+      setSpaceflowRunning(false);
+    }
+  }, [
+    primitives,
+    projectName,
+    refreshSpaceflowHistory,
+    showSpaceflowHistoryPanel,
+    spaceflowAppearanceImageFile,
+    spaceflowAppearanceImagePath,
+    spaceflowAppearanceMode,
+    spaceflowAppearanceText,
+    spaceflowConvertYupToZup,
+    spaceflowDryRun,
+    spaceflowHighTau,
+    spaceflowLowTau,
+    spaceflowOutputName,
+    spaceflowPolyakTau,
+    spaceflowRunning,
+    spaceflowTextPrompt,
+    lowControlBBoxMargin,
+  ]);
 
   const handleGenerate = useCallback(async () => {
     const prompt = genPrompt.trim();
@@ -342,14 +625,7 @@ export default function TopBar() {
 
   const handleDownloadNpz = useCallback(async () => {
     try {
-      const exports: PrimitiveExport[] = primitives.map(p => ({
-        scales: p.scales,
-        shapes: p.shapes,
-        translation: p.translation,
-        rotation: p.rotation,
-        ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
-        ...(p.bending !== undefined ? { bending: p.bending } : {}),
-      }));
+      const exports: PrimitiveExport[] = primitives.map(primitiveToExport);
       const blob = await exportNpz(exports);
       const filename = `${projectName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'superquadrics'}.npz`;
       downloadBlob(blob, filename);
@@ -358,11 +634,12 @@ export default function TopBar() {
       showToast(`Export failed: ${err}`);
     }
     setShowExport(false);
-  }, [primitives]);
+  }, [primitives, projectName]);
 
   const handleCopyJson = useCallback(() => {
     const data = primitives.map(p => ({
       name: p.name,
+      controlLevel: p.controlLevel,
       scales: p.scales,
       shapes: p.shapes,
       translation: p.translation,
@@ -386,6 +663,7 @@ export default function TopBar() {
         const text = await file.text();
         const data = JSON.parse(text) as Array<{
           name?: string;
+          controlLevel?: 'high' | 'low';
           scales: [number, number, number];
           shapes: [number, number];
           translation: [number, number, number];
@@ -401,6 +679,7 @@ export default function TopBar() {
             id: `imported_${++nextPresetId}_${Date.now()}`,
             name: d.name ?? `Imported ${nextPresetId}`,
             visible: true,
+            controlLevel: d.controlLevel ?? 'high',
             scales: d.scales,
             shapes: d.shapes,
             translation: d.translation,
@@ -460,24 +739,36 @@ export default function TopBar() {
     setShowExport(false);
   }, [loadPreset]);
 
+  const handleOpenNpzPath = useCallback(() => {
+    const path = window.prompt('Path to superflex.npz');
+    const source = path?.trim();
+    if (!source) return;
+    if (!source.toLowerCase().split(/[?#]/, 1)[0]?.endsWith('.npz')) {
+      showToast('Please enter a .npz path.', 5000);
+      return;
+    }
+    setShowExport(false);
+    window.location.assign(npzEditorUrl(source));
+  }, []);
+
   const handleLoadTemplate = useCallback((template: string) => {
     const templates: Record<string, () => Primitive[]> = {
       'Single Ellipsoid': () => {
         const euler: [number, number, number] = [0, 0, 0];
         return [{
-          id: `t_${++nextPresetId}_${Date.now()}`, name: 'Ellipsoid', visible: true,
+          id: `t_${++nextPresetId}_${Date.now()}`, name: 'Ellipsoid', visible: true, controlLevel: 'high',
           scales: [0.5, 0.5, 1], shapes: [1, 1], translation: [0, 0, 0],
           rotation: eulerToMatrix(euler), eulerDeg: euler,
         }];
       },
       'Table (5 parts)': () => {
         const leg = (x: number, z: number, idx: number): Primitive => ({
-          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true,
+          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true, controlLevel: 'high',
           scales: [0.06, 0.4, 0.06], shapes: [0.4, 0.4], translation: [x, -0.44, z],
           rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0],
         });
         return [
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Top', visible: true,
+          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Top', visible: true, controlLevel: 'high',
             scales: [0.8, 0.04, 0.5], shapes: [0.3, 0.3], translation: [0, 0, 0],
             rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
           leg(-0.65, -0.4, 1), leg(0.65, -0.4, 2),
@@ -486,15 +777,15 @@ export default function TopBar() {
       },
       'Chair (6 parts)': () => {
         const leg = (x: number, z: number, idx: number): Primitive => ({
-          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true,
+          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true, controlLevel: 'high',
           scales: [0.05, 0.35, 0.05], shapes: [0.4, 0.4], translation: [x, -0.39, z],
           rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0],
         });
         return [
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Seat', visible: true,
+          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Seat', visible: true, controlLevel: 'high',
             scales: [0.5, 0.04, 0.45], shapes: [0.3, 0.3], translation: [0, 0, 0],
             rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Backrest', visible: true,
+          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Backrest', visible: true, controlLevel: 'high',
             scales: [0.5, 0.35, 0.04], shapes: [0.3, 0.3], translation: [0, 0.39, -0.4],
             rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
           leg(-0.42, -0.38, 1), leg(0.42, -0.38, 2),
@@ -609,6 +900,7 @@ export default function TopBar() {
               onClick={() => {
                 resetSuperdec();
                 resetSuperflex();
+                setShowSpaceflow(false);
                 setShowGenerate(true);
                 setTimeout(() => genInputRef.current?.focus(), 50);
               }}
@@ -804,6 +1096,7 @@ export default function TopBar() {
               className="btn-generate btn-superdec"
               onClick={() => {
                 setShowGenerate(false);
+                setShowSpaceflow(false);
                 resetSuperflex();
                 setShowSuperdec(true);
               }}
@@ -975,6 +1268,7 @@ export default function TopBar() {
               className="btn-generate btn-superflex"
               onClick={() => {
                 setShowGenerate(false);
+                setShowSpaceflow(false);
                 resetSuperdec();
                 setShowSuperflex(true);
               }}
@@ -1141,6 +1435,324 @@ export default function TopBar() {
             </>
           )}
         </div>
+        <div className={`generate-group ${showSpaceflow ? 'is-open' : ''}`}>
+          {!showSpaceflow ? (
+            <button
+              className="btn-generate btn-spaceflow"
+              onClick={() => {
+                setShowGenerate(false);
+                resetSuperdec();
+                resetSuperflex();
+                setShowSpaceflow(true);
+              }}
+              disabled={spaceflowSaving || spaceflowRunning}
+              title="Save SpaceFlow inputs and launch two-level tau runs"
+            >
+              {spaceflowRunning ? 'Running...' : 'SpaceFlow'}
+            </button>
+          ) : (
+            <>
+              <div
+                className="generate-popover-backdrop"
+                onClick={() => {
+                  if (!spaceflowSaving && !spaceflowRunning) setShowSpaceflow(false);
+                }}
+                aria-hidden
+              />
+              <div className="generate-open-bar">
+                <div className="gen-mode-row" role="group" aria-label="SpaceFlow">
+                  <span className="superdec-open-label">SpaceFlow structure</span>
+                </div>
+                <button
+                  className="toolbar-btn"
+                  onClick={() => setShowSpaceflow(false)}
+                  disabled={spaceflowSaving || spaceflowRunning}
+                  title="Close"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+              <div
+                className="generate-popover spaceflow-popover"
+                role="dialog"
+                aria-label="Run SpaceFlow"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Inputs</span>
+                    <div className="spaceflow-head-actions">
+                      <button
+                        type="button"
+                        className="edit-focus-add-sel"
+                        onClick={() => {
+                          const next = !showSpaceflowHistoryPanel;
+                          setShowSpaceflowHistoryPanel(next);
+                          if (next) void refreshSpaceflowHistory();
+                        }}
+                        disabled={spaceflowHistoryLoading}
+                        title="Show saved SpaceFlow input bundles"
+                      >
+                        {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
+                      </button>
+                      <button
+                        type="button"
+                        className="edit-focus-add-sel"
+                        onClick={handleSaveSpaceflowInputs}
+                        disabled={spaceflowSaving || primitives.length === 0}
+                        title="Save all.npz, high_control.npz, and low_control_bbox.npz"
+                      >
+                        {spaceflowSaving ? 'Saving...' : 'Save inputs'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="spaceflow-summary">
+                    {primitives.filter(p => p.controlLevel === 'high').length} high · {primitives.filter(p => p.controlLevel === 'low').length} low
+                  </p>
+                  <p className="edit-focus-hint">
+                    Current launch path writes the structure-stage outputs; high and low groups control the local tau sampler.
+                  </p>
+                </div>
+
+                {showSpaceflowHistoryPanel && (
+                  <div className="edit-focus-block spaceflow-history-block">
+                    <div className="edit-focus-head">
+                      <span className="edit-focus-title">Saved inputs</span>
+                      <button
+                        type="button"
+                        className="edit-focus-add-sel"
+                        onClick={() => void refreshSpaceflowHistory()}
+                        disabled={spaceflowHistoryLoading}
+                      >
+                        {spaceflowHistoryLoading ? 'Loading...' : 'Refresh'}
+                      </button>
+                    </div>
+                    <div className="spaceflow-history-list">
+                      {spaceflowHistory.length === 0 && (
+                        <p className="edit-focus-hint">No saved SpaceFlow input bundles yet.</p>
+                      )}
+                      {spaceflowHistory.map(entry => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className="spaceflow-history-item"
+                          onClick={() => void handleOpenSpaceflowHistory(entry)}
+                          title={`${entry.paths.all}\n${entry.paths.high_control}\n${entry.paths.low_control_bbox}`}
+                        >
+                          <span className="spaceflow-history-title">{entry.project_name}</span>
+                          <span className="spaceflow-history-meta">
+                            {entry.counts?.high ?? '?'} high · {entry.counts?.low ?? '?'} low · {entry.saved_at}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <label className="generate-popover-label" htmlFor="sq-spaceflow-prompt-input">
+                  Shape prompt
+                </label>
+                <input
+                  id="sq-spaceflow-prompt-input"
+                  ref={spaceflowPromptRef}
+                  type="text"
+                  className="generate-input generate-input-popover"
+                  value={spaceflowTextPrompt}
+                  onChange={(e) => setSpaceflowTextPrompt(e.target.value)}
+                  disabled={spaceflowRunning}
+                  placeholder="e.g. A chair"
+                />
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Appearance guidance</span>
+                    <div className="gen-mode-row">
+                      <button
+                        type="button"
+                        className={`gen-mode-btn ${spaceflowAppearanceMode === 'text' ? 'active' : ''}`}
+                        onClick={() => setSpaceflowAppearanceMode('text')}
+                        disabled={spaceflowRunning}
+                      >
+                        Text
+                      </button>
+                      <button
+                        type="button"
+                        className={`gen-mode-btn ${spaceflowAppearanceMode === 'image' ? 'active' : ''}`}
+                        onClick={() => setSpaceflowAppearanceMode('image')}
+                        disabled={spaceflowRunning}
+                      >
+                        Image
+                      </button>
+                    </div>
+                  </div>
+                  {spaceflowAppearanceMode === 'text' ? (
+                    <input
+                      type="text"
+                      className="generate-input generate-input-popover"
+                      value={spaceflowAppearanceText}
+                      onChange={(e) => setSpaceflowAppearanceText(e.target.value)}
+                      disabled={spaceflowRunning}
+                      placeholder="Defaults to the shape prompt"
+                    />
+                  ) : (
+                    <div className="spaceflow-image-inputs">
+                      <input
+                        type="text"
+                        className="generate-input generate-input-popover"
+                        value={spaceflowAppearanceImagePath}
+                        onChange={(e) => setSpaceflowAppearanceImagePath(e.target.value)}
+                        disabled={spaceflowRunning}
+                        placeholder="Cluster path to image, or choose file below"
+                      />
+                      <label className="superdec-file-picker">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setSpaceflowAppearanceImageFile(e.target.files?.[0] ?? null)}
+                          disabled={spaceflowRunning}
+                        />
+                        <span>{spaceflowAppearanceImageFile ? spaceflowAppearanceImageFile.name : 'Choose appearance image'}</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <div className="edit-focus-block">
+                  <div className="edit-focus-head">
+                    <span className="edit-focus-title">Run options</span>
+                  </div>
+                  <div className="superdec-number-grid">
+                    <label className="superdec-number-field">
+                      <span>Low tau</span>
+                      <input className="num-input" type="number" step="0.5" value={spaceflowLowTau} onChange={(e) => setSpaceflowLowTau(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>High tau</span>
+                      <input className="num-input" type="number" step="0.5" value={spaceflowHighTau} onChange={(e) => setSpaceflowHighTau(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>Polyak tau</span>
+                      <input className="num-input" type="number" step="0.01" value={spaceflowPolyakTau} onChange={(e) => setSpaceflowPolyakTau(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>Output name</span>
+                      <input className="num-input" type="text" value={spaceflowOutputName} onChange={(e) => setSpaceflowOutputName(e.target.value)} disabled={spaceflowRunning} placeholder={projectName} />
+                    </label>
+                  </div>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={spaceflowConvertYupToZup}
+                      onChange={(e) => setSpaceflowConvertYupToZup(e.target.checked)}
+                      disabled={spaceflowRunning}
+                    />
+                    <span>Convert generated mesh from Y-up to Z-up</span>
+                  </label>
+                  <label className="edit-viewport-include">
+                    <input
+                      type="checkbox"
+                      checked={spaceflowDryRun}
+                      onChange={(e) => setSpaceflowDryRun(e.target.checked)}
+                      disabled={spaceflowRunning}
+                    />
+                    <span>Dry run: save inputs and build command without GPU work</span>
+                  </label>
+                </div>
+
+                <div className="generate-popover-footer">
+                  <button
+                    className="btn-generate-go"
+                    type="button"
+                    onClick={handleStartSpaceflowRun}
+                    disabled={spaceflowRunning || primitives.length === 0}
+                  >
+                    {spaceflowRunning ? 'Running' : spaceflowDryRun ? 'Dry Run' : 'Run'}
+                  </button>
+                  {spaceflowRun?.run_id && (
+                    <span className={`spaceflow-run-state ${spaceflowRun.status}`}>
+                      {spaceflowRun.status}
+                    </span>
+                  )}
+                </div>
+
+                {spaceflowRun?.output_dir && (
+                  <div className="spaceflow-output-path">
+                    <span>Output directory</span>
+                    <code className="spaceflow-path-block" title={spaceflowRun.output_dir}>
+                      {spaceflowRun.output_dir}
+                    </code>
+                  </div>
+                )}
+
+                {spaceflowVisibleOutputs.length > 0 && (
+                  <div className="edit-focus-block spaceflow-results-block">
+                    <div className="edit-focus-head">
+                      <span className="edit-focus-title">Generated files</span>
+                      <div className="spaceflow-head-actions">
+                        {spaceflowRun?.pipeline_stage === 'structure_only' && (
+                          <span className="spaceflow-stage-pill">structure stage</span>
+                        )}
+                        {spaceflowRun && spaceflowInspectionMesh && (
+                          <button
+                            type="button"
+                            className="edit-focus-add-sel"
+                            onClick={() => {
+                              const inspectedFile = inspectSpaceflowRunMesh(spaceflowRun);
+                              showToast(
+                                inspectedFile
+                                  ? `Loaded ${outputFileLabel(inspectedFile)}`
+                                  : 'No GLB mesh found in this run.',
+                                5000,
+                              );
+                            }}
+                          >
+                            Inspect mesh
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {spaceflowPreviewImage && (
+                      <a
+                        className="spaceflow-output-preview"
+                        href={resolveSpaceflowUrl(spaceflowPreviewImage.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={spaceflowPreviewImage.path}
+                      >
+                        <img src={resolveSpaceflowUrl(spaceflowPreviewImage.url)} alt="SpaceFlow structure preview" />
+                      </a>
+                    )}
+                    <div className="spaceflow-output-list">
+                      {spaceflowVisibleOutputs.map(file => (
+                        <a
+                          key={file.relative_path}
+                          className={`spaceflow-output-item ${file.kind}`}
+                          href={resolveSpaceflowUrl(file.url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={file.path}
+                        >
+                          <span>{outputFileLabel(file)}</span>
+                          <small>{file.kind} {formatFileSize(file.size)}</small>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {spaceflowLogTail && (
+                  <div className="edit-focus-block spaceflow-log-block">
+                    <div className="edit-focus-head">
+                      <span className="edit-focus-title">Run log</span>
+                    </div>
+                    <pre className="spaceflow-log-tail">{spaceflowLogTail}</pre>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="top-right">
@@ -1178,6 +1790,9 @@ export default function TopBar() {
               </button>
               <button type="button" className="dropdown-item" onClick={handleImportJson}>
                 Import JSON preset
+              </button>
+              <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
+                Open .npz path...
               </button>
               <button type="button" className="dropdown-item" onClick={handleImportNpz}>
                 Import .npz (as stored)

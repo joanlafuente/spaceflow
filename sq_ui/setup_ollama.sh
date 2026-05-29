@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-time setup: Ollama binary + model weights in YOUR scratch space (cluster).
+# One-time setup: Ollama binary + model weights in shared course storage (cluster).
 # After this, start the proxy from the printed path, then run the SQ UI dev server.
 #
 # Usage:
@@ -8,7 +8,8 @@
 #   bash sq_ui/setup_ollama.sh
 #
 # Optional environment:
-#   SQ_OLLAMA_SCRATCH — install root (default /work/scratch/$USER/spaceflow/superquadric_ui)
+#   SQ_OLLAMA_BASE    — install root (default <spaceflow>/spaceflow_runtime/superquadric_ui)
+#   SQ_OLLAMA_SCRATCH — legacy alias for SQ_OLLAMA_BASE
 #   OLLAMA_VERSION   — release tag (default v0.20.2)
 #   OLLAMA_MODEL     — model to pull (default gemma4:e2b)
 #   SKIP_DOWNLOAD    — if set to 1, skip tarball download (reuse existing bin)
@@ -17,7 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE="${SQ_OLLAMA_SCRATCH:-/work/scratch/$USER/spaceflow/superquadric_ui}"
+SPACEFLOW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE="${SQ_OLLAMA_BASE:-${SQ_OLLAMA_SCRATCH:-$SPACEFLOW_ROOT/spaceflow_runtime/superquadric_ui}}"
 OLLAMA_VERSION="${OLLAMA_VERSION:-v0.20.2}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-gemma4:e2b}"
 TARBALL_URL="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"

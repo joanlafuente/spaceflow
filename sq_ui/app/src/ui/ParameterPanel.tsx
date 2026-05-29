@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useStore } from '../state/store';
 import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
 
@@ -6,6 +6,7 @@ import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
 const SCALE_MIN = 0.0001;
 const SCALE_SLIDER_MAX = 5;
 const SCALE_STEP = 0.0001;
+const LOG_SLIDER_STEPS = 1000;
 
 interface SliderRowProps {
   label: string;
@@ -17,11 +18,20 @@ interface SliderRowProps {
   tooltip?: string;
   /** Decimal places for the number box (range uses `step`). Use more for very small values (e.g. SuperDec fits). */
   inputDecimals?: number;
+  rangeMode?: 'linear' | 'log';
 }
 
-function SliderRow({ label, value, onChange, min, max, step, tooltip, inputDecimals = 4 }: SliderRowProps) {
+function SliderRow({ label, value, onChange, min, max, step, tooltip, inputDecimals = 4, rangeMode = 'linear' }: SliderRowProps) {
+  const safeMin = rangeMode === 'log' ? Math.max(min, Number.EPSILON) : min;
+  const safeMax = Math.max(max, safeMin);
+  const clamped = Math.min(safeMax, Math.max(safeMin, value));
+  const logMin = Math.log(safeMin);
+  const logMax = Math.log(safeMax);
+  const logDenom = logMax - logMin || 1;
   // Range inputs require value in [min,max]; clamp only for the thumb, keep number box on the real value.
-  const forRange = Math.min(max, Math.max(min, value));
+  const forRange = rangeMode === 'log'
+    ? ((Math.log(clamped) - logMin) / logDenom) * LOG_SLIDER_STEPS
+    : clamped;
   const numDisplay = Number(value.toFixed(inputDecimals));
   return (
     <div className="slider-row">
@@ -32,11 +42,17 @@ function SliderRow({ label, value, onChange, min, max, step, tooltip, inputDecim
       <input
         type="range"
         className="slider"
-        min={min}
-        max={max}
-        step={step}
+        min={rangeMode === 'log' ? 0 : min}
+        max={rangeMode === 'log' ? LOG_SLIDER_STEPS : max}
+        step={rangeMode === 'log' ? 1 : step}
         value={forRange}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
+        onChange={(e) => {
+          const raw = parseFloat(e.target.value);
+          const next = rangeMode === 'log'
+            ? Math.exp(logMin + (raw / LOG_SLIDER_STEPS) * logDenom)
+            : raw;
+          onChange(next);
+        }}
       />
       <input
         type="number"
@@ -52,6 +68,11 @@ function SliderRow({ label, value, onChange, min, max, step, tooltip, inputDecim
   );
 }
 
+function niceScaleMax(value: number): number {
+  const candidates = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10];
+  return candidates.find(candidate => candidate >= value) ?? 10;
+}
+
 export default function ParameterPanel() {
   const primitives = useStore(s => s.primitives);
   const selectedId = useStore(s => s.selectedId);
@@ -60,6 +81,8 @@ export default function ParameterPanel() {
   const setPreviewResolution = useStore(s => s.setPreviewResolution);
   const showNormalized = useStore(s => s.showNormalized);
   const setShowNormalized = useStore(s => s.setShowNormalized);
+  const showControlPreview = useStore(s => s.showControlPreview);
+  const setShowControlPreview = useStore(s => s.setShowControlPreview);
 
   const prim = primitives.find(p => p.id === selectedId);
 
@@ -111,6 +134,16 @@ export default function ParameterPanel() {
     updatePrimitive(prim.id, { name });
   }, [prim, updatePrimitive]);
 
+  const updateControlLevel = useCallback((controlLevel: 'high' | 'low') => {
+    if (!prim) return;
+    updatePrimitive(prim.id, { controlLevel });
+  }, [prim, updatePrimitive]);
+
+  const scaleSliderMax = useMemo(() => {
+    const maxScale = Math.max(...primitives.flatMap(p => p.scales), 0.05);
+    return Math.min(SCALE_SLIDER_MAX, niceScaleMax(maxScale * 1.5));
+  }, [primitives]);
+
   if (!prim) {
     return (
       <div className="panel right-panel">
@@ -140,6 +173,16 @@ export default function ParameterPanel() {
               <span>Show pipeline-normalized view</span>
             </label>
           </div>
+          <div className="checkbox-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={showControlPreview}
+                onChange={(e) => setShowControlPreview(e.target.checked)}
+              />
+              <span>Show control preview</span>
+            </label>
+          </div>
         </div>
       </div>
     );
@@ -166,10 +209,38 @@ export default function ParameterPanel() {
 
       <div className="section">
         <div className="section-title">
+          Control
+          <span
+            className="help-badge"
+            title="High-control primitives are preserved more strongly. Low-control primitives define the area where SpaceFlow is freer to imagine."
+          >
+            ?
+          </span>
+        </div>
+        <div className="control-level-toggle" role="group" aria-label="Control level">
+          <button
+            type="button"
+            className={`control-level-btn high ${prim.controlLevel === 'high' ? 'active' : ''}`}
+            onClick={() => updateControlLevel('high')}
+          >
+            High
+          </button>
+          <button
+            type="button"
+            className={`control-level-btn low ${prim.controlLevel === 'low' ? 'active' : ''}`}
+            onClick={() => updateControlLevel('low')}
+          >
+            Low
+          </button>
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-title">
           Scales (A, B, C)
           <span
             className="help-badge"
-            title="Half-axes (not diameter). SuperDec / tiny NPZ fits are auto-rescaled so a typical half-axis is ~2.5 (middle of the slider). Templates use hand-tuned values (often ~0.5–1)."
+            title="Half-axes (not diameter). The slider uses a logarithmic, scene-aware range so small fitted parts remain editable; use the number box for exact values."
           >
             ?
           </span>
@@ -181,9 +252,10 @@ export default function ParameterPanel() {
             value={prim.scales[i]}
             onChange={(v) => updateScales(i, v)}
             min={SCALE_MIN}
-            max={SCALE_SLIDER_MAX}
+            max={scaleSliderMax}
             step={SCALE_STEP}
             inputDecimals={6}
+            rangeMode="log"
           />
         ))}
       </div>
@@ -197,15 +269,19 @@ export default function ParameterPanel() {
           label="e₁"
           value={prim.shapes[0]}
           onChange={(v) => updateShapes(0, v)}
-          min={0.05} max={4} step={0.05}
+          min={0.05} max={4} step={0.001}
           tooltip="e₁: use ~1 for ball; ~0.05 with e₂=1 and 90°X for upright cylinder"
+          inputDecimals={6}
+          rangeMode="log"
         />
         <SliderRow
           label="e₂"
           value={prim.shapes[1]}
           onChange={(v) => updateShapes(1, v)}
-          min={0.05} max={4} step={0.05}
+          min={0.05} max={4} step={0.001}
           tooltip="e₂: use ~1 for ball/cylinder cross-section; ~0.05 with e₁=0.05 and 90°X for cube"
+          inputDecimals={6}
+          rangeMode="log"
         />
         <div className="shape-presets">
           <button
@@ -401,6 +477,16 @@ export default function ParameterPanel() {
               onChange={(e) => setShowNormalized(e.target.checked)}
             />
             <span>Show pipeline-normalized view</span>
+          </label>
+        </div>
+        <div className="checkbox-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={showControlPreview}
+              onChange={(e) => setShowControlPreview(e.target.checked)}
+            />
+            <span>Show control preview</span>
           </label>
         </div>
       </div>

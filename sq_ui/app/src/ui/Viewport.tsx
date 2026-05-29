@@ -1,12 +1,15 @@
-import { useRef, useMemo, useCallback, useEffect } from 'react';
+/* eslint-disable react-hooks/immutability, react-hooks/refs */
+import { useRef, useMemo, useCallback, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, GizmoHelper, GizmoViewport, Grid } from '@react-three/drei';
+import { OrbitControls, GizmoHelper, GizmoViewport, Grid, Html } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as THREE from 'three';
 import { useStore } from '../state/store';
-import type { Primitive } from '../state/store';
+import type { MeshInspectionSource, Primitive } from '../state/store';
 import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superquadric';
+import { buildLowControlBoundingBoxPrimitive } from '../mesh/spaceflowExport';
 import { setViewportCapture } from '../state/viewportCapture';
 
 function superflexDeformForPrimitive(p: Primitive) {
@@ -55,6 +58,119 @@ type DragState = {
   undoPushed: boolean;
 };
 
+type LoadedGeneratedMesh = {
+  object: THREE.Object3D;
+  center: [number, number, number];
+  fitScale: number;
+};
+
+function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
+  const object = gltf.scene.clone(true);
+  object.traverse(child => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    if (!mesh.material) {
+      mesh.material = new THREE.MeshStandardMaterial({
+        color: '#cbd5e1',
+        roughness: 0.55,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      });
+      return;
+    }
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.forEach(material => {
+      material.side = THREE.DoubleSide;
+      material.needsUpdate = true;
+    });
+  });
+
+  const box = new THREE.Box3().setFromObject(object);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fitScale = Number.isFinite(maxDim) && maxDim > 1e-6 ? 2.4 / maxDim : 1;
+
+  return {
+    object,
+    center: [center.x, center.y, center.z],
+    fitScale,
+  };
+}
+
+function GeneratedMesh({ source }: { source: MeshInspectionSource }) {
+  const [mesh, setMesh] = useState<LoadedGeneratedMesh | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMesh(null);
+    setError(null);
+    const loader = new GLTFLoader();
+    loader.load(
+      source.url,
+      (gltf) => {
+        if (cancelled) return;
+        setMesh(prepareGeneratedMesh(gltf));
+      },
+      undefined,
+      (err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Could not load generated mesh');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [source.url]);
+
+  if (error) {
+    return (
+      <Html center className="viewport-mesh-status">
+        Mesh load failed
+      </Html>
+    );
+  }
+
+  if (!mesh) {
+    return (
+      <Html center className="viewport-mesh-status">
+        Loading mesh
+      </Html>
+    );
+  }
+
+  const [cx, cy, cz] = mesh.center;
+  const s = mesh.fitScale;
+  return (
+    <group scale={s} position={[-cx * s, -cy * s, -cz * s]}>
+      <primitive object={mesh.object} />
+    </group>
+  );
+}
+
+function ResetCameraOnModeChange({ modeKey }: { modeKey: string }) {
+  const camera = useThree(s => s.camera);
+  const controls = useThree(s => s.controls as OrbitControlsImpl | null);
+
+  useEffect(() => {
+    camera.position.set(2.5, -2.2, 2.2);
+    camera.up.set(0, 0, 1);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    if (controls) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+  }, [camera, controls, modeKey]);
+
+  return null;
+}
+
 function SuperquadricMesh({
   primitive,
   index,
@@ -63,6 +179,7 @@ function SuperquadricMesh({
   normCenter,
   normScale,
   showNormalized,
+  showControlPreview,
 }: {
   primitive: Primitive;
   index: number;
@@ -71,6 +188,7 @@ function SuperquadricMesh({
   normCenter: [number, number, number];
   normScale: number;
   showNormalized: boolean;
+  showControlPreview: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const outlineRef = useRef<THREE.LineSegments>(null);
@@ -120,7 +238,9 @@ function SuperquadricMesh({
     return { geometry: geo, edgesGeometry: edges };
   }, [primitive, resolution, normCenter, normScale, showNormalized]);
 
-  const color = PRIM_COLORS[index % PRIM_COLORS.length];
+  const color = showControlPreview
+    ? (primitive.controlLevel === 'high' ? '#2dd4bf' : '#f59e0b')
+    : PRIM_COLORS[index % PRIM_COLORS.length];
 
   const windowDragCleanupRef = useRef<(() => void) | null>(null);
 
@@ -261,11 +381,68 @@ function SuperquadricMesh({
   );
 }
 
+function LowControlBBoxPreview({
+  primitives,
+  normCenter,
+  normScale,
+  showNormalized,
+  marginFraction,
+}: {
+  primitives: Primitive[];
+  normCenter: [number, number, number];
+  normScale: number;
+  showNormalized: boolean;
+  marginFraction: number;
+}) {
+  const geometry = useMemo(() => {
+    try {
+      const { bbox } = buildLowControlBoundingBoxPrimitive(primitives, marginFraction);
+      const corners: [number, number, number][] = [
+        [bbox.min[0], bbox.min[1], bbox.min[2]],
+        [bbox.max[0], bbox.min[1], bbox.min[2]],
+        [bbox.max[0], bbox.max[1], bbox.min[2]],
+        [bbox.min[0], bbox.max[1], bbox.min[2]],
+        [bbox.min[0], bbox.min[1], bbox.max[2]],
+        [bbox.max[0], bbox.min[1], bbox.max[2]],
+        [bbox.max[0], bbox.max[1], bbox.max[2]],
+        [bbox.min[0], bbox.max[1], bbox.max[2]],
+      ];
+      const edges = [
+        0, 1, 1, 2, 2, 3, 3, 0,
+        4, 5, 5, 6, 6, 7, 7, 4,
+        0, 4, 1, 5, 2, 6, 3, 7,
+      ];
+      const positions = new Float32Array(edges.length * 3);
+      edges.forEach((cornerIndex, i) => {
+        const corner = corners[cornerIndex]!;
+        positions[i * 3] = showNormalized ? (corner[0] - normCenter[0]) * normScale : corner[0];
+        positions[i * 3 + 1] = showNormalized ? (corner[1] - normCenter[1]) * normScale : corner[1];
+        positions[i * 3 + 2] = showNormalized ? (corner[2] - normCenter[2]) * normScale : corner[2];
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return geo;
+    } catch {
+      return null;
+    }
+  }, [primitives, normCenter, normScale, showNormalized, marginFraction]);
+
+  if (!geometry) return null;
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color="#fbbf24" transparent opacity={0.95} />
+    </lineSegments>
+  );
+}
+
 function Scene() {
   const primitives = useStore(s => s.primitives);
+  const meshInspection = useStore(s => s.meshInspection);
   const selectedId = useStore(s => s.selectedId);
   const resolution = useStore(s => s.previewResolution);
   const showNormalized = useStore(s => s.showNormalized);
+  const showControlPreview = useStore(s => s.showControlPreview);
+  const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
   const selectPrimitive = useStore(s => s.selectPrimitive);
 
   // Pipeline normalization is useful for matching training/export conventions,
@@ -340,20 +517,36 @@ function Scene() {
       {/* Axes */}
       <axesHelper args={[1.5]} />
 
-      <group onPointerMissed={handleMiss}>
-        {primitives.map((p, i) => (
-          <SuperquadricMesh
-            key={p.id}
-            primitive={p}
-            index={i}
-            selected={p.id === selectedId}
-            resolution={resolution}
-            normCenter={normCenter}
-            normScale={normScale}
-            showNormalized={showNormalized}
-          />
-        ))}
-      </group>
+      <ResetCameraOnModeChange modeKey={meshInspection?.url ?? 'sqs'} />
+
+      {meshInspection ? (
+        <GeneratedMesh source={meshInspection} />
+      ) : (
+        <group onPointerMissed={handleMiss}>
+          {primitives.map((p, i) => (
+            <SuperquadricMesh
+              key={p.id}
+              primitive={p}
+              index={i}
+              selected={p.id === selectedId}
+              resolution={resolution}
+              normCenter={normCenter}
+              normScale={normScale}
+              showNormalized={showNormalized}
+              showControlPreview={showControlPreview}
+            />
+          ))}
+          {showControlPreview && (
+            <LowControlBBoxPreview
+              primitives={primitives}
+              normCenter={normCenter}
+              normScale={normScale}
+              showNormalized={showNormalized}
+              marginFraction={lowControlBBoxMargin}
+            />
+          )}
+        </group>
+      )}
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
@@ -364,8 +557,11 @@ function Scene() {
 }
 
 export default function Viewport() {
+  const meshInspection = useStore(s => s.meshInspection);
+  const setMeshInspection = useStore(s => s.setMeshInspection);
+
   return (
-    <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+    <div className="viewport-shell">
       <Canvas
         // Z-up camera position (like the viser GUI).
         camera={{ position: [2.5, -2.2, 2.2], fov: 50, near: 0.01, far: 100 }}
@@ -375,6 +571,21 @@ export default function Viewport() {
         <ViewportCaptureRegister />
         <Scene />
       </Canvas>
+      {meshInspection && (
+        <div className="viewport-inspection-bar">
+          <div className="viewport-inspection-title" title={meshInspection.path ?? meshInspection.url}>
+            <span>Inspecting</span>
+            <strong>{meshInspection.name}</strong>
+          </div>
+          <button
+            type="button"
+            className="viewport-back-btn"
+            onClick={() => setMeshInspection(null)}
+          >
+            Back to SQs
+          </button>
+        </div>
+      )}
     </div>
   );
 }
