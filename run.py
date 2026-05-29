@@ -95,9 +95,51 @@ def add_superquadric_compact_rot_mat(
     exponents: np.array=np.array([2.0, 2.0, 2.0]),
     translation: np.array=np.array([0.0, 0.0, 0.0]),
     rotation: np.array=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0],[0.0, 0.0,1.0]]),
+    tapering=None,
+    bending=None,
     resolution: int=10,
     visible: bool=True):
     """Adds a superqiadroc mesh to the scene."""
+
+    def apply_taper(x, y, z, c, kx, ky):
+        c = float(c) if abs(float(c)) > 1e-8 else 1e-8
+        z_norm = z / c
+        x *= float(kx) * z_norm + 1.0
+        y *= float(ky) * z_norm + 1.0
+
+    def apply_bending_axis(x, y, z, kb, alpha, axis):
+        kb = float(kb)
+        if abs(kb) < 1e-3:
+            return
+        alpha = float(alpha)
+        if axis == "z":
+            u, v, w = x.copy(), y.copy(), z.copy()
+        elif axis == "x":
+            u, v, w = y.copy(), z.copy(), x.copy()
+        elif axis == "y":
+            u, v, w = z.copy(), x.copy(), y.copy()
+        else:
+            raise ValueError(axis)
+
+        sin_alpha = np.sin(alpha)
+        cos_alpha = np.cos(alpha)
+        beta = np.arctan2(v, u)
+        r = np.sqrt(u * u + v * v) * np.cos(alpha - beta)
+        inv_kb = 1.0 / kb
+        gamma = w * kb
+        rho = inv_kb - r
+        rb = inv_kb - rho * np.cos(gamma)
+        expr = rb - r
+        u = u + expr * cos_alpha
+        v = v + expr * sin_alpha
+        w = rho * np.sin(gamma)
+
+        if axis == "z":
+            x[:], y[:], z[:] = u, v, w
+        elif axis == "x":
+            x[:], y[:], z[:] = w, u, v
+        else:
+            x[:], y[:], z[:] = v, w, u
 
     def create_superquadric_mesh(A, B, C, e1, e2, N):
         def f(o, m):
@@ -118,6 +160,13 @@ def add_superquadric_compact_rot_mat(
         # Set poles to zero to account for numerical instabilities in f and g due to ** operator
         x[:N] = 0.0
         x[-N:] = 0.0
+        if tapering is not None:
+            apply_taper(x, y, z, C, tapering[0], tapering[1])
+        if bending is not None:
+            # Packed as [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y].
+            apply_bending_axis(x, y, z, bending[4], bending[5], "y")
+            apply_bending_axis(x, y, z, bending[2], bending[3], "x")
+            apply_bending_axis(x, y, z, bending[0], bending[1], "z")
         vertices =  np.concatenate([np.expand_dims(x, 1),
                                     np.expand_dims(y, 1),
                                     np.expand_dims(z, 1)], axis=1)
@@ -151,6 +200,8 @@ def load_superquadric_from_file(file_path: str) -> list:
     shapes = par_dict['shapes']       # 2 (2x1 vector)
     trans = par_dict['translations']  # 3 (3x1 vector)
     num_el = scale.shape[0]           # number of superquadrics
+    tapering = par_dict['tapering'] if 'tapering' in par_dict else np.zeros((num_el, 2))
+    bending = par_dict['bending'] if 'bending' in par_dict else np.zeros((num_el, 6))
 
     superquadrics = {}
     for k in range(num_el):
@@ -159,6 +210,8 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadric_dict['shape'] = shapes[k]
         superquadric_dict['rotation'] = rotate[k, :]
         superquadric_dict['translation'] = trans[k, :]
+        superquadric_dict['tapering'] = tapering[k, :]
+        superquadric_dict['bending'] = bending[k, :]
         superquadric_dict['color'] = [90, 200, 255]
         superquadrics[k] = superquadric_dict
     return superquadrics
@@ -173,7 +226,10 @@ def load_superquadrics(path, spatial_control_mesh_path):
         superquadrics[superquadric_id]['scale'],
         superquadrics[superquadric_id]['shape'],
         superquadrics[superquadric_id]['translation'],
-        superquadrics[superquadric_id]['rotation'], resolution=100)
+        superquadrics[superquadric_id]['rotation'],
+        superquadrics[superquadric_id]['tapering'],
+        superquadrics[superquadric_id]['bending'],
+        resolution=100)
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3d.utility.Vector3dVector(vertices)
         mesh.triangles = o3d.utility.Vector3iVector(triangles)
@@ -202,6 +258,8 @@ def build_individual_sq_meshes_normalized(npz_path):
             superquadrics[sq_id]['shape'],
             superquadrics[sq_id]['translation'],
             superquadrics[sq_id]['rotation'],
+            superquadrics[sq_id]['tapering'],
+            superquadrics[sq_id]['bending'],
             resolution=100)
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3d.utility.Vector3dVector(vertices)

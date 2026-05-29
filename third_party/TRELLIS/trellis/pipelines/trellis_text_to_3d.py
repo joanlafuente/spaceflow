@@ -539,15 +539,16 @@ class TrellisTextTo3DPipeline(Pipeline):
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
         elif (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'masking'):
             high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
-            low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
+            # low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
             print("High control sum:", high_control_spatial_control.sum().item())
-            print("Low control sum:", low_control_spatial_control.sum().item())            
-            low_control_spatial_control = low_control_spatial_control - high_control_spatial_control
-            print("Low control after subtracting high control sum:", low_control_spatial_control.sum().item())
+            # print("Low control sum:", low_control_spatial_control.sum().item())            
+            # low_control_spatial_control = low_control_spatial_control - high_control_spatial_control
+            # print("Low control after subtracting high control sum:", low_control_spatial_control.sum().item())
             lantent_high_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+        elif (sparse_structure_sampler_params.get('low_control_superquadric_mask_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'low_control_mask'):
+            low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['low_control_superquadric_mask_path'])
+            high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
 
-
-            
         cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control}
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
