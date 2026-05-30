@@ -376,22 +376,23 @@ def main():
     # matches the coordinate system of struct_voxels.ply.
     predict_part(struct_blender_ply, partfield_dir)
 
-    # log.info("Visualizing PartField clusters on structure mesh...")
-    # from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
-    # from lib.util.partfield import cluster_geoms
-    # _sv = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
-    # _sc = torch.from_numpy(_sv).float().cuda()
-    # _sc4d = torch.cat([torch.zeros(_sc.shape[0], 1, dtype=torch.long, device='cuda'),
-    #                    ((_sc + 0.5) * 64).long()], dim=1)
-    # _planes = torch.from_numpy(np.load(
-    #     osp.join(partfield_dir, 'part_feat_mesh_batch_part_plane.npy'),
-    #     allow_pickle=True)).cuda()
-    # _vlabels = cluster_geoms(_sc4d, _planes, num_clusters=cfg.sim_guidance.num_part_clusters)
-    # _mesh_vis = trimesh.load(struct_blender_ply, force='mesh')
-    # _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv, _vlabels)
-    # visualize_and_save(_mesh_vis, _vtx_labels, args.output_dir, output_name='partfield_clusters.mp4')
-    # del _sv, _sc, _sc4d, _planes, _vlabels, _mesh_vis, _vtx_labels
-    # gc.collect()
+    log.info("Visualizing PartField clusters on structure mesh...")
+    # log.info(f"Overall, {cfg.sim_guidance.num_part_clusters} clusters present for similarity")
+    from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+    from lib.util.partfield import cluster_geoms
+    _sv = utils3d.io.read_ply(osp.join(voxel_dir, 'struct_voxels.ply'))[0]
+    _sc = torch.from_numpy(_sv).float().cuda()
+    _sc4d = torch.cat([torch.zeros(_sc.shape[0], 1, dtype=torch.long, device='cuda'),
+                       ((_sc + 0.5) * 64).long()], dim=1)
+    _planes = torch.from_numpy(np.load(
+        osp.join(partfield_dir, 'part_feat_mesh_batch_part_plane.npy'),
+        allow_pickle=True)).cuda()
+    _vlabels = cluster_geoms(_sc4d, _planes, num_clusters=cfg.sim_guidance.num_part_clusters)
+    _mesh_vis = trimesh.load(struct_blender_ply, force='mesh')
+    _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv, _vlabels)
+    visualize_and_save(_mesh_vis, _vtx_labels, args.output_dir, output_name='partfield_clusters.mp4')
+    del _sv, _sc, _sc4d, _planes, _vlabels, _mesh_vis, _vtx_labels
+    gc.collect()
 
     if not out_renderviews:
         log.info("Structure rendering failed!")

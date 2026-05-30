@@ -190,10 +190,27 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
                 generation_pipeline.encode_image([Image.open(p).convert('RGB')]) if p else global_emb
                 for p in local_prompts
             ]
-        cond_list = [global_emb] + local_embs
-        log.info(f"Built cond_list with {len(cond_list)} entries (1 global + {len(local_embs)} local)")
+        # Only include SQs that have a real (non-global-fallback) local condition.
+        conditioned_mask = [emb is not global_emb for emb in local_embs]
+        conditioned_embs = [emb for emb, is_cond in zip(local_embs, conditioned_mask) if is_cond]
+        cond_list = [global_emb] + conditioned_embs
+
+        # Build remap: SQ 1-index → new condition index (0=global fallback, 1..n_conditioned).
+        n_sq = len(local_embs)
+        remap = torch.zeros(n_sq + 1, dtype=torch.long, device='cuda')
+        new_idx = 1
+        for sq_i, is_cond in enumerate(conditioned_mask):
+            remap[sq_i + 1] = new_idx if is_cond else 0
+            if is_cond:
+                new_idx += 1
+        sq_cond_map = remap[1:].tolist()  # condition index per SQ (0=global)
+        log.info(f"SQ condition mapping (0=global): {sq_cond_map}")
+        log.info(f"Built cond_list with {len(cond_list)} entries "
+                 f"(1 global + {len(conditioned_embs)} real local out of {n_sq} SQs)")
+
         coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda',
                                                              vox_cluster_labels=struct_labels)
+        coords_dense_indices = remap[coords_dense_indices.long()]
         log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
 
         log.info("Visualizing condition routing on structure mesh...")
