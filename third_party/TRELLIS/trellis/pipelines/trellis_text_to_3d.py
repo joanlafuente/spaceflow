@@ -364,10 +364,6 @@ class TrellisTextTo3DPipeline(Pipeline):
         )
         z_s = ret.samples
 
-        if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
-            video_path = os.path.join(vis_output_dir, 'denoising_evolution.mp4')
-            self._render_denoising_evolution(ret.pred_x_0, video_path)
-        
         # Decode occupancy latent
         decoder = self.models['sparse_structure_decoder']
         coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
@@ -376,6 +372,11 @@ class TrellisTextTo3DPipeline(Pipeline):
         save_voxelgrid_as_ply(
             decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
         )
+
+        if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
+            video_path = os.path.join(vis_output_dir, 'denoising_evolution.mp4')
+            self._render_denoising_evolution(ret.pred_x_0, video_path)
+        
 
         return coords
 

@@ -228,6 +228,30 @@ class FlowEulerSampler(Sampler):
                 sample_low_control = sample * low_control_mask
                 sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
                 sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+
+
+                resampling_steps = 10
+                print(f"Doing repaint resampling for {resampling_steps} steps to improve blending.", flush=True)
+                for i in range(resampling_steps):
+                    noise = torch.randn_like(sample)
+                    diff_t = abs(t - t_prev) # * 1.1
+                    noised_sample = sample * (1 - diff_t) + noise * diff_t
+                    out = self.sample_once(model, noised_sample, t_prev+diff_t, t_prev, cond, **args)
+                    sample = out.pred_x_prev
+                    sample_low_control = sample * low_control_mask
+                    sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
+                    sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+
+                # resampling_steps_without_guidance = 2
+                # print(f"Doing additional repaint resampling for {resampling_steps_without_guidance} steps without guidance to further improve blending...", flush=True)
+                # for i in range(resampling_steps_without_guidance):
+                #     noise = torch.randn_like(sample)
+                #     diff_t = abs(t - t_prev) * 1.05
+                #     noised_sample = sample * (1 - diff_t) + noise * diff_t
+                #     out = self.sample_once(model, noised_sample, t_prev+diff_t, t_prev, cond, **args)
+                #     sample = out.pred_x_prev
+
+
             else:
                 print("No high control adjustment applied for this step.", flush=True)
 
