@@ -49,6 +49,7 @@ def load_point_cloud(path: Path) -> np.ndarray:
             raise ValueError(f"Point cloud is empty or unreadable: {path}")
         return points
 
+    # Other extensions (e.g. .obj, .stl, .glb, .gltf) load as triangle meshes; vertex positions are used as samples.
     mesh = o3d.io.read_triangle_mesh(str(path))
     verts = np.asarray(mesh.vertices, dtype=np.float32)
     if verts.size == 0:

@@ -65,7 +65,9 @@ def init_args():
     parser.add_argument('--shape_superquadric_path', type=str, required=True,
                         help='Path to shape superquadrics file')
     parser.add_argument('--shape_superquadric_high_control_path', type=str, default=None,
-                        help='Path to high control shape superquadrics file')
+                        help='Path to high control shape superquadrics file (used local_tau_mode is guidance or masking)')
+    parser.add_argument('--low_control_superquadric_mask_path', type=str, default=None,
+                        help='Path to low control superquadric mask (Only used when local_tau_mode is low_control_mask)')
 
 
     parser.add_argument('--spatial_control_mesh_path', type=str, default=None,
@@ -77,9 +79,14 @@ def init_args():
                         help='Value of tau for superquadric control')
     parser.add_argument('--polyak_update_tau', type=float, default=0.08, required=False,
                         help='Tau value for Polyak averaging of the high-control model (if using high control). Recomended to be lowwer than 0.09 to avoid instability.')
-    parser.add_argument('--local_tau_mode', type=str, choices=['guidance', 'masking'], default='guidance',
-                        help='Whether to use local tau guidance or masking modes ')
-                        
+    parser.add_argument('--local_tau_mode', type=str, choices=['guidance', 'masking', 'low_control_mask'], default='guidance',
+                        help='Whether to use local tau guidance, masking or low control mask mode. ')
+    parser.add_argument('--full_pipeline', action='store_true',
+                        help='Continue past structure generation into PartField and similarity/appearance optimization. Default keeps the legacy structure-only behavior.')
+    parser.add_argument('--n_repaint_steps', type=int, default=10,
+                        help='Number of repaint resampling steps to perform during structure generation to improve blending (default: 10). Set to 0 to disable.')                        
+
+
     parser.add_argument('--text_prompt', type=str, required=True,
                         help='Text prompt for 3D shape generation')
     parser.add_argument('--local_text_prompts', type=str, default=None,
@@ -106,9 +113,51 @@ def add_superquadric_compact_rot_mat(
     exponents: np.array=np.array([2.0, 2.0, 2.0]),
     translation: np.array=np.array([0.0, 0.0, 0.0]),
     rotation: np.array=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0],[0.0, 0.0,1.0]]),
+    tapering=None,
+    bending=None,
     resolution: int=10,
     visible: bool=True):
     """Adds a superqiadroc mesh to the scene."""
+
+    def apply_taper(x, y, z, c, kx, ky):
+        c = float(c) if abs(float(c)) > 1e-8 else 1e-8
+        z_norm = z / c
+        x *= float(kx) * z_norm + 1.0
+        y *= float(ky) * z_norm + 1.0
+
+    def apply_bending_axis(x, y, z, kb, alpha, axis):
+        kb = float(kb)
+        if abs(kb) < 1e-3:
+            return
+        alpha = float(alpha)
+        if axis == "z":
+            u, v, w = x.copy(), y.copy(), z.copy()
+        elif axis == "x":
+            u, v, w = y.copy(), z.copy(), x.copy()
+        elif axis == "y":
+            u, v, w = z.copy(), x.copy(), y.copy()
+        else:
+            raise ValueError(axis)
+
+        sin_alpha = np.sin(alpha)
+        cos_alpha = np.cos(alpha)
+        beta = np.arctan2(v, u)
+        r = np.sqrt(u * u + v * v) * np.cos(alpha - beta)
+        inv_kb = 1.0 / kb
+        gamma = w * kb
+        rho = inv_kb - r
+        rb = inv_kb - rho * np.cos(gamma)
+        expr = rb - r
+        u = u + expr * cos_alpha
+        v = v + expr * sin_alpha
+        w = rho * np.sin(gamma)
+
+        if axis == "z":
+            x[:], y[:], z[:] = u, v, w
+        elif axis == "x":
+            x[:], y[:], z[:] = w, u, v
+        else:
+            x[:], y[:], z[:] = v, w, u
 
     def create_superquadric_mesh(A, B, C, e1, e2, N):
         def f(o, m):
@@ -129,6 +178,13 @@ def add_superquadric_compact_rot_mat(
         # Set poles to zero to account for numerical instabilities in f and g due to ** operator
         x[:N] = 0.0
         x[-N:] = 0.0
+        if tapering is not None:
+            apply_taper(x, y, z, C, tapering[0], tapering[1])
+        if bending is not None:
+            # Packed as [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y].
+            apply_bending_axis(x, y, z, bending[4], bending[5], "y")
+            apply_bending_axis(x, y, z, bending[2], bending[3], "x")
+            apply_bending_axis(x, y, z, bending[0], bending[1], "z")
         vertices =  np.concatenate([np.expand_dims(x, 1),
                                     np.expand_dims(y, 1),
                                     np.expand_dims(z, 1)], axis=1)
@@ -163,6 +219,8 @@ def load_superquadric_from_file(file_path: str) -> list:
     shapes = par_dict['shapes']       # 2 (2x1 vector)
     trans = par_dict['translations']  # 3 (3x1 vector)
     num_el = scale.shape[0]           # number of superquadrics
+    tapering = par_dict['tapering'] if 'tapering' in par_dict else np.zeros((num_el, 2))
+    bending = par_dict['bending'] if 'bending' in par_dict else np.zeros((num_el, 6))
 
     superquadrics = {}
     for k in range(num_el):
@@ -171,6 +229,8 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadric_dict['shape'] = shapes[k]
         superquadric_dict['rotation'] = rotate[k, :]
         superquadric_dict['translation'] = trans[k, :]
+        superquadric_dict['tapering'] = tapering[k, :]
+        superquadric_dict['bending'] = bending[k, :]
         superquadric_dict['color'] = [90, 200, 255]
         superquadrics[k] = superquadric_dict
     return superquadrics
@@ -185,7 +245,10 @@ def load_superquadrics(path, spatial_control_mesh_path, aabb=None, center=None, 
         superquadrics[superquadric_id]['scale'],
         superquadrics[superquadric_id]['shape'],
         superquadrics[superquadric_id]['translation'],
-        superquadrics[superquadric_id]['rotation'], resolution=100)
+        superquadrics[superquadric_id]['rotation'],
+        superquadrics[superquadric_id]['tapering'],
+        superquadrics[superquadric_id]['bending'],
+        resolution=100)
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3d.utility.Vector3dVector(vertices)
         mesh.triangles = o3d.utility.Vector3iVector(triangles)
@@ -217,6 +280,8 @@ def build_individual_sq_meshes_normalized(npz_path):
             superquadrics[sq_id]['shape'],
             superquadrics[sq_id]['translation'],
             superquadrics[sq_id]['rotation'],
+            superquadrics[sq_id]['tapering'],
+            superquadrics[sq_id]['bending'],
             resolution=100)
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3d.utility.Vector3dVector(vertices)
@@ -327,16 +392,23 @@ def main():
     aabb, center, scale = load_superquadrics(args.shape_superquadric_path, spatial_control_mesh_path)
 
 
+    low_control_superquadric_mask_path = None
     if args.shape_tau_high_control is not None:
         assert args.shape_tau_high_control > args.shape_tau, "shape_tau_high_control must be greater than shape_tau"
         
+        print(f"Using high control tau: {args.shape_tau_high_control} and low control tau: {args.shape_tau}, with local tau mode: {args.local_tau_mode}")
         high_control_spatial_control_mesh_path = osp.join(args.output_dir, 'high_control_spatial_control_mesh.ply')
         load_superquadrics(args.shape_superquadric_high_control_path, high_control_spatial_control_mesh_path, aabb=aabb, center=center, scale=scale)
+        
+        if args.local_tau_mode == 'low_control_mask':
+            low_control_superquadric_mask_path = osp.join(args.output_dir, 'low_control_superquadric_mask.ply')
+            load_superquadrics(args.low_control_superquadric_mask_path, low_control_superquadric_mask_path, aabb=aabb, center=center, scale=scale)
+
 
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
 
-    pipeline = TrellisTextTo3DPipeline.from_pretrained("gui")
+    pipeline = TrellisTextTo3DPipeline.from_pretrained("/work/courses/3dv/team3/spaceflow/gui")
     pipeline.cuda()
 
     text_prompt = args.text_prompt
@@ -348,9 +420,11 @@ def main():
         "t0_idx_value": args.shape_tau,
         "spatial_control_mesh_path": spatial_control_mesh_path,
         "high_control_spatial_control_mesh_path": high_control_spatial_control_mesh_path if args.shape_tau_high_control is not None else None,
+        "low_control_superquadric_mask_path": low_control_superquadric_mask_path if low_control_superquadric_mask_path is not None else None,
         "t0_idx_value_high_control": args.shape_tau_high_control if args.shape_tau_high_control is not None else None,
         "polyak_update_tau": args.polyak_update_tau,
         "local_tau_mode": args.local_tau_mode,
+        "n_repaint_steps": args.n_repaint_steps,
     })
 
     # Convert sparse voxels to mesh
@@ -358,8 +432,8 @@ def main():
 
     coords_np = coords.detach().cpu().numpy()
 
-    print(coords_np)
     filtered_coords = coords_np[:, 1:]
+    print(f"Sparse voxel tensor shape: {coords_np.shape}")
     print(f"Number of valid voxels: {filtered_coords.shape[0]}")
 
     sparse_voxels_to_glb(filtered_coords, grid_size=64, output_filename=osp.join(args.output_dir, "sample.glb"))
@@ -395,6 +469,10 @@ def main():
     common.ensure_dir(voxel_dir)
     log.info("Voxelizing structure mesh...")
     pointcloud.voxelize_mesh(struct_blender_ply, save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
+
+    if not args.full_pipeline:
+        log.info("Structure-only mode complete. Pass --full_pipeline to continue into PartField and refinement.")
+        return
 
     log.info("Extracting Structure Mesh PartField feature planes...")
     partfield_dir = osp.join(args.output_dir, 'partfield')

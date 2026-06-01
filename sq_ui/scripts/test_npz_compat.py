@@ -11,13 +11,15 @@ import numpy as np
 
 
 def load_superquadric_from_file(file_path: str) -> dict:
-    """Exact copy from run.py for standalone testing."""
+    """Standalone copy of the SpaceFlow loader."""
     par_dict = np.load(file_path)
     scale = par_dict['scales']
     rotate = par_dict['rotations']
     shapes = par_dict['shapes']
     trans = par_dict['translations']
     num_el = scale.shape[0]
+    tapering = par_dict['tapering'] if 'tapering' in par_dict else np.zeros((num_el, 2))
+    bending = par_dict['bending'] if 'bending' in par_dict else np.zeros((num_el, 6))
 
     superquadrics = {}
     for k in range(num_el):
@@ -26,6 +28,8 @@ def load_superquadric_from_file(file_path: str) -> dict:
         superquadric_dict['shape'] = shapes[k]
         superquadric_dict['rotation'] = rotate[k, :]
         superquadric_dict['translation'] = trans[k, :]
+        superquadric_dict['tapering'] = tapering[k, :]
+        superquadric_dict['bending'] = bending[k, :]
         superquadric_dict['color'] = [90, 200, 255]
         superquadrics[k] = superquadric_dict
     return superquadrics
@@ -51,6 +55,12 @@ def validate_npz(path: str):
 
     for key in required_keys:
         print(f"  {key}: shape={data[key].shape}, dtype={data[key].dtype}")
+    if 'tapering' in data:
+        assert data['tapering'].shape == (N, 2), f"tapering shape {data['tapering'].shape} != ({N}, 2)"
+        print(f"  tapering: shape={data['tapering'].shape}, dtype={data['tapering'].dtype}")
+    if 'bending' in data:
+        assert data['bending'].shape == (N, 6), f"bending shape {data['bending'].shape} != ({N}, 6)"
+        print(f"  bending: shape={data['bending'].shape}, dtype={data['bending'].dtype}")
 
     # Validate rotations
     for i in range(N):
@@ -70,6 +80,10 @@ def validate_npz(path: str):
     # Test pipeline compat
     sq = load_superquadric_from_file(path)
     assert len(sq) == N
+    if 'tapering' in data:
+        assert np.allclose(sq[0]['tapering'], data['tapering'][0])
+    if 'bending' in data:
+        assert np.allclose(sq[0]['bending'], data['bending'][0])
     print(f"\n  Pipeline compatibility: PASS ({N} superquadrics loaded)")
     print("  All checks passed!")
 
@@ -80,7 +94,9 @@ def generate_test(path: str = "test_export.npz"):
     shapes = np.array([[2.0, 2.0], [0.3, 0.3], [2.0, 0.3]], dtype=np.float64)
     translations = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
     rotations = np.array([np.eye(3)] * N, dtype=np.float64)
-    np.savez(path, scales=scales, shapes=shapes, translations=translations, rotations=rotations)
+    tapering = np.array([[0.0, 0.0], [0.25, -0.1], [0.0, 0.0]], dtype=np.float64)
+    bending = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.3, 0.4, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.2, -0.3, 0.0, 0.0]], dtype=np.float64)
+    np.savez(path, scales=scales, shapes=shapes, translations=translations, rotations=rotations, tapering=tapering, bending=bending)
     print(f"Generated: {path}")
     validate_npz(path)
 

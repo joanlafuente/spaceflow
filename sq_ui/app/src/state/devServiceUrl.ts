@@ -1,5 +1,5 @@
 /**
- * In dev, Vite proxies /superdec, /trellis, /api to 127.0.0.1 on the host running Vite.
+ * In dev, Vite proxies /superdec, /superflex, /trellis, /api to 127.0.0.1 on the host running Vite.
  * If .env.local sets VITE_* to another host:port (e.g. a guessed cluster IP), the browser
  * loads the UI from one origin and tries to call another — often "Failed to fetch"
  * (firewall, wrong IP, or CORS). Same-origin + proxy avoids that.
@@ -19,7 +19,7 @@ export function serviceBaseUrl(
     if (u.origin !== window.location.origin) {
       console.warn(
         `[sq-ui] Ignoring service base URL in dev (not same origin as this page): ${trimmed}\n` +
-          '→ using same-origin paths so Vite can proxy. Remove or fix VITE_SUPERDEC_URL / VITE_TRELLIS_URL in .env.local.',
+          '→ using same-origin paths so Vite can proxy. Remove or fix VITE_SUPERDEC_URL / VITE_SUPERFLEX_URL / VITE_TRELLIS_URL / VITE_SPACEFLOW_URL in .env.local.',
       );
       return '';
     }

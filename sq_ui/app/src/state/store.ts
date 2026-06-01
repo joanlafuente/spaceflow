@@ -1,15 +1,32 @@
 import { create } from 'zustand';
 import { eulerToMatrix, matMul3, matVec3, matrixToEuler } from './rotation';
+import {
+  clampLowControlBBoxMargin,
+  DEFAULT_LOW_CONTROL_BBOX_MARGIN,
+} from './spaceflowConfig';
 
 export interface Primitive {
   id: string;
   name: string;
   visible: boolean;
+  controlLevel: 'high' | 'low';
   scales: [number, number, number];
   shapes: [number, number];
   translation: [number, number, number];
   rotation: number[][];
   eulerDeg: [number, number, number]; // cached Euler ZYX in degrees
+  /** SuperFlex-style linear taper along local Z (dimensionless); omitted for plain superquadrics. */
+  tapering?: [number, number];
+  /** Packed [k_z, α_z, k_x, α_x, k_y, α_y] for SuperFlex bending; omitted for plain superquadrics. */
+  bending?: [number, number, number, number, number, number];
+}
+
+export interface MeshInspectionSource {
+  url: string;
+  name: string;
+  runId?: string;
+  path?: string;
+  relativePath?: string;
 }
 
 interface HistoryEntry {
@@ -22,6 +39,9 @@ export interface AppState {
   selectedId: string | null;
   previewResolution: number;
   showNormalized: boolean;
+  showControlPreview: boolean;
+  lowControlBBoxMargin: number;
+  meshInspection: MeshInspectionSource | null;
 
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
@@ -38,6 +58,9 @@ export interface AppState {
   reorderPrimitives: (fromIndex: number, toIndex: number) => void;
   setPreviewResolution: (res: number) => void;
   setShowNormalized: (v: boolean) => void;
+  setShowControlPreview: (v: boolean) => void;
+  setLowControlBBoxMargin: (v: number) => void;
+  setMeshInspection: (source: MeshInspectionSource | null) => void;
   undo: () => void;
   redo: () => void;
   loadPreset: (primitives: Primitive[]) => void;
@@ -66,6 +89,7 @@ function defaultPrimitive(overrides?: Partial<Primitive>): Primitive {
     id: nextId(),
     name: `Primitive ${idCounter}`,
     visible: true,
+    controlLevel: 'high',
     scales: [DEFAULT_HALF_AXIS, DEFAULT_HALF_AXIS, DEFAULT_HALF_AXIS],
     shapes: [1, 1],
     translation: [0, 0, 0],
@@ -78,6 +102,7 @@ function defaultPrimitive(overrides?: Partial<Primitive>): Primitive {
 function clonePrimitive(p: Primitive): Primitive {
   return {
     ...p,
+    ...cloneDeformFields(p),
     id: nextId(),
     name: `${p.name} (copy)`,
     scales: [...p.scales],
@@ -88,10 +113,18 @@ function clonePrimitive(p: Primitive): Primitive {
   };
 }
 
+function cloneDeformFields(p: Primitive): Pick<Primitive, 'tapering' | 'bending'> {
+  return {
+    ...(p.tapering !== undefined ? { tapering: [...p.tapering] as [number, number] } : {}),
+    ...(p.bending !== undefined ? { bending: [...p.bending] as [number, number, number, number, number, number] } : {}),
+  };
+}
+
 function snapshot(state: { primitives: Primitive[]; selectedId: string | null }): HistoryEntry {
   return {
     primitives: state.primitives.map(p => ({
       ...p,
+      ...cloneDeformFields(p),
       scales: [...p.scales],
       shapes: [...p.shapes],
       translation: [...p.translation],
@@ -139,6 +172,9 @@ export const useStore = create<AppState>((set, get) => ({
   selectedId: null,
   previewResolution: 48,
   showNormalized: false,
+  showControlPreview: true,
+  lowControlBBoxMargin: DEFAULT_LOW_CONTROL_BBOX_MARGIN,
+  meshInspection: null,
   undoStack: [],
   redoStack: [],
 
@@ -232,6 +268,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   setPreviewResolution: (res) => set({ previewResolution: res }),
   setShowNormalized: (v) => set({ showNormalized: v }),
+  setShowControlPreview: (v) => set({ showControlPreview: v }),
+  setLowControlBBoxMargin: (v) => set({ lowControlBBoxMargin: clampLowControlBBoxMargin(v) }),
+  setMeshInspection: (source) => set({ meshInspection: source }),
 
   undo: () => {
     const state = get();

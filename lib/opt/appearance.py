@@ -34,8 +34,9 @@ def optimize_appearance(cfg, output_dir):
     zeros = torch.zeros((struct_coords.size(0), 1), dtype=struct_coords.dtype, device=struct_coords.device)
     struct_coords = torch.cat([zeros, struct_coords], dim=1)
     
-    # Load partfield planes
-    path = osp.join(output_dir, 'partfield', 'part_feat_struct_mesh_zup_batch_part_plane.npy')
+    # Load partfield planes (filenames must match predict_part in run.py: Demo_Dataset uid =
+    # basename(obj_path) with last extension stripped — struct uses struct_renders/mesh.ply → mesh.)
+    path = osp.join(output_dir, 'partfield', 'part_feat_mesh_batch_part_plane.npy')
     struct_part_planes = torch.from_numpy(np.load(path, allow_pickle=True)).cuda()
 
     path = osp.join(output_dir, 'partfield', 'part_feat_app_mesh_zup_batch_part_plane.npy')

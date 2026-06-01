@@ -158,6 +158,7 @@ function toPrimitive(raw: RawPrimitive): Primitive {
     id: `gen_${++genCounter}_${Date.now()}`,
     name: raw.name || `Part ${genCounter}`,
     visible: true,
+    controlLevel: 'high',
     scales: [
       Math.max(0.01, raw.scales[0] ?? 1),
       Math.max(0.01, raw.scales[1] ?? 1),

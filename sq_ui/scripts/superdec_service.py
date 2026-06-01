@@ -19,7 +19,7 @@ PLACEHOLDER_BASE = "__SUPERDEC_BASE__"
 
 
 def _default_base() -> Path:
-    return Path("/work/scratch") / os.environ.get("USER", "user") / "spaceflow" / "superdec_ui"
+    return SCRIPT_PATH.parents[2] / "superdec_ui"
 
 
 def _resolve_superdec_base() -> Path:
@@ -27,15 +27,15 @@ def _resolve_superdec_base() -> Path:
     if env_base:
         return Path(env_base).expanduser()
 
-    # When started from the installed scratch copy, setup_superdec.sh replaces the
-    # placeholder with the concrete scratch path. When started from the repo copy,
-    # the placeholder remains literal and we should fall back to the default scratch
-    # install location instead of treating "__SUPERDEC_BASE__" as a real directory.
+    # When started from an installed copy, setup_superdec.sh replaces the
+    # placeholder with the concrete install path. When started from the repo copy,
+    # the placeholder remains literal and we should fall back to the default shared
+    # course install location instead of treating "__SUPERDEC_BASE__" as a real directory.
     template_base = PLACEHOLDER_BASE
     if template_base and template_base != PLACEHOLDER_BASE:
         return Path(template_base).expanduser()
 
-    # If the script itself lives inside the scratch install, use that layout.
+    # If the script itself lives inside the install, use that layout.
     script_parent = SCRIPT_PATH.parent
     if script_parent.name == "scripts" and script_parent.parent.name == "superdec_ui":
         return script_parent.parent
@@ -70,7 +70,7 @@ def _resolve_work_dir() -> Path:
         return WORK_DIR
 
     # When running from the repo copy during development, allow the checked-out
-    # repository to serve as the working directory without requiring the scratch
+    # repository to serve as the working directory without requiring the installed
     # wrapper script.
     repo_root = SCRIPT_PATH.parents[2]
     if (repo_root / "sq_ui").exists() and (repo_root / "run.py").exists():

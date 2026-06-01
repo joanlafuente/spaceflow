@@ -7,7 +7,7 @@ Ollama-compatible HTTP proxy for the SQ Editor "AI Generate" button.
     to a local ollama serve instead (no GPU job).
 
 Environment (after setup_ollama.sh installs this script):
-  OLLAMA_BASE   — your scratch install root (substituted by setup script)
+  OLLAMA_BASE   — your Ollama install root (substituted by setup script)
   SQ_SLURM_PARTITION, SQ_SLURM_ACCOUNT, SQ_SLURM_GPUS, SQ_SLURM_TIME — Slurm (--gpus only)
   SQ_PROXY_PORT — listen port (default 11434)
   SQ_OLLAMA_FORWARD — if set, forward instead of srun

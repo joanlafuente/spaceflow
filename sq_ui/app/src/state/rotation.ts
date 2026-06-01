@@ -20,7 +20,7 @@ export function eulerToMatrix(eulerDeg: [number, number, number]): number[][] {
 }
 
 export function matrixToEuler(R: number[][]): [number, number, number] {
-  let ry = Math.asin(-clamp(R[2][0], -1, 1));
+  const ry = Math.asin(-clamp(R[2][0], -1, 1));
   let rx: number, rz: number;
 
   if (Math.abs(R[2][0]) < 0.99999) {

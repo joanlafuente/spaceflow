@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
 # One-time setup: clone SuperDec, create a venv, install deps, and download checkpoints
-# under scratch storage. After this, start the SuperDec service and point the UI at it.
+# under the shared Spaceflow checkout. After this, start the SuperDec service and point the UI at it.
 #
 # Usage:
 #   cd /work/courses/3dv/team3/spaceflow
 #   bash sq_ui/setup_superdec.sh
 #
 # Optional environment:
-#   SQ_SUPERDEC_SCRATCH   — install root (default /work/scratch/$USER/spaceflow/superdec_ui)
+#   SQ_SUPERDEC_BASE      — install root (default <spaceflow>/superdec_ui)
+#   SQ_SUPERDEC_SCRATCH   — legacy alias for SQ_SUPERDEC_BASE
 #   SUPERDEC_REPO_URL     — override repo URL
 #   SUPERDEC_REPO_REF     — branch/tag/commit to checkout
 #   SKIP_CLONE            — if 1, reuse existing repo
@@ -18,7 +19,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE="${SQ_SUPERDEC_SCRATCH:-/work/scratch/${USER:-nedela}/spaceflow/superdec_ui}"
+SPACEFLOW_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE="${SQ_SUPERDEC_BASE:-${SQ_SUPERDEC_SCRATCH:-$SPACEFLOW_ROOT/superdec_ui}}"
 REPO_DIR="$BASE/repo"
 VENV_DIR="$BASE/venv"
 WEIGHTS_DIR="$BASE/weights"
@@ -27,6 +29,10 @@ SUPERDEC_REPO_REF="${SUPERDEC_REPO_REF:-main}"
 
 echo "Install root: $BASE"
 mkdir -p "$BASE"/{scripts,logs,runs,tmp,weights}
+# Cluster: avoid filling $HOME (~/.cache/pip) or small /tmp during installs.
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$BASE/tmp/pip-cache}"
+export TMPDIR="${TMPDIR:-$BASE/tmp}"
+mkdir -p "$PIP_CACHE_DIR"
 
 if [[ "${SKIP_CLONE:-0}" != "1" ]]; then
   if [[ ! -d "$REPO_DIR/.git" ]]; then
@@ -88,15 +94,15 @@ echo "     cd $SCRIPT_DIR/app && npm run dev -- --host 0.0.0.0"
 echo "     # optional: echo 'VITE_SUPERDEC_URL=http://127.0.0.1:11435' >> app/.env.local"
 echo ""
 echo "3) For text-to-pointcloud Create, also start the TRELLIS service in a compatible env:"
-echo "     export SQ_TRELLIS_REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)"
+echo "     export SQ_TRELLIS_REPO_ROOT=$SPACEFLOW_ROOT"
 echo "     export SQ_TRELLIS_SLURM_GPUS=1"
-echo "     export SQ_TRELLIS_PYTHON=$(cd "$SCRIPT_DIR/.." && pwd)/envs/guideflow3d/bin/python"
-echo "     export SQ_TRELLIS_SCRATCH=/work/scratch/\$USER/spaceflow/trellis_ui"
+echo "     export SQ_TRELLIS_PYTHON=$SPACEFLOW_ROOT/envs/guideflow3d/bin/python"
+echo "     export SQ_TRELLIS_SCRATCH=$SPACEFLOW_ROOT/spaceflow_runtime/trellis_ui"
 echo "     export SQ_TRELLIS_FORCE_LOCAL=1   # only if already on a GPU node"
 echo "     python3 $SCRIPT_DIR/scripts/trellis_service.py"
 echo "     # optional: echo 'VITE_TRELLIS_URL=http://127.0.0.1:11437' >> app/.env.local"
 echo ""
-echo "Scratch layout:"
+echo "Install layout:"
 echo "     weights: $WEIGHTS_DIR"
 echo "     runs:    $BASE/runs"
 echo "     logs:    $BASE/logs"

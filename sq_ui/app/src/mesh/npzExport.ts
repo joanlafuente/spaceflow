@@ -51,16 +51,34 @@ export interface PrimitiveExport {
   shapes: [number, number];
   translation: [number, number, number];
   rotation: number[][]; // 3×3
+  controlLevel?: 'high' | 'low';
+  tapering?: [number, number];
+  bending?: [number, number, number, number, number, number];
 }
 
-export async function exportNpz(primitives: PrimitiveExport[]): Promise<Blob> {
+export async function exportNpz(
+  primitives: PrimitiveExport[],
+  options?: { allowEmpty?: boolean },
+): Promise<Blob> {
   const N = primitives.length;
-  if (N === 0) throw new Error('No primitives to export');
+  if (N === 0 && !options?.allowEmpty) throw new Error('No primitives to export');
 
   const scales = new Float64Array(N * 3);
   const shapes = new Float64Array(N * 2);
   const translations = new Float64Array(N * 3);
   const rotations = new Float64Array(N * 9);
+
+  let hasTaper = false;
+  let hasBend = false;
+  let hasControlLevels = false;
+  for (const p of primitives) {
+    if (p.tapering !== undefined) hasTaper = true;
+    if (p.bending !== undefined) hasBend = true;
+    if (p.controlLevel !== undefined) hasControlLevels = true;
+  }
+  const tapering = hasTaper ? new Float64Array(N * 2) : null;
+  const bending = hasBend ? new Float64Array(N * 6) : null;
+  const controlLevels = hasControlLevels ? new Float64Array(N) : null;
 
   for (let i = 0; i < N; i++) {
     const p = primitives[i];
@@ -77,6 +95,18 @@ export async function exportNpz(primitives: PrimitiveExport[]): Promise<Blob> {
         rotations[i * 9 + r * 3 + c] = p.rotation[r][c];
       }
     }
+    if (tapering) {
+      const t = p.tapering ?? [0, 0];
+      tapering[i * 2] = t[0];
+      tapering[i * 2 + 1] = t[1];
+    }
+    if (bending) {
+      const b = p.bending ?? [0, 0, 0, 0, 0, 0];
+      for (let j = 0; j < 6; j++) bending[i * 6 + j] = b[j]!;
+    }
+    if (controlLevels) {
+      controlLevels[i] = p.controlLevel === 'low' ? 0 : 1;
+    }
   }
 
   const zip = new JSZip();
@@ -84,6 +114,9 @@ export async function exportNpz(primitives: PrimitiveExport[]): Promise<Blob> {
   zip.file('shapes.npy', createNpyArray(shapes, [N, 2]));
   zip.file('translations.npy', createNpyArray(translations, [N, 3]));
   zip.file('rotations.npy', createNpyArray(rotations, [N, 3, 3]));
+  if (tapering) zip.file('tapering.npy', createNpyArray(tapering, [N, 2]));
+  if (bending) zip.file('bending.npy', createNpyArray(bending, [N, 6]));
+  if (controlLevels) zip.file('control_levels.npy', createNpyArray(controlLevels, [N]));
 
   return zip.generateAsync({ type: 'blob' });
 }
