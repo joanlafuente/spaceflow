@@ -83,7 +83,10 @@ def init_args():
                         help='Whether to use local tau guidance, masking or low control mask mode. ')
     parser.add_argument('--full_pipeline', action='store_true',
                         help='Continue past structure generation into PartField and similarity/appearance optimization. Default keeps the legacy structure-only behavior.')
-                        
+    parser.add_argument('--n_repaint_steps', type=int, default=10,
+                        help='Number of repaint resampling steps to perform during structure generation to improve blending (default: 10). Set to 0 to disable.')                        
+
+
     parser.add_argument('--text_prompt', type=str, required=True,
                         help='Text prompt for 3D shape generation')
     parser.add_argument('--local_text_prompts', type=str, default=None,
@@ -421,6 +424,7 @@ def main():
         "t0_idx_value_high_control": args.shape_tau_high_control if args.shape_tau_high_control is not None else None,
         "polyak_update_tau": args.polyak_update_tau,
         "local_tau_mode": args.local_tau_mode,
+        "n_repaint_steps": args.n_repaint_steps,
     })
 
     # Convert sparse voxels to mesh

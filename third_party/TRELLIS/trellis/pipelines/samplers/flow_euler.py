@@ -158,18 +158,6 @@ class FlowEulerSampler(Sampler):
             print(f"Non-zero ratio of low_control_mask after binarization: {non_zero_ratio_after_binarization:.4f}", flush=True)
             print("mean value of non-zero elements in low_control_mask after binarization: {:.4f}".format(low_control_mask[low_control_mask > 0].mean().item()), flush=True)
 
-            # Dilation of the mask
-            # kernel_size = 3 # Adjust this based on how much "bleed" you want to capture
-            # padding = kernel_size // 2
-            
-            # dilated_mask = F.max_pool3d(
-            #     low_control_mask, 
-            #     kernel_size=kernel_size, 
-            #     stride=1, 
-            #     padding=padding
-            # )
-            # low_control_mask = (dilated_mask > 0).float()
-
             t0_high = t_seq[int(kwargs['t0_idx_value_high_control'])]
             control_high_lat = kwargs.get('control_high')
 
@@ -222,12 +210,26 @@ class FlowEulerSampler(Sampler):
                 sample = sample_low_control + sample_high_control
             elif applying_low_mask_blend:
                 print("Applying low-control-mask high-control blend...", flush=True)
-                sample_gt_t = control_high_lat # noise * t_prev + control * (1 - t_prev)
+                sample_gt_t = control_high_lat
 
                 polyak_high = kwargs['polyak_update_tau']
                 sample_low_control = sample * low_control_mask
                 sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
                 sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+
+
+                resampling_steps = kwargs.get('n_repaint_steps', 10)
+                print(f"Doing repaint resampling for {resampling_steps} steps to improve blending.", flush=True)
+                for i in range(resampling_steps):
+                    noise = torch.randn_like(sample)
+                    diff_t = abs(t - t_prev)
+                    noised_sample = sample * (1 - diff_t) + noise * diff_t
+                    out = self.sample_once(model, noised_sample, t_prev+diff_t, t_prev, cond, **args)
+                    sample = out.pred_x_prev
+                    sample_low_control = sample * low_control_mask
+                    sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
+                    sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+
             else:
                 print("No high control adjustment applied for this step.", flush=True)
 

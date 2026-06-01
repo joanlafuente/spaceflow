@@ -364,10 +364,6 @@ class TrellisTextTo3DPipeline(Pipeline):
         )
         z_s = ret.samples
 
-        if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
-            video_path = os.path.join(vis_output_dir, 'denoising_evolution.mp4')
-            self._render_denoising_evolution(ret.pred_x_0, video_path)
-        
         # Decode occupancy latent
         decoder = self.models['sparse_structure_decoder']
         coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
@@ -376,6 +372,11 @@ class TrellisTextTo3DPipeline(Pipeline):
         save_voxelgrid_as_ply(
             decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
         )
+
+        if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
+            video_path = os.path.join(vis_output_dir, 'denoising_evolution.mp4')
+            self._render_denoising_evolution(ret.pred_x_0, video_path)
+        
 
         return coords
 
@@ -549,7 +550,7 @@ class TrellisTextTo3DPipeline(Pipeline):
             low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['low_control_superquadric_mask_path'])
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
 
-        cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control}
+        cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control, 'n_repaint_steps': sparse_structure_sampler_params.get('n_repaint_steps', 10)}
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
         return coords
