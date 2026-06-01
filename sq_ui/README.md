@@ -90,6 +90,7 @@ export SQ_SPACEFLOW_RUN_ROOT=$SQ_SPACEFLOW_STORAGE_ROOT/sq_ui_runs
 export SQ_SPACEFLOW_CACHE_ROOT=$SQ_SPACEFLOW_STORAGE_ROOT/huggingface
 export SQ_SPACEFLOW_XDG_CACHE_ROOT=$SQ_SPACEFLOW_STORAGE_ROOT/xdg_cache
 export SQ_SPACEFLOW_SLURM_CONSTRAINT=5060ti
+export SQ_SPACEFLOW_SLURM_EXCLUDE=studgpu-node09
 
 python3 sq_ui/scripts/spaceflow_service.py
 ```
@@ -100,13 +101,13 @@ Health check:
 curl -s http://127.0.0.1:11438/spaceflow/health | head
 ```
 
-The service uses Slurm by default when launched on a login node and constrains runs to `5060ti` by default because FlashAttention fails on the older `2080ti` nodes. To run from an allocated GPU node without wrapping requests in `srun`, set:
+The service uses Slurm by default when launched on a login node and constrains runs to `5060ti` by default because FlashAttention fails on the older `2080ti` nodes. It also excludes `studgpu-node09` by default because that node currently reports an NVML driver/library mismatch and makes PyTorch fail CUDA initialization; set `SQ_SPACEFLOW_SLURM_EXCLUDE=` once the node is fixed. To run from an allocated GPU node without wrapping requests in `srun`, set:
 
 ```bash
 export SQ_SPACEFLOW_FORCE_LOCAL=1
 ```
 
-Runs are saved under `$SQ_SPACEFLOW_RUN_ROOT/<run_id>/output`. The current UI launch path keeps the legacy `run_local_tau.py` structure-stage behavior, so a successful run should expose files such as `sample.glb`, `struct_mesh_zup.glb`, the control meshes, `struct_renders/000.png`, and `voxels/struct_voxels.ply` in the SpaceFlow panel. Pass `--full_pipeline` to `run_local_tau.py` manually if you want to continue into PartField and similarity/appearance refinement.
+Runs are saved under `$SQ_SPACEFLOW_RUN_ROOT/<run_id>/output`. The UI launch path now passes `--full_pipeline`, so it first writes the structure-stage files (`sample.glb`, `struct_mesh_zup.glb`, control meshes, `struct_renders/000.png`, `voxels/struct_voxels.ply`) and then continues into PartField plus similarity/appearance refinement. The refined mesh is `out_sim.glb` for the current similarity-guided UI flow. Set `SQ_SPACEFLOW_FULL_PIPELINE=0` before starting the service if you need the old structure-only behavior.
 
 ## 5. Ollama Proxy For Edit
 

@@ -6,6 +6,7 @@ from PIL import Image
 import utils3d
 import imageio
 import torch.nn.functional as F
+import trimesh
 
 import third_party.TRELLIS.trellis.modules.sparse as sp
 from third_party.TRELLIS.trellis.utils import render_utils, postprocessing_utils
@@ -136,6 +137,22 @@ def decode_slat(generation_pipeline, feats, coords, out_meshpath, out_gspath):
                     verbose=False,          # Print logs
                 )
     mesh_textured.export(out_meshpath)
+    out_geometry_path = f"{os.path.splitext(out_meshpath)[0]}_geometry.glb"
+    mesh_geometry = trimesh.Trimesh(
+        vertices=mesh_textured.vertices.copy(),
+        faces=mesh_textured.faces.copy(),
+        vertex_normals=mesh_textured.vertex_normals.copy(),
+        process=False,
+    )
+    mesh_geometry.visual = trimesh.visual.TextureVisuals(
+        material=trimesh.visual.material.PBRMaterial(
+            name='geometry_white',
+            baseColorFactor=[1.0, 1.0, 1.0, 1.0],
+            metallicFactor=0.0,
+            roughnessFactor=0.85,
+        )
+    )
+    mesh_geometry.export(out_geometry_path)
 
     # Render the outputs
     video = render_utils.render_video(outputs['gaussian'][0])['color']

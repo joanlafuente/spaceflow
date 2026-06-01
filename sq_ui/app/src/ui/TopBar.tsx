@@ -53,6 +53,14 @@ function formatFileSize(bytes: number) {
 
 function outputFileLabel(file: SpaceflowOutputFile) {
   switch (file.relative_path) {
+    case 'out_sim.glb':
+      return 'Refined geometry';
+    case 'out_app.glb':
+      return 'Appearance-refined geometry';
+    case 'out_gaussian_sim.mp4':
+      return 'Refined Gaussian video';
+    case 'out_gaussian_app.mp4':
+      return 'Appearance Gaussian video';
     case 'sample.glb':
       return 'Structure mesh';
     case 'struct_mesh_zup.glb':
@@ -77,6 +85,8 @@ function outputFileLabel(file: SpaceflowOutputFile) {
 }
 
 const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
+  'out_sim.glb',
+  'out_app.glb',
   'struct_mesh_zup.glb',
   'sample.glb',
   'struct_mesh.glb',
@@ -1480,7 +1490,7 @@ export default function TopBar() {
               />
               <div className="generate-open-bar">
                 <div className="gen-mode-row" role="group" aria-label="SpaceFlow">
-                  <span className="superdec-open-label">SpaceFlow structure</span>
+                  <span className="superdec-open-label">SpaceFlow refinement</span>
                 </div>
                 <button
                   className="toolbar-btn"
@@ -1709,9 +1719,11 @@ export default function TopBar() {
                     <div className="edit-focus-head">
                       <span className="edit-focus-title">Generated files</span>
                       <div className="spaceflow-head-actions">
-                        {spaceflowRun?.pipeline_stage === 'structure_only' && (
+                        {spaceflowRun?.pipeline_stage === 'structure_only' ? (
                           <span className="spaceflow-stage-pill">structure stage</span>
-                        )}
+                        ) : spaceflowRun?.pipeline_stage === 'full_pipeline' ? (
+                          <span className="spaceflow-stage-pill">full pipeline</span>
+                        ) : null}
                         {spaceflowRun && spaceflowInspectionMesh && (
                           <button
                             type="button"
@@ -1739,7 +1751,7 @@ export default function TopBar() {
                         rel="noreferrer"
                         title={spaceflowPreviewImage.path}
                       >
-                        <img src={resolveSpaceflowUrl(spaceflowPreviewImage.url)} alt="SpaceFlow structure preview" />
+                        <img src={resolveSpaceflowUrl(spaceflowPreviewImage.url)} alt="SpaceFlow preview" />
                       </a>
                     )}
                     <div className="spaceflow-output-list">

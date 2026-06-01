@@ -15,6 +15,25 @@ from lib.util import generation, partfield
 log = logging.getLogger(__name__)
 
 
+def _select_slat_flow_model(generation_pipeline, app_type):
+    """Return the SLAT flow model key/model for old and split text/image pipeline configs."""
+    if app_type == 'image':
+        candidates = ['slat_flow_model_image', 'slat_flow_model']
+    else:
+        candidates = ['slat_flow_model_text', 'slat_flow_model']
+
+    for key in candidates:
+        if key in generation_pipeline.models:
+            log.info(f"Using SLAT flow model: {key}")
+            return key, generation_pipeline.models[key]
+
+    available = ', '.join(sorted(generation_pipeline.models.keys()))
+    raise KeyError(
+        f"No compatible SLAT flow model found for {app_type} conditioning. "
+        f"Tried {candidates}; available models: {available}"
+    )
+
+
 def _voxelize_mesh(mesh):
     """Voxelize an Open3D mesh into a (1,1,64,64,64) binary float32 tensor on CPU."""
     mesh = copy.deepcopy(mesh)
@@ -216,11 +235,11 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         log.info("Skipping condition routing visualization; routing indices are still used for local conditioning.")
         torch.cuda.empty_cache()
 
-    flow_model = generation_pipeline.models['slat_flow_model']
+    flow_model_key, flow_model = _select_slat_flow_model(generation_pipeline, app_type)
 
-    # get_cond() is done — only slat_flow_model is needed for the loop. Offload everything else.
+    # get_cond() is done — only the selected SLAT flow model is needed for the loop. Offload everything else.
     for k, m in generation_pipeline.models.items():
-        if k != 'slat_flow_model':
+        if k != flow_model_key:
             m.cpu()
     torch.cuda.empty_cache()
     
