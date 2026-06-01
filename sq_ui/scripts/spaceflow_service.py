@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -36,11 +37,13 @@ RUN_ROOT = Path(
 ).expanduser()
 RUN_TIMEOUT = int(os.environ.get("SQ_SPACEFLOW_TIMEOUT_SEC", "7200"))
 FORCE_LOCAL = os.environ.get("SQ_SPACEFLOW_FORCE_LOCAL", "").strip() == "1"
+FULL_PIPELINE = os.environ.get("SQ_SPACEFLOW_FULL_PIPELINE", "1").strip().lower() not in {"0", "false", "no", "off"}
 PARTITION = "interactive" # os.environ.get("SQ_SPACEFLOW_SLURM_PARTITION", "interactive")
 ACCOUNT = os.environ.get("SQ_SPACEFLOW_SLURM_ACCOUNT", "3dv")
 GPUS = os.environ.get("SQ_SPACEFLOW_SLURM_GPUS", "1").strip()
 CONSTRAINT = os.environ.get("SQ_SPACEFLOW_SLURM_CONSTRAINT", "5060ti").strip()
-TIME_LIMIT = os.environ.get("SQ_SPACEFLOW_SLURM_TIME", "00:30:00")
+EXCLUDE_NODES = os.environ.get("SQ_SPACEFLOW_SLURM_EXCLUDE", "studgpu-node09").strip()
+TIME_LIMIT = os.environ.get("SQ_SPACEFLOW_SLURM_TIME", "02:00:00")
 EXTRA_ARGS = os.environ.get("SQ_SPACEFLOW_SLURM_EXTRA_ARGS", "").strip()
 RUN_SCRIPT = Path(os.environ.get("SQ_SPACEFLOW_RUN_SCRIPT", str(REPO_ROOT / "run_local_tau.py"))).expanduser()
 CACHE_ROOT = Path(
@@ -69,6 +72,10 @@ PYTHON_BIN = _default_python_bin()
 RUNS: dict[str, subprocess.Popen[bytes]] = {}
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 KNOWN_OUTPUTS = [
+    "out_sim.glb",
+    "out_app.glb",
+    "out_gaussian_sim.mp4",
+    "out_gaussian_app.mp4",
     "sample.glb",
     "struct_mesh_zup.glb",
     "struct_mesh.glb",
@@ -147,8 +154,60 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
     ]
     if CONSTRAINT:
         srun_cmd.append(f"--constraint={CONSTRAINT}")
+    if EXCLUDE_NODES:
+        srun_cmd.append(f"--exclude={EXCLUDE_NODES}")
+        
     srun_cmd.extend(_drop_gres_tokens(_split_args(EXTRA_ARGS)))
-    srun_cmd.extend(cmd)
+    
+    # Safely format the python command so spaces in paths don't break bash
+    safe_cmd = shlex.join(cmd)
+    python_bin = shlex.quote(cmd[0])
+    
+    # Create the dynamic wrapper script that runs ON the compute node
+    bash_wrapper = f"""
+    set -o pipefail
+    echo "========================================"
+    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+
+    # 1. Get PyTorch's required CUDA version
+    REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
+    
+    # 2. Get the Node's actual supported CUDA version
+    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
+        echo "$NVIDIA_SMI_OUTPUT"
+        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
+        exit 88
+    fi
+    NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
+    if [ -z "$NODE_CUDA" ]; then
+        NODE_CUDA="Unknown"
+    fi
+    
+    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
+    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
+
+    # 3. Load the correct module
+    source /etc/profile.d/modules.sh 2>/dev/null || true
+    if command -v module &> /dev/null; then
+        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
+        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
+    fi
+    export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
+    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
+        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
+        exit 88
+    fi
+    echo "========================================"
+    
+    # 4. Execute the actual python command
+    exec {safe_cmd}
+    """
+
+    # Instruct srun to execute the bash wrapper
+    srun_cmd.extend(["bash", "-c", bash_wrapper])
     return srun_cmd
 
 
@@ -171,6 +230,7 @@ def _build_run_env() -> dict[str, str]:
     env.setdefault("XDG_CACHE_HOME", str(XDG_CACHE_ROOT))
     env.setdefault("TORCH_HOME", str(CACHE_ROOT / "torch"))
     env.setdefault("TMPDIR", str(RUN_ROOT / "tmp"))
+    env.setdefault("SPCONV_ALGO", "native")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     for key in ("HF_HOME", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE", "XDG_CACHE_HOME", "TORCH_HOME", "TMPDIR"):
         Path(env[key]).expanduser().mkdir(parents=True, exist_ok=True)
@@ -457,6 +517,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "run_script": str(RUN_SCRIPT),
                     "uses_srun": _should_use_srun(),
                     "slurm_constraint": CONSTRAINT,
+                    "slurm_exclude": EXCLUDE_NODES,
                 },
             )
             return
@@ -582,6 +643,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ]
             if convert_yup_to_zup:
                 cmd.append("--convert_yup_to_zup")
+            if FULL_PIPELINE:
+                cmd.append("--full_pipeline")
 
             if appearance_mode == "image":
                 uploaded = form["appearance_image"] if "appearance_image" in form else None
@@ -609,7 +672,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "log_path": str(log_path),
                 "command": final_cmd,
                 "run_config": run_config,
-                "pipeline_stage": "structure_only",
+                "pipeline_stage": "full_pipeline" if FULL_PIPELINE else "structure_only",
             }
             _write_run_meta(run_id, meta)
 
@@ -713,7 +776,7 @@ def main() -> None:
         f"[sq-spaceflow] Cache root: {CACHE_ROOT}\n"
         f"[sq-spaceflow] Python: {PYTHON_BIN}\n"
         f"[sq-spaceflow] Run script: {RUN_SCRIPT}\n"
-        f"[sq-spaceflow] Slurm: uses_srun={_should_use_srun()} gpu_flag=--gpus={GPUS or '1'} constraint={CONSTRAINT or 'none'}\n",
+        f"[sq-spaceflow] Slurm: uses_srun={_should_use_srun()} gpu_flag=--gpus={GPUS or '1'} constraint={CONSTRAINT or 'none'} exclude={EXCLUDE_NODES or 'none'}\n",
         flush=True,
     )
     server.serve_forever()
