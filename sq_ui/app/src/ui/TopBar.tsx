@@ -24,6 +24,7 @@ import {
 } from '../state/spaceflow';
 import { npzEditorUrl } from '../state/npzUrl';
 import {
+  captureSuperquadricRenderBlob,
   captureViewportDataUrl,
   captureViewportImageForLlm,
   captureViewportPreviewDataUrl,
@@ -635,6 +636,24 @@ export default function TopBar() {
     }
     setShowExport(false);
   }, [primitives, projectName]);
+
+  const handleDownloadRendering = useCallback(async () => {
+    if (primitives.length === 0) return;
+    try {
+      const blob = await captureSuperquadricRenderBlob();
+      if (!blob) {
+        showToast('Could not render superquadrics. Switch back to the SQ viewport and try again.', 5000);
+        return;
+      }
+      const filename = `${projectName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'superquadrics'}_render.png`;
+      downloadBlob(blob, filename);
+      showToast(`Downloaded ${filename}`);
+    } catch (err) {
+      showToast(`Render export failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setShowExport(false);
+    }
+  }, [primitives.length, projectName]);
 
   const handleCopyJson = useCallback(() => {
     const data = primitives.map(p => ({
@@ -1779,6 +1798,14 @@ export default function TopBar() {
                 disabled={primitives.length === 0}
               >
                 Download .npz
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                onClick={handleDownloadRendering}
+                disabled={primitives.length === 0}
+              >
+                Download rendering (.png)
               </button>
               <button
                 type="button"

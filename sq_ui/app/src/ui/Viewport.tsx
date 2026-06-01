@@ -10,7 +10,7 @@ import { useStore } from '../state/store';
 import type { MeshInspectionSource, Primitive } from '../state/store';
 import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superquadric';
 import { buildLowControlBoundingBoxPrimitive } from '../mesh/spaceflowExport';
-import { setViewportCapture } from '../state/viewportCapture';
+import { setViewportCapture, setViewportRenderExport } from '../state/viewportCapture';
 
 function superflexDeformForPrimitive(p: Primitive) {
   if (p.tapering === undefined && p.bending === undefined) return undefined;
@@ -27,9 +27,153 @@ function superflexDeformForPrimitive(p: Primitive) {
   };
 }
 
-/** Registers WebGL canvas readback for AI Edit viewport screenshots. */
+const RENDER_EXPORT_BG = '#ffffff';
+const RENDER_EXPORT_HIGH_COLOR = '#f59e0b';
+const RENDER_EXPORT_LOW_COLOR = '#f8fafc';
+const RENDER_EXPORT_FRAME_FILL = 0.82;
+
+function cloneExportCamera(camera: THREE.Camera, width: number, height: number): THREE.Camera {
+  const exportCamera = camera.clone();
+  if ((exportCamera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+    const c = exportCamera as THREE.PerspectiveCamera;
+    c.aspect = width / height;
+    c.updateProjectionMatrix();
+  } else if ((exportCamera as THREE.OrthographicCamera).isOrthographicCamera) {
+    (exportCamera as THREE.OrthographicCamera).updateProjectionMatrix();
+  }
+  exportCamera.updateMatrixWorld(true);
+  return exportCamera;
+}
+
+function boxCorners(box: THREE.Box3): THREE.Vector3[] {
+  return [
+    new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+    new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+    new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+    new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+    new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+    new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+    new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+    new THREE.Vector3(box.max.x, box.max.y, box.max.z),
+  ];
+}
+
+function fitExportCameraToMeshes(
+  camera: THREE.Camera,
+  width: number,
+  height: number,
+  meshes: THREE.Mesh[],
+): THREE.Camera {
+  const exportCamera = cloneExportCamera(camera, width, height);
+  const bounds = new THREE.Box3();
+  meshes.forEach(mesh => {
+    mesh.updateWorldMatrix(true, false);
+    bounds.expandByObject(mesh);
+  });
+  if (bounds.isEmpty()) return exportCamera;
+
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  bounds.getCenter(center);
+  bounds.getSize(size);
+
+  const viewDir = new THREE.Vector3();
+  exportCamera.getWorldDirection(viewDir).normalize();
+  const inverseCameraRotation = exportCamera.quaternion.clone().invert();
+  const localCorners = boxCorners(bounds).map(corner =>
+    corner.sub(center).applyQuaternion(inverseCameraRotation)
+  );
+
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let maxX = 0;
+  let maxY = 0;
+  for (const corner of localCorners) {
+    maxX = Math.max(maxX, Math.abs(corner.x));
+    maxY = Math.max(maxY, Math.abs(corner.y));
+    minZ = Math.min(minZ, corner.z);
+    maxZ = Math.max(maxZ, corner.z);
+  }
+
+  const frameFill = Math.min(Math.max(RENDER_EXPORT_FRAME_FILL, 0.1), 0.98);
+  const padding = Math.max(size.length() * 0.03, 0.01);
+
+  if ((exportCamera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+    const c = exportCamera as THREE.PerspectiveCamera;
+    const tanY = Math.tan(THREE.MathUtils.degToRad(c.fov) / 2);
+    const tanX = tanY * c.aspect;
+    let distance = Math.max(0.01, maxZ + padding);
+    for (const corner of localCorners) {
+      distance = Math.max(
+        distance,
+        corner.z + Math.abs(corner.x) / (tanX * frameFill),
+        corner.z + Math.abs(corner.y) / (tanY * frameFill),
+      );
+    }
+    distance += padding;
+    c.position.copy(center).addScaledVector(viewDir, -distance);
+    c.near = Math.max(0.001, distance - maxZ - padding * 2);
+    c.far = Math.max(c.near + 1, distance - minZ + padding * 4);
+    c.updateProjectionMatrix();
+  } else if ((exportCamera as THREE.OrthographicCamera).isOrthographicCamera) {
+    const c = exportCamera as THREE.OrthographicCamera;
+    const aspect = width / height;
+    let halfWidth = Math.max(maxX / frameFill, 0.01);
+    let halfHeight = Math.max(maxY / frameFill, 0.01);
+    if (halfWidth / halfHeight < aspect) {
+      halfWidth = halfHeight * aspect;
+    } else {
+      halfHeight = halfWidth / aspect;
+    }
+    const depth = Math.max(maxZ - minZ, 1);
+    c.left = -halfWidth;
+    c.right = halfWidth;
+    c.top = halfHeight;
+    c.bottom = -halfHeight;
+    c.zoom = 1;
+    c.position.copy(center).addScaledVector(viewDir, -(depth + padding * 8));
+    c.near = 0.001;
+    c.far = Math.max(depth + padding * 16, 10);
+    c.updateProjectionMatrix();
+  } else {
+    exportCamera.position.copy(center).addScaledVector(viewDir, -Math.max(size.length(), 1));
+  }
+
+  exportCamera.updateMatrixWorld(true);
+  return exportCamera;
+}
+
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise(resolve => canvas.toBlob(blob => resolve(blob), 'image/png'));
+}
+
+function cloneExportableSuperquadrics(sourceScene: THREE.Scene, targetScene: THREE.Scene): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
+  sourceScene.traverse(object => {
+    const sourceMesh = object as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>;
+    if (!sourceMesh.isMesh || sourceMesh.userData.sqExportable !== true) return;
+
+    const controlLevel = sourceMesh.userData.sqControlLevel === 'low' ? 'low' : 'high';
+    const material = new THREE.MeshStandardMaterial({
+      color: controlLevel === 'low' ? RENDER_EXPORT_LOW_COLOR : RENDER_EXPORT_HIGH_COLOR,
+      roughness: 0.45,
+      metalness: 0.06,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(sourceMesh.geometry.clone(), material);
+    sourceMesh.updateWorldMatrix(true, false);
+    mesh.applyMatrix4(sourceMesh.matrixWorld);
+    meshes.push(mesh);
+    targetScene.add(mesh);
+  });
+  return meshes;
+}
+
+/** Registers WebGL canvas readback for AI Edit screenshots and clean SQ render exports. */
 function ViewportCaptureRegister() {
   const gl = useThree(s => s.gl);
+  const scene = useThree(s => s.scene);
+  const camera = useThree(s => s.camera);
   useEffect(() => {
     setViewportCapture(() => {
       try {
@@ -38,8 +182,50 @@ function ViewportCaptureRegister() {
         return null;
       }
     });
-    return () => setViewportCapture(null);
-  }, [gl]);
+    setViewportRenderExport(async () => {
+      const width = Math.max(1, gl.domElement.width);
+      const height = Math.max(1, gl.domElement.height);
+      const exportScene = new THREE.Scene();
+      exportScene.background = new THREE.Color(RENDER_EXPORT_BG);
+      exportScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const key = new THREE.DirectionalLight(0xffffff, 1.15);
+      key.position.set(5, 8, 5);
+      exportScene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+      fill.position.set(-3, -4, -2);
+      exportScene.add(fill);
+
+      const meshes = cloneExportableSuperquadrics(scene, exportScene);
+      if (meshes.length === 0) return null;
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(1);
+      renderer.setSize(width, height, false);
+
+      const exportCamera = fitExportCameraToMeshes(camera, width, height, meshes);
+      renderer.render(exportScene, exportCamera);
+      const blob = await canvasToPngBlob(renderer.domElement);
+
+      meshes.forEach(mesh => {
+        mesh.geometry.dispose();
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      });
+      renderer.dispose();
+      return blob;
+    });
+    return () => {
+      setViewportCapture(null);
+      setViewportRenderExport(null);
+    };
+  }, [camera, gl, scene]);
   return null;
 }
 
@@ -62,6 +248,12 @@ type LoadedGeneratedMesh = {
   object: THREE.Object3D;
   center: [number, number, number];
   fitScale: number;
+};
+
+type GeneratedMeshState = {
+  sourceUrl: string;
+  mesh: LoadedGeneratedMesh | null;
+  error: string | null;
 };
 
 function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
@@ -103,30 +295,42 @@ function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
 }
 
 function GeneratedMesh({ source }: { source: MeshInspectionSource }) {
-  const [mesh, setMesh] = useState<LoadedGeneratedMesh | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<GeneratedMeshState>({
+    sourceUrl: source.url,
+    mesh: null,
+    error: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    setMesh(null);
-    setError(null);
     const loader = new GLTFLoader();
     loader.load(
       source.url,
       (gltf) => {
         if (cancelled) return;
-        setMesh(prepareGeneratedMesh(gltf));
+        setState({
+          sourceUrl: source.url,
+          mesh: prepareGeneratedMesh(gltf),
+          error: null,
+        });
       },
       undefined,
       (err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load generated mesh');
+        setState({
+          sourceUrl: source.url,
+          mesh: null,
+          error: err instanceof Error ? err.message : 'Could not load generated mesh',
+        });
       },
     );
     return () => {
       cancelled = true;
     };
   }, [source.url]);
+
+  const mesh = state.sourceUrl === source.url ? state.mesh : null;
+  const error = state.sourceUrl === source.url ? state.error : null;
 
   if (error) {
     return (
@@ -364,7 +568,12 @@ function SuperquadricMesh({
 
   return (
     <group>
-      <mesh ref={meshRef} geometry={geometry} onPointerDown={handlePointerDown}>
+      <mesh
+        ref={meshRef}
+        geometry={geometry}
+        onPointerDown={handlePointerDown}
+        userData={{ sqExportable: true, sqControlLevel: primitive.controlLevel }}
+      >
         <meshStandardMaterial
           color={color}
           roughness={0.45}
