@@ -217,7 +217,6 @@ class FlowEulerSampler(Sampler):
                 sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
                 sample = sample_low_control + sample_high_control * (1 - low_control_mask)
 
-
                 resampling_steps = kwargs.get('n_repaint_steps', 10)
                 print(f"Doing repaint resampling for {resampling_steps} steps to improve blending.", flush=True)
                 for i in range(resampling_steps):
