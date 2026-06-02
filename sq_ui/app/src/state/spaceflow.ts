@@ -56,6 +56,7 @@ export interface SpaceflowRunConfig {
   convertYupToZup: boolean;
   lowControlBBoxMargin: number;
   dryRun?: boolean;
+  experimentMode?: boolean;
 }
 
 export interface SpaceflowOutputFile {
@@ -70,13 +71,22 @@ export interface SpaceflowOutputFile {
 
 export interface SpaceflowRunStatus {
   run_id: string;
-  status: 'running' | 'succeeded' | 'failed' | 'dry_run' | string;
+  status: 'running' | 'cancelling' | 'cancelled' | 'succeeded' | 'failed' | 'dry_run' | string;
   project_name?: string;
   output_dir?: string;
   log_path?: string;
   command?: string[];
   returncode?: number;
   pipeline_stage?: string;
+  experiment_mode?: boolean;
+  experiment_variants?: Array<{
+    name: string;
+    output_dir: string;
+    mode?: string;
+    low_tau?: number;
+    high_tau?: number | null;
+    polyak_tau?: number;
+  }>;
   output_files?: SpaceflowOutputFile[];
 }
 
@@ -216,4 +226,14 @@ export async function getSpaceflowRunStatus(runId: string): Promise<{
   const res = await fetch(resolveUrl(`/spaceflow/runs/status?run_id=${encodeURIComponent(runId)}`));
   const payload = await parseJson<{ status: 'ok'; run: SpaceflowRunStatus; log_tail: string }>(res);
   return { run: payload.run, logTail: payload.log_tail };
+}
+
+export async function stopSpaceflowRun(runId: string): Promise<SpaceflowRunStatus> {
+  const res = await fetch(resolveUrl('/spaceflow/runs/stop'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  const payload = await parseJson<{ status: 'ok'; run: SpaceflowRunStatus }>(res);
+  return payload.run;
 }
