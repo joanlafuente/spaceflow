@@ -5,10 +5,23 @@ import type { Plugin } from 'vite';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(appDir, '../..');
+const defaultRuntimeRoot = '/work/courses/3dv/team3/spaceflow_runtime';
+
+function defaultAllowedRoots(): string[] {
+  return [
+    projectRoot,
+    process.env.SQ_SPACEFLOW_STORAGE_ROOT,
+    process.env.SQ_SPACEFLOW_ASSET_ROOT,
+    process.env.SQ_SPACEFLOW_RUN_ROOT,
+    defaultRuntimeRoot,
+  ]
+    .filter((root): root is string => Boolean(root))
+    .map(root => path.resolve(root));
+}
 
 function allowedRoots(): string[] {
   const configured = process.env.SQ_UI_NPZ_ROOTS;
-  if (!configured) return [projectRoot];
+  if (!configured) return [...new Set(defaultAllowedRoots())];
   return configured
     .split(path.delimiter)
     .map(root => path.resolve(root))

@@ -18,6 +18,7 @@ import {
   resolveSpaceflowUrl,
   saveSpaceflowAsset,
   startSpaceflowRun,
+  stopSpaceflowRun,
   type SpaceflowHistoryEntry,
   type SpaceflowOutputFile,
   type SpaceflowRunStatus,
@@ -49,6 +50,13 @@ function formatFileSize(bytes: number) {
   const mb = kb / 1024;
   if (mb < 1024) return `${mb.toFixed(1)} MB`;
   return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+function outputNameFromPrompt(prompt: string) {
+  return prompt
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'spaceflow_run';
 }
 
 function outputFileLabel(file: SpaceflowOutputFile) {
@@ -231,7 +239,10 @@ export default function TopBar() {
   }, [viewportPreviewModal]);
 
   useEffect(() => {
-    if (!spaceflowRun?.run_id || spaceflowRun.status !== 'running') return;
+    if (
+      !spaceflowRun?.run_id ||
+      (spaceflowRun.status !== 'running' && spaceflowRun.status !== 'cancelling')
+    ) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -239,7 +250,7 @@ export default function TopBar() {
         if (cancelled) return;
         setSpaceflowRun(status.run);
         setSpaceflowLogTail(status.logTail);
-        if (status.run.status !== 'running') {
+        if (status.run.status !== 'running' && status.run.status !== 'cancelling') {
           setSpaceflowRunning(false);
           const inspectedFile =
             status.run.status === 'succeeded'
@@ -280,6 +291,7 @@ export default function TopBar() {
   const spaceflowVisibleOutputs = spaceflowOutputFiles
     .filter(file => file.kind !== 'log')
     .slice(0, 14);
+  const spaceflowRunActive = spaceflowRun?.status === 'running' || spaceflowRun?.status === 'cancelling';
   const showToast = (msg: string, durationMs = 3000) => {
     setToast(msg);
     setTimeout(() => setToast(null), durationMs);
@@ -394,10 +406,10 @@ export default function TopBar() {
     }
   }, [loadPreset, projectName]);
 
-  const handleStartSpaceflowRun = useCallback(async () => {
+  const handleStartSpaceflowRun = useCallback(async (experimentMode = false) => {
     if (spaceflowRunning || primitives.length === 0) return;
-    const lowTau = Number.parseFloat(spaceflowLowTau);
-    const highTau = Number.parseFloat(spaceflowHighTau);
+    const lowTau = experimentMode ? 3 : Number.parseFloat(spaceflowLowTau);
+    const highTau = experimentMode ? 10 : Number.parseFloat(spaceflowHighTau);
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
     if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
       showToast('High tau must be greater than low tau.', 5000);
@@ -412,8 +424,10 @@ export default function TopBar() {
     try {
       const outputName =
         spaceflowOutputName.trim() ||
-        projectName.replace(/[^a-zA-Z0-9_-]/g, '_') ||
-        'spaceflow_run';
+        outputNameFromPrompt(spaceflowTextPrompt);
+      const runOutputName = experimentMode && !outputName.endsWith('_experiment')
+        ? `${outputName}_experiment`
+        : outputName;
       const { run, bundle } = await startSpaceflowRun({
         projectName,
         primitives,
@@ -426,10 +440,11 @@ export default function TopBar() {
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
-          outputName,
+          outputName: runOutputName,
           convertYupToZup: spaceflowConvertYupToZup,
           lowControlBBoxMargin,
           dryRun: spaceflowDryRun,
+          experimentMode,
         },
       });
       setSpaceflowRun(run);
@@ -437,7 +452,7 @@ export default function TopBar() {
         inspectSpaceflowRunMesh(run, true);
       }
       showToast(
-        `${spaceflowDryRun ? 'Prepared' : 'Started'} SpaceFlow (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
+        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${experimentMode ? 'SpaceFlow experiment' : 'SpaceFlow'} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
         8000,
       );
       if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
@@ -465,6 +480,18 @@ export default function TopBar() {
     spaceflowTextPrompt,
     lowControlBBoxMargin,
   ]);
+
+  const handleStopSpaceflowRun = useCallback(async () => {
+    if (!spaceflowRun?.run_id || !spaceflowRunActive) return;
+    try {
+      const run = await stopSpaceflowRun(spaceflowRun.run_id);
+      setSpaceflowRun(run);
+      setSpaceflowRunning(run.status === 'running' || run.status === 'cancelling');
+      showToast(`Stopping SpaceFlow: ${run.output_dir ?? run.run_id}`, 5000);
+    } catch (err) {
+      showToast(`Stop failed: ${err instanceof Error ? err.message : err}`, 8000);
+    }
+  }, [spaceflowRun?.run_id, spaceflowRunActive]);
 
   const handleGenerate = useCallback(async () => {
     const prompt = genPrompt.trim();
@@ -1666,7 +1693,7 @@ export default function TopBar() {
                     </label>
                     <label className="superdec-number-field">
                       <span>Output name</span>
-                      <input className="num-input" type="text" value={spaceflowOutputName} onChange={(e) => setSpaceflowOutputName(e.target.value)} disabled={spaceflowRunning} placeholder={projectName} />
+                      <input className="num-input" type="text" value={spaceflowOutputName} onChange={(e) => setSpaceflowOutputName(e.target.value)} disabled={spaceflowRunning} placeholder={outputNameFromPrompt(spaceflowTextPrompt)} />
                     </label>
                   </div>
                   <label className="edit-viewport-include">
@@ -1693,11 +1720,31 @@ export default function TopBar() {
                   <button
                     className="btn-generate-go"
                     type="button"
-                    onClick={handleStartSpaceflowRun}
+                    onClick={() => void handleStartSpaceflowRun(false)}
                     disabled={spaceflowRunning || primitives.length === 0}
                   >
                     {spaceflowRunning ? 'Running' : spaceflowDryRun ? 'Dry Run' : 'Run'}
                   </button>
+                  <button
+                    className="btn-generate-go btn-spaceflow-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun(true)}
+                    disabled={spaceflowRunning || primitives.length === 0}
+                    title="Run local tau 3/10, global tau 3 polyak 0, and global tau 10 polyak 0 into one experiment folder"
+                  >
+                    Experiment
+                  </button>
+                  {spaceflowRunActive && (
+                    <button
+                      className="btn-generate-go btn-spaceflow-stop"
+                      type="button"
+                      onClick={() => void handleStopSpaceflowRun()}
+                      disabled={spaceflowRun.status === 'cancelling'}
+                      title="Stop the running SpaceFlow job"
+                    >
+                      {spaceflowRun.status === 'cancelling' ? 'Stopping' : 'Stop'}
+                    </button>
+                  )}
                   {spaceflowRun?.run_id && (
                     <span className={`spaceflow-run-state ${spaceflowRun.status}`}>
                       {spaceflowRun.status}

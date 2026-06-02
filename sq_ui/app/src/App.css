@@ -689,13 +689,19 @@ body {
   border-color: rgba(56, 189, 248, 0.35);
 }
 
+.spaceflow-run-state.cancelling {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
 .spaceflow-run-state.succeeded,
 .spaceflow-run-state.dry_run {
   color: var(--success);
   border-color: rgba(34, 197, 94, 0.35);
 }
 
-.spaceflow-run-state.failed {
+.spaceflow-run-state.failed,
+.spaceflow-run-state.cancelled {
   color: var(--danger);
   border-color: rgba(239, 68, 68, 0.4);
 }
@@ -975,6 +981,14 @@ body {
 
 .btn-generate-go:hover:not(:disabled) {
   opacity: 0.85;
+}
+
+.btn-spaceflow-experiment {
+  background: linear-gradient(135deg, #0f766e, #f59e0b);
+}
+
+.btn-spaceflow-stop {
+  background: linear-gradient(135deg, #b91c1c, #f97316);
 }
 
 .btn-generate-go:disabled {
