@@ -174,6 +174,7 @@ class FlowEulerSampler(Sampler):
         ret = edict({"samples": None, "pred_x_t": [], "pred_x_0": []})
 
         print(f"Starting sampling with {steps} steps...", flush=True)
+        print(f"Low t0 for control: {t0:.4f}" if t0 is not None else "No low t0 for control.", flush=True)
         for t, t_prev in tqdm(t_pairs, desc="Sampling", disable=not verbose):
             # print(f"Current t: {t:.4f}, Previous t: {t_prev:.4f}" + (f", t0: {t0:.4f}" if t0 is not None else "") 
             #         + (f", t0_high: {t0_high:.4f}" if t0_high is not None else ""), flush=True)
@@ -187,47 +188,50 @@ class FlowEulerSampler(Sampler):
                 and t0_high is not None
                 and t > t0_high
             )
-            if 'control' in kwargs and t0 is not None and t > t0 and not (applying_high_guidance or applying_high_mask or applying_low_mask_blend):
+            if 'control' in kwargs and t0 is not None and t > t0:
                print("Skipping step with control due to t > t0...", flush=True) 
                continue
 
             out = self.sample_once(model, sample, t, t_prev, cond, **args)
             sample = out.pred_x_prev
 
-            if (control_high is not None)and t > t0_high:
-                print("Applying high control adjustment...", flush=True)
-                # sample_high = noise * t + control_high * (1 - t) # [1, 8, 16, 16, 16]
-                sample = sample * (1 - kwargs['polyak_update_tau']) + control_high * kwargs['polyak_update_tau']
-            elif (control_high_mask is not None) and t > t0_high:
-                print("Applying high control masking...", flush=True)
-                noise = torch.randn_like(sample)
-                sample_gt_t = lantent_high_control # noise * t_prev + lantent_high_control * (1 - t_prev)
-
-                polyak_low = 0.08
-                polyak_high = 1.0
-                sample_low_control = (1 - polyak_low) * sample * (1-control_high_mask) + polyak_low * sample_gt_t * (1-control_high_mask) # sample * (1 - control_high_mask)  
-                sample_high_control = (1 - polyak_high) * sample * control_high_mask + polyak_high * lantent_high_control * control_high_mask
-                sample = sample_low_control + sample_high_control
-            elif applying_low_mask_blend:
-                print("Applying low-control-mask high-control blend...", flush=True)
-                sample_gt_t = control_high_lat
-
-                polyak_high = kwargs['polyak_update_tau']
-                sample_low_control = sample * low_control_mask
-                sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
-                sample = sample_low_control + sample_high_control * (1 - low_control_mask)
-
-                resampling_steps = kwargs.get('n_repaint_steps', 10)
-                print(f"Doing repaint resampling for {resampling_steps} steps to improve blending.", flush=True)
-                for i in range(resampling_steps):
+            if kwargs['polyak_update_tau'] > 0.0:
+                if (control_high is not None)and t > t0_high:
+                    print("Applying high control adjustment...", flush=True)
+                    # sample_high = noise * t + control_high * (1 - t) # [1, 8, 16, 16, 16]
+                    sample = sample * (1 - kwargs['polyak_update_tau']) + control_high * kwargs['polyak_update_tau']
+                elif (control_high_mask is not None) and t > t0_high:
+                    print("Applying high control masking...", flush=True)
                     noise = torch.randn_like(sample)
-                    diff_t = abs(t - t_prev)
-                    noised_sample = sample * (1 - diff_t) + noise * diff_t
-                    out = self.sample_once(model, noised_sample, t_prev+diff_t, t_prev, cond, **args)
-                    sample = out.pred_x_prev
+                    sample_gt_t = lantent_high_control # noise * t_prev + lantent_high_control * (1 - t_prev)
+
+                    polyak_low = 0.08
+                    polyak_high = 1.0
+                    sample_low_control = (1 - polyak_low) * sample * (1-control_high_mask) + polyak_low * sample_gt_t * (1-control_high_mask) # sample * (1 - control_high_mask)  
+                    sample_high_control = (1 - polyak_high) * sample * control_high_mask + polyak_high * lantent_high_control * control_high_mask
+                    sample = sample_low_control + sample_high_control
+                elif applying_low_mask_blend:
+                    print("Applying low-control-mask high-control blend...", flush=True)
+                    sample_gt_t = control_high_lat
+
+                    polyak_high = kwargs['polyak_update_tau']
                     sample_low_control = sample * low_control_mask
                     sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
                     sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+
+                    resampling_steps = kwargs.get('n_repaint_steps', 10)
+                    print(f"Doing repaint resampling for {resampling_steps} steps to improve blending.", flush=True)
+                    for i in range(resampling_steps):
+                        noise = torch.randn_like(sample)
+                        diff_t = abs(t - t_prev)
+                        noised_sample = sample * (1 - diff_t) + noise * diff_t
+                        out = self.sample_once(model, noised_sample, t_prev+diff_t, t_prev, cond, **args)
+                        sample = out.pred_x_prev
+                        sample_low_control = sample * low_control_mask
+                        sample_high_control = (1 - polyak_high) * sample + polyak_high * sample_gt_t
+                        sample = sample_low_control + sample_high_control * (1 - low_control_mask)
+                else:
+                    print("No high control adjustment applied for this step.", flush=True)
 
             else:
                 print("No high control adjustment applied for this step.", flush=True)
