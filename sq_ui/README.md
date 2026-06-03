@@ -147,6 +147,8 @@ http://<host>:5173/datasets/abo/assets/B07B4W81YX/superflex.npz
 
 Vite redirects that to the editor and serves the local `.npz` through `/_sq/npz`, so the browser does not download it first. By default URL-opened files load as stored, which matches the Z-up ABO/ShapeNet asset bundles. Add `&basis=zup` only for older files that need Z-up-to-Y-up conversion.
 
+The dev server only serves `.npz` files from allowlisted roots. By default this includes the repo and the team SpaceFlow runtime root (`/work/courses/3dv/team3/spaceflow_runtime`), so generated `input_superquadrics_*.npz` files can be reopened from experiment folders. Override with `SQ_UI_NPZ_ROOTS=/path/a:/path/b` if you need a different set.
+
 To build the URL for the currently running Vite port:
 
 ```bash

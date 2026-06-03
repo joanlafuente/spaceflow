@@ -34,6 +34,23 @@ def _select_slat_flow_model(generation_pipeline, app_type):
     )
 
 
+def _text_conditioner_to(generation_pipeline, device):
+    text_cond_model = getattr(generation_pipeline, 'text_cond_model', None)
+    if not text_cond_model:
+        return
+    if 'model' in text_cond_model:
+        text_cond_model['model'].to(device)
+    if 'null_cond' in text_cond_model:
+        text_cond_model['null_cond'] = text_cond_model['null_cond'].to(device)
+
+
+def _preprocess_condition_image(generation_pipeline, path):
+    image = Image.open(path).convert('RGB')
+    if hasattr(generation_pipeline, 'preprocess_image'):
+        return generation_pipeline.preprocess_image(image)
+    return image
+
+
 def _voxelize_mesh(mesh):
     """Voxelize an Open3D mesh into a (1,1,64,64,64) binary float32 tensor on CPU."""
     mesh = copy.deepcopy(mesh)
@@ -118,7 +135,15 @@ def attn_cosine_sim(x, eps=1e-08):
     sim_matrix = (x @ x.permute(0, 2, 1)) / factor
     return sim_matrix
 
-def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
+def _auto_contrastive_chunk_size(num_voxels):
+    if num_voxels <= 16_000:
+        return 1024
+    if num_voxels <= 28_000:
+        return 512
+    return 256
+
+
+def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=None):
     """Supervised contrastive loss without materializing the full N×N similarity matrix.
     Peak memory is O(chunk_size × N) instead of O(N²).
     """
@@ -127,6 +152,7 @@ def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
     x_norm = x / x.norm(dim=1, keepdim=True).clamp(min=eps)  # (N, C), L2-normalized
     labels = labels.view(-1)  # (N,)
     N = x_norm.shape[0]
+    chunk_size = chunk_size or _auto_contrastive_chunk_size(N)
 
     numerator = torch.zeros(N, device=x.device)
     denominator = torch.zeros(N, device=x.device)
@@ -135,37 +161,43 @@ def chunked_contrastive_loss(feats, labels, eps=1e-08, chunk_size=1024):
     for i in range(0, N, chunk_size):
         i_end = min(i + chunk_size, N)
         sim_row = x_norm[i:i_end] @ x_norm.T  # (cs, N)
+        exp_sim = torch.exp(sim_row)
 
         labels_i = labels[i:i_end].unsqueeze(1)  # (cs, 1)
-        same_label = (labels_i == labels.unsqueeze(0)).float()  # (cs, N)
+        same_label = labels_i == labels.unsqueeze(0)  # (cs, N)
 
         # Exclude self-similarity on diagonal
         diag_idx = torch.arange(i_end - i, device=x.device)
-        same_label[diag_idx, i + diag_idx] = 0.0
+        self_mask = torch.zeros_like(same_label)
+        self_mask[diag_idx, i + diag_idx] = True
+        positive_mask = same_label & ~self_mask
 
-        logits_mask = torch.ones_like(sim_row)
-        logits_mask[diag_idx, i + diag_idx] = 0.0
-
-        exp_sim = torch.exp(sim_row) * logits_mask
-        numerator[i:i_end] = (exp_sim * same_label).sum(dim=1)
-        denominator[i:i_end] = exp_sim.sum(dim=1)
-        valid[i:i_end] = same_label.sum(dim=1) > 0
+        denominator[i:i_end] = exp_sim.masked_fill(self_mask, 0.0).sum(dim=1)
+        valid[i:i_end] = positive_mask.any(dim=1)
+        numerator[i:i_end] = exp_sim.masked_fill(~positive_mask, 0.0).sum(dim=1)
 
     loss = -torch.log(numerator / (denominator + 1e-8))
     return loss[valid].mean()
 
 def optimize_self_similarity(cfg, app, app_type, output_dir,
                              local_prompts=None, local_prompt_type=None,
-                             individual_sq_meshes=None):
+                             individual_sq_meshes=None,
+                             generation_pipeline=None,
+                             decode_texture=True):
     log.info("Starting self-similarity optimization...")
 
-    if app_type == 'image':
-        generation_pipeline = TrellisImageTo3DPipeline.from_pretrained(cfg.trellis_img_model_name)
-        app = Image.open(osp.join(output_dir, 'app_image.png')).convert('RGB')
-        app = generation_pipeline.preprocess_image(app)
+    if generation_pipeline is None:
+        if app_type == 'image':
+            generation_pipeline = TrellisImageTo3DPipeline.from_pretrained(cfg.trellis_img_model_name)
+        else:
+            generation_pipeline = TrellisTextTo3DPipeline.from_pretrained(cfg.trellis_text_model_name)
     else:
-        generation_pipeline = TrellisTextTo3DPipeline.from_pretrained(cfg.trellis_text_model_name)
+        log.info("Reusing preloaded TRELLIS pipeline for self-similarity guidance.")
     generation_pipeline.cuda()
+    _text_conditioner_to(generation_pipeline, 'cuda')
+
+    if app_type == 'image':
+        app = _preprocess_condition_image(generation_pipeline, osp.join(output_dir, 'app_image.png'))
     
     # Load Structure Data
     struct_coords = utils3d.io.read_ply(osp.join(output_dir, 'voxels', 'struct_voxels.ply'))[0]
@@ -192,30 +224,48 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
     best_loss = float('inf')
     feats = None
     
-    cond = generation_pipeline.get_cond_text([app]) if app_type != "image" else generation_pipeline.get_cond([app])
+    if app_type == "image":
+        cond = generation_pipeline.get_cond([app]) if hasattr(generation_pipeline, 'get_cond') else generation_pipeline.get_cond_image([app])
+    else:
+        cond = generation_pipeline.get_cond_text([app])
 
     # Build per-SQ local conditioning if local prompts were provided.
     cond_list = None
     coords_dense_indices = None
     if local_prompts and individual_sq_meshes:
         global_emb = cond['cond']  # (1, seq_len, dim)
+        n_sq = len(local_prompts)
+        active_indices = [
+            idx
+            for idx, prompt in enumerate(local_prompts)
+            if str(prompt or "").strip()
+        ]
+        log.info(
+            f"Building local {local_prompt_type} conditioning for "
+            f"{len(active_indices)} / {n_sq} superquadrics; active SQ indices: {active_indices}"
+        )
         if local_prompt_type == 'text':
-            local_embs = [
-                generation_pipeline.encode_text([p]) if p and p.strip() else global_emb
-                for p in local_prompts
-            ]
+            local_embs = []
+            for prompt in local_prompts:
+                local_embs.append(
+                    generation_pipeline.encode_text([prompt])
+                    if prompt and prompt.strip()
+                    else global_emb
+                )
         else:  # 'image'
-            local_embs = [
-                generation_pipeline.encode_image([Image.open(p).convert('RGB')]) if p else global_emb
-                for p in local_prompts
-            ]
+            local_embs = []
+            for path in local_prompts:
+                if path:
+                    local_image = _preprocess_condition_image(generation_pipeline, path)
+                    local_embs.append(generation_pipeline.encode_image([local_image]))
+                else:
+                    local_embs.append(global_emb)
         # Only include SQs that have a real (non-global-fallback) local condition.
         conditioned_mask = [emb is not global_emb for emb in local_embs]
         conditioned_embs = [emb for emb, is_cond in zip(local_embs, conditioned_mask) if is_cond]
         cond_list = [global_emb] + conditioned_embs
 
         # Build remap: SQ 1-index → new condition index (0=global fallback, 1..n_conditioned).
-        n_sq = len(local_embs)
         remap = torch.zeros(n_sq + 1, dtype=torch.long, device='cuda')
         new_idx = 1
         for sq_i, is_cond in enumerate(conditioned_mask):
@@ -234,6 +284,10 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
 
         log.info("Skipping condition routing visualization; routing indices are still used for local conditioning.")
         torch.cuda.empty_cache()
+    else:
+        log.info("No local SQ texture overrides provided; all voxels use the global condition.")
+
+    _text_conditioner_to(generation_pipeline, 'cpu')
 
     flow_model_key, flow_model = _select_slat_flow_model(generation_pipeline, app_type)
 
@@ -303,13 +357,17 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
                 best_loss = total_loss.item()
                 feats = struct_feats_params.detach() * std + mean
     
-    # Move SLAT decoders back to GPU for decoding
-    for k in ['slat_decoder_mesh', 'slat_decoder_gs', 'slat_decoder_rf']:
+    # Move SLAT decoders back to GPU for decoding.
+    decoder_keys = ['slat_decoder_mesh']
+    if decode_texture:
+        decoder_keys.append('slat_decoder_gs')
+    for k in decoder_keys:
         if k in generation_pipeline.models:
             generation_pipeline.models[k].cuda()
+        elif decode_texture:
+            raise KeyError(f"Texture decode requested but required decoder is missing: {k}")
 
     # Decode SLAT
     log.info("Decoding output SLAT...")
     out_meshpath = osp.join(output_dir,  'out_sim.glb')
-    out_gspath = osp.join(output_dir,  'out_gaussian_sim.mp4')
-    generation.decode_slat(generation_pipeline, feats, struct_coords, out_meshpath, out_gspath)
+    generation.decode_slat(generation_pipeline, feats, struct_coords, out_meshpath, None, texture=decode_texture)

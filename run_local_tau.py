@@ -1,8 +1,10 @@
 from html import parser
 import copy
 import json
+import os
 import os.path as osp
 import gc
+import shutil
 import trimesh
 from PIL import Image
 import logging as log
@@ -15,7 +17,6 @@ from skimage import measure
 import torch
 from torchvision import transforms
 from lightning.pytorch import seed_everything, Trainer
-from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks import ModelCheckpoint
 from pycg import vis, image
 from pycg import render as pycg_render
@@ -42,7 +43,47 @@ log.basicConfig(level=log.INFO,
 STEPS_SHAPE_GEN = 12
 CFG_SHAPE_GEN = 7.5
 
-def init_args():
+def reset_run_state(seed=0):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def trellis_pipeline_path_from_args(args, cfg):
+    return (
+        args.trellis_pipeline_path
+        or os.environ.get("SPACEFLOW_TRELLIS_PIPELINE_PATH")
+        or cfg.trellis_text_model_name
+    )
+
+
+def load_trellis_pipeline(args, cfg):
+    trellis_pipeline_path = trellis_pipeline_path_from_args(args, cfg)
+    log.info(f"Loading TRELLIS pipeline from: {trellis_pipeline_path}")
+    return TrellisTextTo3DPipeline.from_pretrained(trellis_pipeline_path)
+
+
+def move_trellis_text_conditioner(pipeline, device):
+    text_cond_model = getattr(pipeline, 'text_cond_model', None)
+    if not text_cond_model:
+        return
+    if 'model' in text_cond_model:
+        text_cond_model['model'].to(device)
+    if 'null_cond' in text_cond_model:
+        text_cond_model['null_cond'] = text_cond_model['null_cond'].to(device)
+
+
+def offload_trellis_pipeline(pipeline):
+    if pipeline is None:
+        return
+    pipeline.cpu()
+    move_trellis_text_conditioner(pipeline, 'cpu')
+    torch.cuda.empty_cache()
+
+
+def init_args(argv=None):
     parser = argparse.ArgumentParser(description='GuideFlow3D - 3D Shape Generation')
 
     # Guidance mode selection
@@ -77,14 +118,18 @@ def init_args():
                         help='Value of tau for superquadric control')
     parser.add_argument('--shape_tau_high_control', type=float, default=None, required=False,
                         help='Value of tau for superquadric control')
-    parser.add_argument('--polyak_update_tau', type=float, default=0.08, required=False,
-                        help='Tau value for Polyak averaging of the high-control model (if using high control). Recomended to be lowwer than 0.09 to avoid instability.')
+    parser.add_argument('--polyak_update_tau', type=float, default=0.18, required=False,
+                        help='Tau value for Polyak averaging of the high-control model (if using high control). If set to 0 it just perfoms spacecontrol with the lowest provided tau value.')
     parser.add_argument('--local_tau_mode', type=str, choices=['guidance', 'masking', 'low_control_mask'], default='guidance',
                         help='Whether to use local tau guidance, masking or low control mask mode. ')
     parser.add_argument('--full_pipeline', action='store_true',
                         help='Continue past structure generation into PartField and similarity/appearance optimization. Default keeps the legacy structure-only behavior.')
     parser.add_argument('--n_repaint_steps', type=int, default=10,
                         help='Number of repaint resampling steps to perform during structure generation to improve blending (default: 10). Set to 0 to disable.')                        
+    parser.add_argument('--trellis_pipeline_path', type=str, default=None,
+                        help='TRELLIS pipeline config/model path. Defaults to SPACEFLOW_TRELLIS_PIPELINE_PATH or config/default.yaml trellis_text_model_name.')
+    parser.add_argument('--geometry_only_decode', action='store_true',
+                        help='Decode out_sim.glb as white geometry only. Use with text-only lightweight pipeline configs that do not include a Gaussian decoder.')
 
 
     parser.add_argument('--text_prompt', type=str, required=True,
@@ -94,7 +139,7 @@ def init_args():
     parser.add_argument('--local_image_paths', type=str, default=None,
                         help='JSON-encoded list of per-SQ local image file paths (image-similarity mode)')
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.guidance_mode == 'appearance' and not args.appearance_mesh:
             parser.error("--appearance_mesh is required when using appearance guidance mode")
@@ -106,7 +151,7 @@ def init_args():
         if not args.appearance_text and not args.appearance_image:
             parser.error("Provide either --appearance_image or --appearance_text for similarity guidance.")
 
-    return parser.parse_args()
+    return args
 
 def add_superquadric_compact_rot_mat(
     scalings: np.array=np.array([1.0, 1.0, 1.0]),
@@ -304,6 +349,28 @@ def build_individual_sq_meshes_normalized(npz_path):
     return normalized
 
 
+def count_superquadrics(npz_path):
+    with np.load(npz_path) as par_dict:
+        return int(par_dict['scales'].shape[0])
+
+
+def parse_local_condition_list(raw_json, num_superquadrics, label, require_existing_files=False):
+    if not raw_json:
+        return None
+    values = json.loads(raw_json)
+    if not isinstance(values, list):
+        raise ValueError(f"{label} must be a JSON list")
+    if len(values) > num_superquadrics:
+        raise ValueError(f"{label} has {len(values)} entries but only {num_superquadrics} superquadrics")
+    normalized = [str(value or "").strip() for value in values]
+    normalized.extend([""] * (num_superquadrics - len(normalized)))
+    if require_existing_files:
+        missing = [path for path in normalized if path and not osp.exists(path)]
+        if missing:
+            raise FileNotFoundError(f"Local image path(s) not found: {missing}")
+    return normalized if any(value for value in normalized) else None
+
+
 def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.glb"):
     """
     Converts sparse voxel coordinates to a GLB mesh.
@@ -348,6 +415,7 @@ def predict_part(obj_path, output_dir):
     log.info("Extracting PartField feature planes...")
     partfield_config = 'third_party/PartField/config.yaml'
     partfield_cfg = OmegaConf.load(partfield_config)
+    partfield_cfg.dataset.val_num_workers = 0
 
     seed_everything(partfield_cfg.seed)
 
@@ -360,10 +428,9 @@ def predict_part(obj_path, output_dir):
     pl_root = osp.join(output_dir, 'pl_partfield')
     common.ensure_dir(pl_root)
 
-    trainer = Trainer(devices=-1,
+    trainer = Trainer(devices=1,
                       accelerator="gpu",
                       precision="16-mixed",
-                      strategy=DDPStrategy(find_unused_parameters=True),
                       max_epochs=partfield_cfg.training_epochs,
                       log_every_n_steps=1,
                       limit_train_batches=3500,
@@ -371,6 +438,8 @@ def predict_part(obj_path, output_dir):
                       default_root_dir=pl_root,
                       logger=False,
                       enable_checkpointing=False,
+                      enable_progress_bar=False,
+                      enable_model_summary=False,
                      )
 
     partfield_model = Model(partfield_cfg, obj_path)
@@ -381,11 +450,22 @@ def predict_part(obj_path, output_dir):
     del partfield_model
     gc.collect() # Free up memory
 
-def main():
-    args = init_args()
-    cfg = OmegaConf.load('config/default.yaml')
+def run(args, cfg=None, generation_pipeline=None):
+    reset_run_state()
+    cfg = cfg or OmegaConf.load('config/default.yaml')
 
     common.ensure_dir(args.output_dir)
+
+    def copy_input_npz(src_path, output_name):
+        if not src_path:
+            return
+        dst_path = osp.join(args.output_dir, output_name)
+        shutil.copy2(src_path, dst_path)
+        log.info(f"Copied input superquadrics: {dst_path}")
+
+    copy_input_npz(args.shape_superquadric_path, 'input_superquadrics_all.npz')
+    copy_input_npz(args.shape_superquadric_high_control_path, 'input_superquadrics_high_control.npz')
+    copy_input_npz(args.low_control_superquadric_mask_path, 'input_superquadrics_low_control_bbox.npz')
 
     # Generate spatial control mesh from superquadrics
     spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
@@ -408,13 +488,19 @@ def main():
     # Load structure mesh
     log.info("Creating structure mesh with SpaceControl code...")
 
-    pipeline = TrellisTextTo3DPipeline.from_pretrained("/work/courses/3dv/team3/spaceflow/gui")
+    owns_pipeline = generation_pipeline is None
+    if owns_pipeline:
+        pipeline = load_trellis_pipeline(args, cfg)
+    else:
+        pipeline = generation_pipeline
+        log.info(f"Reusing preloaded TRELLIS pipeline from: {trellis_pipeline_path_from_args(args, cfg)}")
     pipeline.cuda()
+    move_trellis_text_conditioner(pipeline, 'cuda')
 
     text_prompt = args.text_prompt
 
     # Sparse voxels
-    coords = pipeline.gen_structure_v2(text_prompt, seed=1, vis_output_dir=args.output_dir, sparse_structure_sampler_params={
+    coords = pipeline.gen_structure_v2(text_prompt, seed=1, vis_output_dir=None, sparse_structure_sampler_params={
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
         "t0_idx_value": args.shape_tau,
@@ -446,8 +532,15 @@ def main():
     # Generator / marching-cubes output in Y-up; keep a copy for debugging.
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh.glb'))
 
-    del pipeline
-    gc.collect() # Free up memory
+    if args.full_pipeline and args.guidance_mode == 'similarity':
+        log.info("Keeping TRELLIS pipeline loaded for similarity guidance; offloading it until refinement.")
+        offload_trellis_pipeline(pipeline)
+    else:
+        if owns_pipeline:
+            del pipeline
+            gc.collect() # Free up memory
+        else:
+            offload_trellis_pipeline(pipeline)
 
     # Canonical mesh for renders, voxels, and PartField must share one frame (Z-up if converting).
     if args.convert_yup_to_zup:
@@ -455,10 +548,14 @@ def main():
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh_zup.glb'))
     struct_mesh_for_pipeline = osp.join(args.output_dir, 'struct_mesh_zup.glb')
 
-    log.info(f"Rendering structure mesh for {cfg.num_views // 10} views...")
     struct_render_dir = osp.join(args.output_dir, 'struct_renders')
     common.ensure_dir(struct_render_dir)
-    out_renderviews = render.render_all_views(struct_mesh_for_pipeline, struct_render_dir, num_views=cfg.num_views // 10)
+    if args.full_pipeline and args.guidance_mode == 'similarity':
+        log.info("Exporting Blender-normalized structure mesh without PNG renders...")
+        out_renderviews = render.export_normalized_mesh(struct_mesh_for_pipeline, struct_render_dir)
+    else:
+        log.info(f"Rendering structure mesh for {cfg.num_views // 10} views...")
+        out_renderviews = render.render_all_views(struct_mesh_for_pipeline, struct_render_dir, num_views=cfg.num_views // 10)
 
     # struct_renders/mesh.ply is the Blender-normalized mesh; use it as the single source of truth
     # for both voxelization and PartField feature extraction so that both operate in the same
@@ -599,8 +696,22 @@ def main():
         log.info(f"Using {app_type} for self-similarity guidance...")
 
         # Parse per-SQ local conditioning args
-        local_text_prompts = json.loads(args.local_text_prompts) if args.local_text_prompts else None
-        local_image_paths  = json.loads(args.local_image_paths)  if args.local_image_paths  else None
+        num_superquadrics = count_superquadrics(args.shape_superquadric_path)
+        local_text_prompts = (
+            parse_local_condition_list(args.local_text_prompts, num_superquadrics, "local_text_prompts")
+            if app_type == 'text'
+            else None
+        )
+        local_image_paths = (
+            parse_local_condition_list(
+                args.local_image_paths,
+                num_superquadrics,
+                "local_image_paths",
+                require_existing_files=True,
+            )
+            if app_type == 'image'
+            else None
+        )
 
         local_prompts     = local_text_prompts if app_type == 'text' else local_image_paths
         local_prompt_type = app_type if local_prompts else None
@@ -612,10 +723,16 @@ def main():
             local_prompts=local_prompts,
             local_prompt_type=local_prompt_type,
             individual_sq_meshes=individual_sq_meshes,
+            generation_pipeline=pipeline,
+            decode_texture=not args.geometry_only_decode,
         )
-
     else:
         raise NotImplementedError(f"Guidance mode {args.guidance_mode} not implemented.")
+
+
+def main(argv=None):
+    args = init_args(argv)
+    run(args)
 
 if __name__ == "__main__":
     main()

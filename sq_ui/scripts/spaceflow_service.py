@@ -8,8 +8,10 @@ import json
 import mimetypes
 import os
 import re
+import signal
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -36,16 +38,24 @@ RUN_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_RUN_ROOT", str(TEAM_STORAGE_ROOT / "sq_ui_runs"))
 ).expanduser()
 RUN_TIMEOUT = int(os.environ.get("SQ_SPACEFLOW_TIMEOUT_SEC", "7200"))
+STOP_GRACE_SEC = float(os.environ.get("SQ_SPACEFLOW_STOP_GRACE_SEC", "8"))
 FORCE_LOCAL = os.environ.get("SQ_SPACEFLOW_FORCE_LOCAL", "").strip() == "1"
 FULL_PIPELINE = os.environ.get("SQ_SPACEFLOW_FULL_PIPELINE", "1").strip().lower() not in {"0", "false", "no", "off"}
 PARTITION = "interactive" # os.environ.get("SQ_SPACEFLOW_SLURM_PARTITION", "interactive")
 ACCOUNT = os.environ.get("SQ_SPACEFLOW_SLURM_ACCOUNT", "3dv")
 GPUS = os.environ.get("SQ_SPACEFLOW_SLURM_GPUS", "1").strip()
 CONSTRAINT = os.environ.get("SQ_SPACEFLOW_SLURM_CONSTRAINT", "5060ti").strip()
-EXCLUDE_NODES = os.environ.get("SQ_SPACEFLOW_SLURM_EXCLUDE", "studgpu-node09").strip()
+EXCLUDE_NODES = "" # os.environ.get("SQ_SPACEFLOW_SLURM_EXCLUDE", "studgpu-node09").strip()
 TIME_LIMIT = os.environ.get("SQ_SPACEFLOW_SLURM_TIME", "02:00:00")
 EXTRA_ARGS = os.environ.get("SQ_SPACEFLOW_SLURM_EXTRA_ARGS", "").strip()
 RUN_SCRIPT = Path(os.environ.get("SQ_SPACEFLOW_RUN_SCRIPT", str(REPO_ROOT / "run_local_tau.py"))).expanduser()
+EXPERIMENT_RUNNER_SCRIPT = Path(
+    os.environ.get(
+        "SQ_SPACEFLOW_EXPERIMENT_RUN_SCRIPT",
+        str(REPO_ROOT / "sq_ui" / "scripts" / "run_spaceflow_experiment.py"),
+    )
+).expanduser()
+OFFLINE_CACHE = os.environ.get("SQ_SPACEFLOW_OFFLINE_CACHE", "1").strip().lower() not in {"0", "false", "no", "off"}
 CACHE_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_CACHE_ROOT", str(TEAM_STORAGE_ROOT / "huggingface"))
 ).expanduser()
@@ -72,7 +82,11 @@ PYTHON_BIN = _default_python_bin()
 RUNS: dict[str, subprocess.Popen[bytes]] = {}
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 KNOWN_OUTPUTS = [
+    "input_superquadrics_all.npz",
+    "input_superquadrics_high_control.npz",
+    "input_superquadrics_low_control_bbox.npz",
     "out_sim.glb",
+    "out_sim_geometry.glb",
     "out_app.glb",
     "out_gaussian_sim.mp4",
     "out_gaussian_app.mp4",
@@ -107,7 +121,8 @@ def _send_file(res: http.server.BaseHTTPRequestHandler, file_path: Path) -> None
 
 
 def _sanitize_name(name: str) -> str:
-    safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in name).strip("_")
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")
+    safe = re.sub(r"_+", "_", safe)
     return safe or "superquadrics"
 
 
@@ -135,9 +150,48 @@ def _drop_gres_tokens(tokens: list[str]) -> list[str]:
     return out
 
 
+def _current_hostnames() -> set[str]:
+    names = {
+        socket.gethostname(),
+        socket.getfqdn(),
+    }
+    return {name for name in names if name} | {name.split(".")[0] for name in names if name}
+
+
+def _allocated_hostnames() -> set[str]:
+    nodelist = os.environ.get("SLURM_JOB_NODELIST") or os.environ.get("SLURM_NODELIST") or ""
+    if not nodelist:
+        return set()
+    if shutil.which("scontrol"):
+        try:
+            result = subprocess.run(
+                ["scontrol", "show", "hostnames", nodelist],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            hosts = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+            return hosts | {host.split(".")[0] for host in hosts}
+        except subprocess.SubprocessError:
+            pass
+    if "[" in nodelist or "," in nodelist:
+        return {nodelist}
+    return {nodelist, nodelist.split(".")[0]}
+
+
+def _running_on_allocated_node() -> bool:
+    allocated = _allocated_hostnames()
+    if not allocated:
+        return bool(os.environ.get("SLURM_JOB_ID"))
+    return bool(_current_hostnames() & allocated)
+
+
 def _should_use_srun() -> bool:
-    if FORCE_LOCAL or os.environ.get("SLURM_JOB_ID"):
+    if FORCE_LOCAL and _running_on_allocated_node():
         return False
+    if os.environ.get("SLURM_JOB_ID"):
+        return not _running_on_allocated_node() and shutil.which("srun") is not None
     return shutil.which("srun") is not None
 
 
@@ -211,6 +265,196 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
     return srun_cmd
 
 
+def _wrap_shell_with_srun(script_path: Path) -> list[str]:
+    srun_cmd = [
+        "srun",
+        f"--partition={PARTITION}",
+        f"--account={ACCOUNT}",
+        f"--time={TIME_LIMIT}",
+        "--job-name=sq_spaceflow_exp",
+        "--ntasks=1",
+        "--export=ALL",
+        f"--gpus={GPUS or '1'}",
+    ]
+    if CONSTRAINT:
+        srun_cmd.append(f"--constraint={CONSTRAINT}")
+    if EXCLUDE_NODES:
+        srun_cmd.append(f"--exclude={EXCLUDE_NODES}")
+    srun_cmd.extend(_drop_gres_tokens(_split_args(EXTRA_ARGS)))
+
+    python_bin = shlex.quote(PYTHON_BIN)
+    safe_cmd = shlex.join(["bash", str(script_path)])
+    bash_wrapper = f"""
+    set -o pipefail
+    echo "========================================"
+    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+    REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
+    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
+        echo "$NVIDIA_SMI_OUTPUT"
+        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
+        exit 88
+    fi
+    NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
+    if [ -z "$NODE_CUDA" ]; then
+        NODE_CUDA="Unknown"
+    fi
+    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
+    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
+    source /etc/profile.d/modules.sh 2>/dev/null || true
+    if command -v module &> /dev/null; then
+        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
+        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
+    fi
+    export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
+    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
+        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
+        exit 88
+    fi
+    echo "========================================"
+    exec {safe_cmd}
+    """
+    srun_cmd.extend(["bash", "-c", bash_wrapper])
+    return srun_cmd
+
+
+def _num_tag(value: float) -> str:
+    return f"{value:g}".replace("-", "m").replace(".", "p")
+
+
+def _spaceflow_cmd(
+    asset_paths: dict[str, object],
+    output_dir: Path,
+    *,
+    text_prompt: str,
+    appearance_args: list[str],
+    local_texture_args: list[str],
+    low_tau: float,
+    high_tau: float | None,
+    polyak_tau: float,
+    convert_yup_to_zup: bool,
+) -> list[str]:
+    cmd = [
+        PYTHON_BIN,
+        str(RUN_SCRIPT),
+        "--guidance_mode",
+        "similarity",
+        "--output_dir",
+        str(output_dir),
+        "--shape_superquadric_path",
+        str(asset_paths["all"]),
+        "--shape_tau",
+        str(low_tau),
+        "--polyak_update_tau",
+        str(polyak_tau),
+        "--text_prompt",
+        text_prompt,
+    ]
+    if high_tau is not None:
+        if high_tau <= low_tau:
+            raise ValueError("High tau must be greater than low tau")
+        cmd.extend([
+            "--shape_superquadric_high_control_path",
+            str(asset_paths["high_control"]),
+            "--shape_tau_high_control",
+            str(high_tau),
+            "--low_control_superquadric_mask_path",
+            str(asset_paths["low_control_bbox"]),
+            "--local_tau_mode",
+            "low_control_mask",
+        ])
+    if convert_yup_to_zup:
+        cmd.append("--convert_yup_to_zup")
+    if FULL_PIPELINE:
+        cmd.append("--full_pipeline")
+    cmd.extend(appearance_args)
+    cmd.extend(local_texture_args)
+    return cmd
+
+
+def _write_experiment_script(script_path: Path, variants: list[dict[str, object]]) -> None:
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -uo pipefail",
+        "experiment_status=0",
+        'echo "[experiment] starting SpaceFlow experiment"',
+    ]
+    for index, variant in enumerate(variants, start=1):
+        name = str(variant["name"])
+        cmd = variant["command"]
+        output_dir = Path(str(variant["output_dir"]))
+        log_path = output_dir / "spaceflow.log"
+        assert isinstance(cmd, list)
+        lines.extend([
+            f'echo "[experiment] variant {index}/{len(variants)}: {name}"',
+            f"mkdir -p {shlex.quote(str(output_dir))}",
+            f"if {shlex.join([str(part) for part in cmd])} 2>&1 | tee {shlex.quote(str(log_path))}; then",
+            f"  echo succeeded > {shlex.quote(str(output_dir / 'status.txt'))}",
+            f'  echo "[experiment] variant {index}/{len(variants)} succeeded: {name}"',
+            "else",
+            "  code=$?",
+            f"  echo failed:$code > {shlex.quote(str(output_dir / 'status.txt'))}",
+            f'  echo "[experiment] variant {index}/{len(variants)} failed with code $code: {name}"',
+            "  if [ \"$experiment_status\" -eq 0 ]; then experiment_status=$code; fi",
+            "fi",
+        ])
+    lines.extend([
+        'echo "[experiment] completed SpaceFlow experiment"',
+        "exit \"$experiment_status\"",
+    ])
+    script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    script_path.chmod(0o755)
+
+
+def _write_command_script(script_path: Path, cmd: list[str]) -> None:
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -uo pipefail",
+        f"exec {shlex.join([str(part) for part in cmd])}",
+    ]
+    script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    script_path.chmod(0o755)
+
+
+def _write_experiment_runner_config(config_path: Path, variants: list[dict[str, object]]) -> None:
+    runner_variants = []
+    for variant in variants:
+        runner_variants.append({
+            "name": variant["name"],
+            "output_dir": variant["output_dir"],
+            "argv": variant["argv"],
+            "mode": variant["mode"],
+            "low_tau": variant["low_tau"],
+            "high_tau": variant["high_tau"],
+            "polyak_tau": variant["polyak_tau"],
+        })
+    config_path.write_text(
+        json.dumps({"spaceflow_config": "config/default.yaml", "variants": runner_variants}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _write_experiment_manifest(output_dir: Path, variants: list[dict[str, object]]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_variants = [
+        {key: value for key, value in variant.items() if key not in {"command", "argv"}}
+        for variant in variants
+    ]
+    (output_dir / "experiment_manifest.json").write_text(
+        json.dumps({"variants": manifest_variants}, indent=2),
+        encoding="utf-8",
+    )
+    for variant in manifest_variants:
+        variant_output_dir = Path(str(variant["output_dir"]))
+        variant_output_dir.mkdir(parents=True, exist_ok=True)
+        (variant_output_dir / "run_config.json").write_text(
+            json.dumps(variant, indent=2),
+            encoding="utf-8",
+        )
+
+
 def _parse_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
@@ -232,6 +476,10 @@ def _build_run_env() -> dict[str, str]:
     env.setdefault("TMPDIR", str(RUN_ROOT / "tmp"))
     env.setdefault("SPCONV_ALGO", "native")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    if OFFLINE_CACHE:
+        env.setdefault("HF_HUB_OFFLINE", "1")
+        env.setdefault("TRANSFORMERS_OFFLINE", "1")
+        env.setdefault("HF_DATASETS_OFFLINE", "1")
     for key in ("HF_HOME", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE", "XDG_CACHE_HOME", "TORCH_HOME", "TMPDIR"):
         Path(env[key]).expanduser().mkdir(parents=True, exist_ok=True)
     return env
@@ -258,6 +506,92 @@ def _copy_uploaded(form: cgi.FieldStorage, field: str, target: Path) -> None:
         raise ValueError(f"Missing uploaded file field: {field}")
     with target.open("wb") as fh:
         shutil.copyfileobj(item.file, fh)
+
+
+def _uploaded_item(form: cgi.FieldStorage, field: str) -> cgi.FieldStorage | None:
+    item = form[field] if field in form else None
+    if item is None or not getattr(item, "filename", ""):
+        return None
+    return item
+
+
+def _image_suffix(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+        return suffix
+    return ".png"
+
+
+def _copy_texture_upload(
+    form: cgi.FieldStorage,
+    field: str,
+    target_dir: Path,
+    stem: str,
+) -> str | None:
+    item = _uploaded_item(form, field)
+    if item is None:
+        return None
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{_sanitize_name(stem)}{_image_suffix(str(item.filename))}"
+    with target.open("wb") as fh:
+        shutil.copyfileobj(item.file, fh)
+    return str(target)
+
+
+def _primitive_count_from_asset(asset_entry: dict[str, object]) -> int:
+    counts = asset_entry.get("counts", {})
+    if isinstance(counts, dict):
+        try:
+            return int(counts.get("all") or 0)
+        except (TypeError, ValueError):
+            pass
+    return 0
+
+
+def _primitive_name_tags(asset_entry: dict[str, object], count: int) -> list[str]:
+    names = [f"primitive_{i}" for i in range(count)]
+    manifest_path = str(asset_entry.get("manifest_path") or "")
+    if not manifest_path:
+        return names
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        primitives = manifest.get("primitives", []) if isinstance(manifest, dict) else []
+        if not isinstance(primitives, list):
+            return names
+        for item in primitives:
+            if not isinstance(item, dict):
+                continue
+            index = int(item.get("index"))
+            if 0 <= index < count:
+                names[index] = _sanitize_name(str(item.get("name") or names[index]))
+    except Exception:
+        return names
+    return names
+
+
+def _normalize_local_values(raw: object, count: int, field_name: str) -> list[str]:
+    if raw is None:
+        values: list[object] = []
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        raise ValueError(f"{field_name} must be a JSON array")
+    if count < 1:
+        raise ValueError("Could not determine primitive count for local texture guidance")
+    if len(values) > count:
+        raise ValueError(f"{field_name} has {len(values)} entries but only {count} primitives")
+    normalized = [str(value or "").strip() for value in values]
+    normalized.extend([""] * (count - len(normalized)))
+    return normalized
+
+
+def _local_texture_upload_indices(form: cgi.FieldStorage) -> list[int]:
+    indices: list[int] = []
+    for key in form.keys():
+        match = re.fullmatch(r"local_texture_image_(\d+)", str(key))
+        if match and _uploaded_item(form, str(key)) is not None:
+            indices.append(int(match.group(1)))
+    return sorted(indices)
 
 
 def _history_path() -> Path:
@@ -354,6 +688,18 @@ def _read_run_meta(run_id: str) -> dict[str, object] | None:
     if not path.is_file():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _signal_run_process(proc: subprocess.Popen[bytes], sig: int) -> None:
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        return
+    except OSError:
+        try:
+            proc.send_signal(sig)
+        except ProcessLookupError:
+            return
 
 
 def _log_tail(log_path: str | Path, n: int = 6000) -> str:
@@ -468,7 +814,10 @@ def _reconcile_untracked_run(meta: dict[str, object]) -> tuple[dict[str, object]
         "traceback",
         "runtimeerror",
         "error:",
-        "failed",
+        "batch job submission failed",
+        "exited with exit code",
+        "cuda out of memory",
+        "failed with code",
     ]
     if any(marker in lower for marker in failure_markers):
         meta = dict(meta)
@@ -477,6 +826,7 @@ def _reconcile_untracked_run(meta: dict[str, object]) -> tuple[dict[str, object]
         return meta, True
     success_markers = [
         "structure-only mode complete",
+        "[experiment] completed spaceflow experiment",
     ]
     if any(marker in lower for marker in success_markers) and _list_output_files(meta):
         meta = dict(meta)
@@ -545,6 +895,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/spaceflow/runs/start":
             self._handle_run_start()
             return
+        if self.path == "/spaceflow/runs/stop":
+            self._handle_run_stop()
+            return
         self.send_error(404)
 
     def _multipart_form(self) -> cgi.FieldStorage:
@@ -594,7 +947,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise ValueError("runConfig must be a JSON object")
 
             project_name = _sanitize_name(form.getfirst("projectName", "superquadrics") or "superquadrics")
-            output_name = _sanitize_name(str(run_config.get("outputName") or project_name))
+            experiment_mode = _parse_bool(str(run_config.get("experimentMode", False)), False)
+            text_prompt = str(run_config.get("textPrompt", "")).strip()
+            if not text_prompt:
+                raise ValueError("Missing text prompt")
+            output_name_raw = str(run_config.get("outputName") or text_prompt)
+            if experiment_mode and not output_name_raw.endswith("_experiment"):
+                output_name_raw = f"{output_name_raw}_experiment"
+            output_name = _sanitize_name(output_name_raw)
             run_id = f"{_utc_timestamp()}_{output_name}"
             asset_entry = _save_bundle_from_form(form, run_id=run_id)
             run_dir = RUN_ROOT / run_id
@@ -603,65 +963,164 @@ class Handler(http.server.BaseHTTPRequestHandler):
             run_dir.mkdir(parents=True, exist_ok=True)
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            text_prompt = str(run_config.get("textPrompt", "")).strip()
-            if not text_prompt:
-                raise ValueError("Missing text prompt")
             low_tau = float(run_config.get("lowTau", 3.0))
             high_tau = float(run_config.get("highTau", 10.0))
-            if high_tau <= low_tau:
-                raise ValueError("High tau must be greater than low tau")
             polyak = float(run_config.get("polyakTau", 0.18))
-            appearance_mode = str(run_config.get("appearanceMode", "text")).strip().lower()
+            texture_mode = str(run_config.get("textureMode") or run_config.get("appearanceMode", "text")).strip().lower()
+            if texture_mode not in {"text", "image"}:
+                raise ValueError(f"Unknown texture mode: {texture_mode}")
             convert_yup_to_zup = _parse_bool(str(run_config.get("convertYupToZup", True)), True)
             dry_run = _parse_bool(str(run_config.get("dryRun", False)), False)
 
             asset_paths = asset_entry["paths"]
             assert isinstance(asset_paths, dict)
-            cmd = [
-                PYTHON_BIN,
-                str(RUN_SCRIPT),
-                "--guidance_mode",
-                "similarity",
-                "--output_dir",
-                str(output_dir),
-                "--shape_superquadric_path",
-                str(asset_paths["all"]),
-                "--shape_tau",
-                str(low_tau),
-                "--shape_superquadric_high_control_path",
-                str(asset_paths["high_control"]),
-                "--shape_tau_high_control",
-                str(high_tau),
-                "--low_control_superquadric_mask_path",
-                str(asset_paths["low_control_bbox"]),
-                "--local_tau_mode",
-                "low_control_mask",
-                "--polyak_update_tau",
-                str(polyak),
-                "--text_prompt",
-                text_prompt,
-            ]
-            if convert_yup_to_zup:
-                cmd.append("--convert_yup_to_zup")
-            if FULL_PIPELINE:
-                cmd.append("--full_pipeline")
+            primitive_count = _primitive_count_from_asset(asset_entry)
+            primitive_tags = _primitive_name_tags(asset_entry, primitive_count)
+            texture_dir = run_dir / "inputs" / "texture"
 
-            if appearance_mode == "image":
-                uploaded = form["appearance_image"] if "appearance_image" in form else None
-                appearance_image_path = str(run_config.get("appearanceImagePath") or "").strip()
-                if uploaded is not None and getattr(uploaded, "filename", ""):
-                    target = run_dir / Path(uploaded.filename).name
-                    with target.open("wb") as fh:
-                        shutil.copyfileobj(uploaded.file, fh)
-                    appearance_image_path = str(target)
+            appearance_args: list[str] = []
+            local_texture_args: list[str] = []
+            texture_meta: dict[str, object] = {
+                "mode": texture_mode,
+                "saved_uploads": {},
+            }
+            saved_uploads: dict[str, str] = {}
+            if texture_mode == "image":
+                appearance_image_path = str(
+                    run_config.get("globalTextureImagePath")
+                    or run_config.get("appearanceImagePath")
+                    or ""
+                ).strip()
+                uploaded_global = (
+                    _copy_texture_upload(form, "texture_image", texture_dir, "global_texture")
+                    or _copy_texture_upload(form, "appearance_image", texture_dir, "global_texture")
+                )
+                if uploaded_global:
+                    appearance_image_path = uploaded_global
+                    saved_uploads["global"] = uploaded_global
                 if not appearance_image_path:
-                    raise ValueError("Image appearance mode requires an image path or upload")
-                cmd.extend(["--appearance_image", appearance_image_path])
-            else:
-                appearance_text = str(run_config.get("appearanceText") or text_prompt).strip()
-                cmd.extend(["--appearance_text", appearance_text])
+                    raise ValueError("Image texture mode requires a global image path or upload")
+                appearance_args = ["--appearance_image", appearance_image_path]
 
-            final_cmd = _wrap_with_srun(cmd) if _should_use_srun() else cmd
+                local_image_paths = _normalize_local_values(
+                    run_config.get("localTextureImagePaths"),
+                    primitive_count,
+                    "localTextureImagePaths",
+                )
+                for index in _local_texture_upload_indices(form):
+                    if index < 0 or index >= primitive_count:
+                        raise ValueError(f"Local texture image upload index {index} is outside 0..{primitive_count - 1}")
+                    stem = f"local_texture_{index}_{primitive_tags[index]}"
+                    uploaded_local = _copy_texture_upload(form, f"local_texture_image_{index}", texture_dir, stem)
+                    if uploaded_local:
+                        local_image_paths[index] = uploaded_local
+                        saved_uploads[f"local_{index}"] = uploaded_local
+                if any(path for path in local_image_paths):
+                    local_texture_args = ["--local_image_paths", json.dumps(local_image_paths)]
+                texture_meta.update({
+                    "global_image_path": appearance_image_path,
+                    "local_override_count": sum(1 for path in local_image_paths if path),
+                    "local_image_paths": local_image_paths,
+                })
+            else:
+                appearance_text = str(
+                    run_config.get("globalTextureText")
+                    or run_config.get("appearanceText")
+                    or text_prompt
+                ).strip() or text_prompt
+                appearance_args = ["--appearance_text", appearance_text]
+                local_text_prompts = _normalize_local_values(
+                    run_config.get("localTextureTexts"),
+                    primitive_count,
+                    "localTextureTexts",
+                )
+                if any(prompt.strip() for prompt in local_text_prompts):
+                    local_texture_args = ["--local_text_prompts", json.dumps(local_text_prompts)]
+                texture_meta.update({
+                    "global_text": appearance_text,
+                    "local_override_count": sum(1 for prompt in local_text_prompts if prompt.strip()),
+                    "local_text_prompts": local_text_prompts,
+                })
+            texture_meta["saved_uploads"] = saved_uploads
+
+            experiment_variants: list[dict[str, object]] = []
+            experiment_script: Path | None = None
+
+            if experiment_mode:
+                experiment_specs = [
+                    {
+                        "name": f"01_local_tau3_tau10_polyak{_num_tag(polyak)}",
+                        "mode": "local_tau",
+                        "low_tau": 3.0,
+                        "high_tau": 10.0,
+                        "polyak_tau": polyak,
+                    },
+                    {
+                        "name": "02_global_tau3_polyak0",
+                        "mode": "global_tau",
+                        "low_tau": 3.0,
+                        "high_tau": None,
+                        "polyak_tau": 0.0,
+                    },
+                    {
+                        "name": "03_global_tau10_polyak0",
+                        "mode": "global_tau",
+                        "low_tau": 10.0,
+                        "high_tau": None,
+                        "polyak_tau": 0.0,
+                    },
+                ]
+                for spec in experiment_specs:
+                    variant_name = _sanitize_name(str(spec["name"]))
+                    variant_output_dir = output_dir / variant_name
+                    variant_cmd = _spaceflow_cmd(
+                        asset_paths,
+                        variant_output_dir,
+                        text_prompt=text_prompt,
+                        appearance_args=appearance_args,
+                        local_texture_args=local_texture_args,
+                        low_tau=float(spec["low_tau"]),
+                        high_tau=None if spec["high_tau"] is None else float(spec["high_tau"]),
+                        polyak_tau=float(spec["polyak_tau"]),
+                        convert_yup_to_zup=convert_yup_to_zup,
+                    )
+                    variant_argv = [str(part) for part in variant_cmd[2:]]
+                    experiment_variants.append({
+                        "name": variant_name,
+                        "output_dir": str(variant_output_dir),
+                        "command": variant_cmd,
+                        "argv": variant_argv,
+                        "mode": spec["mode"],
+                        "low_tau": spec["low_tau"],
+                        "high_tau": spec["high_tau"],
+                        "polyak_tau": spec["polyak_tau"],
+                    })
+                _write_experiment_manifest(output_dir, experiment_variants)
+                experiment_runner_config = run_dir / "experiment_runner_config.json"
+                _write_experiment_runner_config(experiment_runner_config, experiment_variants)
+                experiment_script = run_dir / "run_experiment.sh"
+                experiment_cmd = [
+                    PYTHON_BIN,
+                    str(EXPERIMENT_RUNNER_SCRIPT),
+                    "--config",
+                    str(experiment_runner_config),
+                ]
+                _write_command_script(experiment_script, experiment_cmd)
+                final_cmd = _wrap_shell_with_srun(experiment_script) if _should_use_srun() else ["bash", str(experiment_script)]
+            else:
+                cmd = _spaceflow_cmd(
+                    asset_paths,
+                    output_dir,
+                    text_prompt=text_prompt,
+                    appearance_args=appearance_args,
+                    local_texture_args=local_texture_args,
+                    low_tau=low_tau,
+                    high_tau=high_tau,
+                    polyak_tau=polyak,
+                    convert_yup_to_zup=convert_yup_to_zup,
+                )
+                final_cmd = _wrap_with_srun(cmd) if _should_use_srun() else cmd
+
             meta = {
                 "run_id": run_id,
                 "status": "dry_run" if dry_run else "running",
@@ -673,7 +1132,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "command": final_cmd,
                 "run_config": run_config,
                 "pipeline_stage": "full_pipeline" if FULL_PIPELINE else "structure_only",
+                "launch_mode": "srun" if _should_use_srun() else "subprocess",
+                "experiment_mode": experiment_mode,
+                "texture_guidance": texture_meta,
             }
+            if experiment_mode:
+                meta["experiment_script"] = str(experiment_script)
+                meta["experiment_runner_config"] = str(experiment_runner_config)
+                meta["experiment_variants"] = [
+                    {key: value for key, value in variant.items() if key not in {"command", "argv"}}
+                    for variant in experiment_variants
+                ]
             _write_run_meta(run_id, meta)
 
             if dry_run:
@@ -687,6 +1156,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         stdout=log_file,
                         stderr=subprocess.STDOUT,
                         env=_build_run_env(),
+                        start_new_session=True,
                     )
                 finally:
                     log_file.close()
@@ -710,9 +1180,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if proc is not None:
             code = proc.poll()
             if code is None:
-                meta["status"] = "running"
+                if meta.get("cancel_requested"):
+                    stop_requested_at = float(meta.get("stop_requested_at") or 0)
+                    if stop_requested_at and time.time() - stop_requested_at > STOP_GRACE_SEC:
+                        _signal_run_process(proc, signal.SIGKILL)
+                        meta["status"] = "cancelling"
+                    else:
+                        meta["status"] = "cancelling"
+                else:
+                    meta["status"] = "running"
             else:
-                meta["status"] = "succeeded" if code == 0 else "failed"
+                meta["status"] = "cancelled" if meta.get("cancel_requested") else ("succeeded" if code == 0 else "failed")
                 meta["returncode"] = code
                 RUNS.pop(run_id, None)
                 _write_run_meta(run_id, meta)
@@ -722,6 +1200,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _write_run_meta(run_id, meta)
         log_tail = _log_tail(str(meta.get("log_path", "")))
         self._send_json(200, {"status": "ok", "run": _run_with_outputs(meta), "log_tail": log_tail})
+
+    def _handle_run_stop(self) -> None:
+        try:
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0") or "0")) or b"{}")
+        except json.JSONDecodeError:
+            self._send_json(400, {"error": {"message": "Expected JSON body"}})
+            return
+        run_id = str(payload.get("run_id") or "")
+        if not run_id:
+            self._send_json(400, {"error": {"message": "Missing run_id"}})
+            return
+        meta = _read_run_meta(run_id)
+        if not meta:
+            self._send_json(404, {"error": {"message": f"Unknown run_id: {run_id}"}})
+            return
+        proc = RUNS.get(run_id)
+        meta = dict(meta)
+        if proc is None or proc.poll() is not None:
+            if meta.get("status") == "running":
+                meta["status"] = "failed"
+                meta.setdefault("returncode", proc.returncode if proc is not None else -1)
+                _write_run_meta(run_id, meta)
+            self._send_json(200, {"status": "ok", "run": _run_with_outputs(meta)})
+            return
+
+        meta["status"] = "cancelling"
+        meta["cancel_requested"] = True
+        meta["stop_requested_at"] = time.time()
+        _write_run_meta(run_id, meta)
+        log_path_raw = str(meta.get("log_path") or "")
+        if log_path_raw:
+            log_path = Path(log_path_raw)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write("\n[sq-spaceflow] Stop requested by UI.\n")
+        _signal_run_process(proc, signal.SIGTERM)
+        self._send_json(200, {"status": "ok", "run": _run_with_outputs(meta)})
 
     def _handle_run_log(self, query: str) -> None:
         params = parse_qs(query)
@@ -771,6 +1285,9 @@ def main() -> None:
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(
         f"[sq-spaceflow] Listening on 0.0.0.0:{PORT}\n"
+        f"[sq-spaceflow] Service host: {socket.getfqdn()}\n"
+        f"[sq-spaceflow] Allocated hosts: {', '.join(sorted(_allocated_hostnames())) or 'none'}\n"
+        f"[sq-spaceflow] Launch mode: {'srun' if _should_use_srun() else 'local'}\n"
         f"[sq-spaceflow] Asset root: {SAVE_ROOT}\n"
         f"[sq-spaceflow] Run root: {RUN_ROOT}\n"
         f"[sq-spaceflow] Cache root: {CACHE_ROOT}\n"
