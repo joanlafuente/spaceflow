@@ -30,6 +30,7 @@ import {
   captureViewportImageForLlm,
   captureViewportPreviewDataUrl,
 } from '../state/viewportCapture';
+import { useTextureUploadStore } from '../state/textureUploads';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -62,7 +63,9 @@ function outputNameFromPrompt(prompt: string) {
 function outputFileLabel(file: SpaceflowOutputFile) {
   switch (file.relative_path) {
     case 'out_sim.glb':
-      return 'Refined geometry';
+      return 'Textured refined mesh';
+    case 'out_sim_geometry.glb':
+      return 'White refined geometry';
     case 'out_app.glb':
       return 'Appearance-refined geometry';
     case 'out_gaussian_sim.mp4':
@@ -122,6 +125,7 @@ export default function TopBar() {
   const loadPreset = useStore(s => s.loadPreset);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
+  const spaceflowLocalTextureImageFiles = useTextureUploadStore(s => s.localTextureImageFiles);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
@@ -160,10 +164,10 @@ export default function TopBar() {
   const [spaceflowRun, setSpaceflowRun] = useState<SpaceflowRunStatus | null>(null);
   const [spaceflowLogTail, setSpaceflowLogTail] = useState('');
   const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
-  const [spaceflowAppearanceMode, setSpaceflowAppearanceMode] = useState<'text' | 'image'>('text');
-  const [spaceflowAppearanceText, setSpaceflowAppearanceText] = useState('');
-  const [spaceflowAppearanceImagePath, setSpaceflowAppearanceImagePath] = useState('');
-  const [spaceflowAppearanceImageFile, setSpaceflowAppearanceImageFile] = useState<File | null>(null);
+  const [spaceflowTextureMode, setSpaceflowTextureMode] = useState<'text' | 'image'>('text');
+  const [spaceflowGlobalTextureText, setSpaceflowGlobalTextureText] = useState('');
+  const [spaceflowGlobalTextureImagePath, setSpaceflowGlobalTextureImagePath] = useState('');
+  const [spaceflowGlobalTextureImageFile, setSpaceflowGlobalTextureImageFile] = useState<File | null>(null);
   const [spaceflowLowTau, setSpaceflowLowTau] = useState('3.0');
   const [spaceflowHighTau, setSpaceflowHighTau] = useState('10.0');
   const [spaceflowPolyakTau, setSpaceflowPolyakTau] = useState('0.18');
@@ -182,6 +186,22 @@ export default function TopBar() {
   const superflexNameRef = useRef<HTMLInputElement>(null);
   const spaceflowPromptRef = useRef<HTMLInputElement>(null);
   const inspectedSpaceflowRunRef = useRef<string | null>(null);
+
+  const inspectSpaceflowRunMesh = useCallback((run: SpaceflowRunStatus, automatic = false) => {
+    const meshFile = pickSpaceflowInspectionMesh(run.output_files ?? []);
+    if (!meshFile) return null;
+    if (automatic && inspectedSpaceflowRunRef.current === run.run_id) return meshFile;
+    inspectedSpaceflowRunRef.current = run.run_id;
+    setMeshInspection({
+      url: resolveSpaceflowUrl(meshFile.url),
+      name: outputFileLabel(meshFile),
+      runId: run.run_id,
+      path: meshFile.path,
+      relativePath: meshFile.relative_path,
+    });
+    setShowSpaceflow(false);
+    return meshFile;
+  }, [setMeshInspection]);
 
   const refreshViewportPreview = useCallback(async () => {
     if (!includeViewportInEdit) {
@@ -273,7 +293,7 @@ export default function TopBar() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [spaceflowRun?.run_id, spaceflowRun?.status]);
+  }, [inspectSpaceflowRunMesh, spaceflowRun?.run_id, spaceflowRun?.status]);
 
   const openViewportPreviewModal = useCallback(() => {
     const full = captureViewportDataUrl();
@@ -296,22 +316,6 @@ export default function TopBar() {
     setToast(msg);
     setTimeout(() => setToast(null), durationMs);
   };
-
-  function inspectSpaceflowRunMesh(run: SpaceflowRunStatus, automatic = false) {
-    const meshFile = pickSpaceflowInspectionMesh(run.output_files ?? []);
-    if (!meshFile) return null;
-    if (automatic && inspectedSpaceflowRunRef.current === run.run_id) return meshFile;
-    inspectedSpaceflowRunRef.current = run.run_id;
-    setMeshInspection({
-      url: resolveSpaceflowUrl(meshFile.url),
-      name: outputFileLabel(meshFile),
-      runId: run.run_id,
-      path: meshFile.path,
-      relativePath: meshFile.relative_path,
-    });
-    setShowSpaceflow(false);
-    return meshFile;
-  }
 
   const toggleEditFocus = useCallback((name: string) => {
     setEditFocusNames(prev =>
@@ -419,9 +423,22 @@ export default function TopBar() {
       showToast('Enter a SpaceFlow text prompt.', 5000);
       return;
     }
+    if (
+      spaceflowTextureMode === 'image' &&
+      !spaceflowGlobalTextureImagePath.trim() &&
+      !spaceflowGlobalTextureImageFile
+    ) {
+      showToast('Choose a global texture image or enter a cluster image path.', 5000);
+      return;
+    }
     setSpaceflowRunning(true);
     setSpaceflowLogTail('');
     try {
+      const globalTextureText = spaceflowGlobalTextureText.trim() || spaceflowTextPrompt.trim();
+      const globalTextureImagePath = spaceflowGlobalTextureImagePath.trim();
+      const localTextureTexts = primitives.map(p => (p.localTextureText ?? '').trim());
+      const localTextureImagePaths = primitives.map(p => (p.localTextureImagePath ?? '').trim());
+      const localTextureImageFiles = primitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
       const outputName =
         spaceflowOutputName.trim() ||
         outputNameFromPrompt(spaceflowTextPrompt);
@@ -431,12 +448,18 @@ export default function TopBar() {
       const { run, bundle } = await startSpaceflowRun({
         projectName,
         primitives,
-        appearanceImageFile: spaceflowAppearanceImageFile,
+        textureImageFile: spaceflowGlobalTextureImageFile,
+        localTextureImageFiles,
         runConfig: {
           textPrompt: spaceflowTextPrompt.trim(),
-          appearanceMode: spaceflowAppearanceMode,
-          appearanceText: spaceflowAppearanceText.trim() || spaceflowTextPrompt.trim(),
-          appearanceImagePath: spaceflowAppearanceImagePath.trim(),
+          appearanceMode: spaceflowTextureMode,
+          appearanceText: globalTextureText,
+          appearanceImagePath: globalTextureImagePath,
+          textureMode: spaceflowTextureMode,
+          globalTextureText,
+          globalTextureImagePath,
+          localTextureTexts,
+          localTextureImagePaths,
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
@@ -462,22 +485,24 @@ export default function TopBar() {
       setSpaceflowRunning(false);
     }
   }, [
+    inspectSpaceflowRunMesh,
     primitives,
     projectName,
     refreshSpaceflowHistory,
     showSpaceflowHistoryPanel,
-    spaceflowAppearanceImageFile,
-    spaceflowAppearanceImagePath,
-    spaceflowAppearanceMode,
-    spaceflowAppearanceText,
     spaceflowConvertYupToZup,
     spaceflowDryRun,
+    spaceflowGlobalTextureImageFile,
+    spaceflowGlobalTextureImagePath,
+    spaceflowGlobalTextureText,
     spaceflowHighTau,
+    spaceflowLocalTextureImageFiles,
     spaceflowLowTau,
     spaceflowOutputName,
     spaceflowPolyakTau,
     spaceflowRunning,
     spaceflowTextPrompt,
+    spaceflowTextureMode,
     lowControlBBoxMargin,
   ]);
 
@@ -702,6 +727,8 @@ export default function TopBar() {
       eulerDeg: p.eulerDeg,
       ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
       ...(p.bending !== undefined ? { bending: p.bending } : {}),
+      ...(p.localTextureText ? { localTextureText: p.localTextureText } : {}),
+      ...(p.localTextureImagePath ? { localTextureImagePath: p.localTextureImagePath } : {}),
     }));
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     showToast('Copied JSON preset to clipboard');
@@ -727,6 +754,8 @@ export default function TopBar() {
           rotation?: number[][];
           tapering?: [number, number];
           bending?: [number, number, number, number, number, number];
+          localTextureText?: string;
+          localTextureImagePath?: string;
         }>;
         const prims: Primitive[] = data.map((d) => {
           const euler: [number, number, number] = d.eulerDeg ?? (d.rotation ? matrixToEuler(d.rotation) : [0, 0, 0]);
@@ -743,6 +772,8 @@ export default function TopBar() {
             eulerDeg: euler,
             ...(d.tapering !== undefined ? { tapering: d.tapering } : {}),
             ...(d.bending !== undefined ? { bending: d.bending } : {}),
+            ...(d.localTextureText ? { localTextureText: d.localTextureText } : {}),
+            ...(d.localTextureImagePath ? { localTextureImagePath: d.localTextureImagePath } : {}),
           };
         });
         loadPreset(maybeRescalePrimitivesForEditor(prims));
@@ -1620,55 +1651,55 @@ export default function TopBar() {
                   placeholder="e.g. A chair"
                 />
 
-                <div className="edit-focus-block">
+                <div className="edit-focus-block spaceflow-texture-block">
                   <div className="edit-focus-head">
-                    <span className="edit-focus-title">Appearance guidance</span>
+                    <span className="edit-focus-title">Texture guidance</span>
                     <div className="gen-mode-row">
                       <button
                         type="button"
-                        className={`gen-mode-btn ${spaceflowAppearanceMode === 'text' ? 'active' : ''}`}
-                        onClick={() => setSpaceflowAppearanceMode('text')}
+                        className={`gen-mode-btn ${spaceflowTextureMode === 'text' ? 'active' : ''}`}
+                        onClick={() => setSpaceflowTextureMode('text')}
                         disabled={spaceflowRunning}
                       >
                         Text
                       </button>
                       <button
                         type="button"
-                        className={`gen-mode-btn ${spaceflowAppearanceMode === 'image' ? 'active' : ''}`}
-                        onClick={() => setSpaceflowAppearanceMode('image')}
+                        className={`gen-mode-btn ${spaceflowTextureMode === 'image' ? 'active' : ''}`}
+                        onClick={() => setSpaceflowTextureMode('image')}
                         disabled={spaceflowRunning}
                       >
                         Image
                       </button>
                     </div>
                   </div>
-                  {spaceflowAppearanceMode === 'text' ? (
+                  {spaceflowTextureMode === 'text' ? (
                     <input
                       type="text"
                       className="generate-input generate-input-popover"
-                      value={spaceflowAppearanceText}
-                      onChange={(e) => setSpaceflowAppearanceText(e.target.value)}
+                      value={spaceflowGlobalTextureText}
+                      onChange={(e) => setSpaceflowGlobalTextureText(e.target.value)}
                       disabled={spaceflowRunning}
-                      placeholder="Defaults to the shape prompt"
+                      placeholder="Global texture text; defaults to the shape prompt"
                     />
                   ) : (
                     <div className="spaceflow-image-inputs">
                       <input
                         type="text"
                         className="generate-input generate-input-popover"
-                        value={spaceflowAppearanceImagePath}
-                        onChange={(e) => setSpaceflowAppearanceImagePath(e.target.value)}
+                        value={spaceflowGlobalTextureImagePath}
+                        onChange={(e) => setSpaceflowGlobalTextureImagePath(e.target.value)}
                         disabled={spaceflowRunning}
-                        placeholder="Cluster path to image, or choose file below"
+                        placeholder="Global image path on cluster, or choose file below"
                       />
                       <label className="superdec-file-picker">
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={(e) => setSpaceflowAppearanceImageFile(e.target.files?.[0] ?? null)}
+                          onChange={(e) => setSpaceflowGlobalTextureImageFile(e.target.files?.[0] ?? null)}
                           disabled={spaceflowRunning}
                         />
-                        <span>{spaceflowAppearanceImageFile ? spaceflowAppearanceImageFile.name : 'Choose appearance image'}</span>
+                        <span>{spaceflowGlobalTextureImageFile ? spaceflowGlobalTextureImageFile.name : 'Choose global texture image'}</span>
                       </label>
                     </div>
                   )}

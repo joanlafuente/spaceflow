@@ -46,6 +46,27 @@ def render_all_views(file_path, output_folder, num_views=150):
     if os.path.exists(os.path.join(output_folder, 'transforms.json')):
         return True
 
+
+def export_normalized_mesh(file_path, output_folder):
+    _install_blender()
+    args = [
+        BLENDER_PATH, '-b', '-P', os.path.join(os.getcwd(), 'third_party/TRELLIS/dataset_toolkits', 'blender_script', 'render.py'),
+        '--',
+        '--views', '[]',
+        '--object', os.path.expanduser(file_path),
+        '--resolution', '512',
+        '--output_folder', output_folder,
+        '--engine', 'CYCLES',
+        '--save_mesh',
+    ]
+    if file_path.endswith('.blend'):
+        args.insert(1, file_path)
+
+    call(args, stdout=DEVNULL, stderr=DEVNULL)
+
+    if os.path.exists(os.path.join(output_folder, 'mesh.ply')):
+        return True
+
 # ===============LOW DISCREPANCY SEQUENCES================
 
 PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53]

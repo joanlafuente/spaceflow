@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '../state/store';
 import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
+import { useTextureUploadStore } from '../state/textureUploads';
 
 /** Half-axis minimum; must match scale slider min (SuperDec / normalized fits use ~1e-3). */
 const SCALE_MIN = 0.0001;
@@ -83,6 +84,11 @@ export default function ParameterPanel() {
   const setShowNormalized = useStore(s => s.setShowNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
   const setShowControlPreview = useStore(s => s.setShowControlPreview);
+  const localTextureImageFile = useTextureUploadStore(s =>
+    selectedId ? (s.localTextureImageFiles[selectedId] ?? null) : null
+  );
+  const setLocalTextureImageFile = useTextureUploadStore(s => s.setLocalTextureImageFile);
+  const clearLocalTextureImageFile = useTextureUploadStore(s => s.clearLocalTextureImageFile);
 
   const prim = primitives.find(p => p.id === selectedId);
 
@@ -138,6 +144,22 @@ export default function ParameterPanel() {
     if (!prim) return;
     updatePrimitive(prim.id, { controlLevel });
   }, [prim, updatePrimitive]);
+
+  const updateLocalTextureText = useCallback((value: string) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, { localTextureText: value });
+  }, [prim, updatePrimitive]);
+
+  const updateLocalTextureImagePath = useCallback((value: string) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, { localTextureImagePath: value });
+  }, [prim, updatePrimitive]);
+
+  const clearLocalTextureOverride = useCallback(() => {
+    if (!prim) return;
+    updatePrimitive(prim.id, { localTextureText: '', localTextureImagePath: '' });
+    clearLocalTextureImageFile(prim.id);
+  }, [clearLocalTextureImageFile, prim, updatePrimitive]);
 
   const scaleSliderMax = useMemo(() => {
     const maxScale = Math.max(...primitives.flatMap(p => p.scales), 0.05);
@@ -232,6 +254,62 @@ export default function ParameterPanel() {
           >
             Low
           </button>
+        </div>
+      </div>
+
+      <div className="section local-texture-section">
+        <div className="section-title">
+          Local texture
+          <span
+            className="help-badge"
+            title="Overrides the global SpaceFlow texture condition for this selected superquadric. Empty fields use the global texture."
+          >
+            ?
+          </span>
+        </div>
+        <label className="local-texture-field">
+          <span>Text override</span>
+          <input
+            type="text"
+            className="name-input local-texture-input"
+            value={prim.localTextureText ?? ''}
+            onChange={(e) => updateLocalTextureText(e.target.value)}
+            placeholder="Empty uses global text"
+          />
+        </label>
+        <label className="local-texture-field">
+          <span>Image path override</span>
+          <input
+            type="text"
+            className="name-input local-texture-input"
+            value={prim.localTextureImagePath ?? ''}
+            onChange={(e) => updateLocalTextureImagePath(e.target.value)}
+            placeholder="Empty uses global image"
+          />
+        </label>
+        <div className="local-texture-actions">
+          <label className="local-texture-file-picker">
+            <input
+              type="file"
+              accept="image/*"
+              onClick={(e) => {
+                e.currentTarget.value = '';
+              }}
+              onChange={(e) => setLocalTextureImageFile(prim.id, e.target.files?.[0] ?? null)}
+            />
+            <span title={localTextureImageFile?.name ?? undefined}>
+              {localTextureImageFile?.name ?? 'Choose image override'}
+            </span>
+          </label>
+          {(prim.localTextureText || prim.localTextureImagePath || localTextureImageFile) && (
+            <button
+              type="button"
+              className="local-texture-clear-btn"
+              onClick={clearLocalTextureOverride}
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 

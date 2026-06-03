@@ -19,6 +19,10 @@ export interface Primitive {
   tapering?: [number, number];
   /** Packed [k_z, α_z, k_x, α_x, k_y, α_y] for SuperFlex bending; omitted for plain superquadrics. */
   bending?: [number, number, number, number, number, number];
+  /** Optional per-primitive SpaceFlow texture text override. Empty/omitted falls back to the global texture prompt. */
+  localTextureText?: string;
+  /** Optional per-primitive SpaceFlow texture image path override. Uploaded File objects stay outside the store. */
+  localTextureImagePath?: string;
 }
 
 export interface MeshInspectionSource {

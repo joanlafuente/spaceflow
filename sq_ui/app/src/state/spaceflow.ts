@@ -49,6 +49,11 @@ export interface SpaceflowRunConfig {
   appearanceMode: 'text' | 'image';
   appearanceText?: string;
   appearanceImagePath?: string;
+  textureMode?: 'text' | 'image';
+  globalTextureText?: string;
+  globalTextureImagePath?: string;
+  localTextureTexts?: string[];
+  localTextureImagePaths?: string[];
   lowTau: number;
   highTau: number;
   polyakTau: number;
@@ -195,6 +200,8 @@ export async function startSpaceflowRun(options: {
   primitives: Primitive[];
   runConfig: SpaceflowRunConfig;
   appearanceImageFile?: File | null;
+  textureImageFile?: File | null;
+  localTextureImageFiles?: Array<File | null | undefined>;
 }): Promise<{ run: SpaceflowRunStatus; bundle: SpaceflowSqBundleData }> {
   const { form, bundle } = await buildBundleForm(options.projectName, options.primitives, {
     lowTau: options.runConfig.lowTau,
@@ -208,9 +215,15 @@ export async function startSpaceflowRun(options: {
     throw new Error('Mark at least one primitive as low control before running SpaceFlow.');
   }
   form.append('runConfig', JSON.stringify(options.runConfig));
+  if (options.textureImageFile) {
+    form.append('texture_image', options.textureImageFile, options.textureImageFile.name);
+  }
   if (options.appearanceImageFile) {
     form.append('appearance_image', options.appearanceImageFile, options.appearanceImageFile.name);
   }
+  options.localTextureImageFiles?.forEach((file, index) => {
+    if (file) form.append(`local_texture_image_${index}`, file, file.name);
+  });
   const res = await fetch(resolveUrl('/spaceflow/runs/start'), {
     method: 'POST',
     body: form,

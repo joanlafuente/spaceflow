@@ -674,6 +674,12 @@ body {
   gap: 8px;
 }
 
+.spaceflow-texture-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .spaceflow-run-state {
   font-size: 11px;
   font-weight: 700;
@@ -1511,6 +1517,89 @@ body {
   color: #1c1917;
   background: #f59e0b;
   border-color: #fbbf24;
+}
+
+.local-texture-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.local-texture-section .section-title {
+  margin-bottom: 2px;
+}
+
+.local-texture-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.local-texture-input {
+  height: 30px;
+  font-size: 12px;
+}
+
+.local-texture-input::placeholder {
+  color: var(--text-dim);
+}
+
+.local-texture-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.local-texture-file-picker {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.local-texture-file-picker:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.local-texture-file-picker input[type="file"] {
+  display: none;
+}
+
+.local-texture-file-picker span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-texture-clear-btn {
+  height: 30px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.local-texture-clear-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .help-badge {

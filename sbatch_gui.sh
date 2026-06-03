@@ -10,7 +10,7 @@
 #SBATCH --output=/home/msayfiddinov/spaceflow/outputs/%x-%j.out
 #SBATCH --error=/home/msayfiddinov/spaceflow/outputs/%x-%j.err
 
-cd /home/msayfiddinov/spaceflow
+cd /work/courses/3dv/team3/spaceflow
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate /work/courses/3dv/team3/guideflow3d/envs/guideflow3d
 
