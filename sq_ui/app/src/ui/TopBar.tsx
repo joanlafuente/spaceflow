@@ -670,14 +670,6 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     <div className="top-bar">
       <div className="top-left">
         <span className="app-name">SpaceFlow</span>
-        <span className="app-sep">/</span>
-        <input
-          type="text"
-          className="project-name-input"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          title="Project name"
-        />
         <div className="theme-toggle" role="group" aria-label="Color theme">
           <button
             type="button"
@@ -762,13 +754,14 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   <span className="spaceflow-open-label">SpaceFlow refinement</span>
                 </div>
                 <button
-                  className="toolbar-btn"
+                  className="toolbar-btn toolbar-btn-close"
                   onClick={() => setShowSpaceflow(false)}
                   disabled={spaceflowSaving || spaceflowRunning}
                   title="Close"
                   type="button"
+                  aria-label="Close SpaceFlow panel"
                 >
-                  Close
+                  ×
                 </button>
               </div>
               <div

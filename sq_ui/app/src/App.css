@@ -117,47 +117,19 @@ body {
 }
 
 .app-name {
+  display: inline-block;
   font-family: 'Caveat', cursive;
   font-weight: 700;
   font-size: 30px;
-  line-height: 1;
+  line-height: 1.25;
   letter-spacing: 0;
   background: linear-gradient(90deg, #ff66c4, #ffde59);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.16));
+  padding: 1px 2px 3px 0;
   white-space: nowrap;
-}
-
-.app-sep {
-  color: var(--text-dim);
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.project-name-input {
-  background: none;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 4px;
-  width: 140px;
-  transition: all 0.15s;
-}
-
-.project-name-input:hover {
-  border-color: var(--border);
-  color: var(--text-primary);
-}
-
-.project-name-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  color: var(--text-primary);
-  background: var(--bg-elevated);
 }
 
 .top-center {
@@ -271,6 +243,11 @@ body {
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-color: var(--border);
+}
+
+.toolbar-btn.toolbar-btn-close {
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .separator {
