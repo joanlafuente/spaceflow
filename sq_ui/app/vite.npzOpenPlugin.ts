@@ -5,7 +5,14 @@ import type { Plugin } from 'vite';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(appDir, '../..');
+const workspaceRoot = path.resolve(projectRoot, '..');
 const defaultRuntimeRoot = path.resolve(projectRoot, 'spaceflow_runtime');
+const workspaceRuntimeRoot = path.resolve(workspaceRoot, 'spaceflow_runtime');
+const siblingSpaceflowDatasetRoot = path.resolve(workspaceRoot, 'spaceflow/datasets');
+
+function optionalExistingRoot(root: string): string | undefined {
+  return fs.existsSync(root) ? root : undefined;
+}
 
 function defaultAllowedRoots(): string[] {
   return [
@@ -14,6 +21,8 @@ function defaultAllowedRoots(): string[] {
     process.env.SQ_SPACEFLOW_ASSET_ROOT,
     process.env.SQ_SPACEFLOW_RUN_ROOT,
     defaultRuntimeRoot,
+    optionalExistingRoot(workspaceRuntimeRoot),
+    optionalExistingRoot(siblingSpaceflowDatasetRoot),
   ]
     .filter((root): root is string => Boolean(root))
     .map(root => path.resolve(root));

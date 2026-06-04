@@ -40,4 +40,7 @@ With the Vite dev server running:
 http://<host>:5173/?npz=/absolute/path/to/file.npz
 ```
 
-By default the dev server allows `.npz` files from the repo and `spaceflow_runtime/`. Override with `SQ_UI_NPZ_ROOTS=/path/a:/path/b`.
+By default the dev server allows `.npz` files from the repo, `spaceflow_runtime/`,
+the shared sibling `../spaceflow_runtime/`, and the course dataset folder at
+`../spaceflow/datasets/` when those paths exist. Override with
+`SQ_UI_NPZ_ROOTS=/path/a:/path/b`.
