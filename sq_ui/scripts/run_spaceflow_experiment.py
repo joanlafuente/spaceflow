@@ -88,6 +88,27 @@ def _variant_argv(variant: dict[str, object]) -> list[str]:
     return argv
 
 
+def render_experiment_comparison(config: dict[str, object], config_path: Path) -> None:
+    comparison = config.get("comparison")
+    if isinstance(comparison, dict) and comparison.get("enabled") is False:
+        return
+
+    run_dir = Path(str(config.get("run_dir") or config_path.parent))
+    output_name = "output/variant_comparison_lower_camera.png"
+    azim = 0.0
+    elev = 55.0
+    if isinstance(comparison, dict):
+        output_name = str(comparison.get("output_name") or output_name)
+        azim = float(comparison.get("azim", azim))
+        elev = float(comparison.get("elev", elev))
+
+    print("[experiment] rendering variant comparison")
+    from render_spaceflow_experiment_comparison import render_comparison
+
+    output_path = render_comparison(run_dir, output_name, azim, elev)
+    print(f"[experiment] rendered variant comparison: {output_path}")
+
+
 def main(argv=None):
     args = parse_args(argv)
     config_path = Path(args.config)
@@ -147,6 +168,11 @@ def main(argv=None):
             run_local_tau.torch.cuda.empty_cache()
         except Exception:
             pass
+
+    try:
+        render_experiment_comparison(config, config_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[experiment] comparison failed: {exc}")
 
     print("[experiment] completed SpaceFlow experiment")
     return experiment_status

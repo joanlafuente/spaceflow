@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -18,6 +19,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 
 DEFAULT_RUN_ROOT = Path("/work/courses/3dv/team3/spaceflow_runtime/sq_ui_runs")
+SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
+SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
+SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
 
 VARIANTS = [
     (
@@ -49,6 +53,15 @@ VARIANTS = [
     ),
 ]
 
+SQ_RENDER_PATHS = [
+    "output/01_local_tau3_tau10_polyak0p18/spatial_control_mesh.ply",
+    "output/tau3_tau10_polyak0p18/spatial_control_mesh.ply",
+    "output/02_global_tau3_polyak0/spatial_control_mesh.ply",
+    "output/tau3_polyak0/spatial_control_mesh.ply",
+    "output/03_global_tau10_polyak0/spatial_control_mesh.ply",
+    "output/tau10_polyak0/spatial_control_mesh.ply",
+]
+
 
 def first_existing(run_dir: Path, rel_paths: list[str]) -> Path | None:
     for rel_path in rel_paths:
@@ -56,6 +69,116 @@ def first_existing(run_dir: Path, rel_paths: list[str]) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
+def read_json(path: Path) -> dict[str, object]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def run_meta(run_dir: Path) -> dict[str, object]:
+    return read_json(run_dir / "run_meta.json")
+
+
+def asset_manifest(meta: dict[str, object]) -> dict[str, object]:
+    asset_entry = meta.get("asset_entry")
+    if not isinstance(asset_entry, dict):
+        return {}
+    manifest_path = asset_entry.get("manifest_path")
+    if not manifest_path:
+        return {}
+    return read_json(Path(str(manifest_path)))
+
+
+def primitive_rows(manifest: dict[str, object]) -> list[dict[str, object]]:
+    primitives = manifest.get("primitives")
+    if not isinstance(primitives, list):
+        return []
+    rows = []
+    for fallback_index, primitive in enumerate(primitives):
+        if not isinstance(primitive, dict):
+            continue
+        rows.append({
+            "index": int(primitive.get("index", fallback_index)),
+            "name": str(primitive.get("name") or f"SQ {fallback_index + 1}"),
+            "controlLevel": "low" if primitive.get("controlLevel") == "low" else "high",
+        })
+    return rows
+
+
+def texture_mode(meta: dict[str, object]) -> str:
+    texture = meta.get("texture_guidance")
+    if isinstance(texture, dict):
+        mode = str(texture.get("mode") or "").strip().lower()
+        if mode:
+            return mode
+    run_config = meta.get("run_config")
+    if isinstance(run_config, dict):
+        mode = str(run_config.get("textureMode") or run_config.get("appearanceMode") or "text").strip().lower()
+        return "image" if mode == "image" else "text"
+    return "text"
+
+
+def short_condition(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "/" in text:
+        return Path(text).name
+    return text
+
+
+def texture_conditions(meta: dict[str, object], primitive_count: int) -> tuple[str, list[str], str]:
+    mode = texture_mode(meta)
+    texture = meta.get("texture_guidance")
+    run_config = meta.get("run_config")
+    texture = texture if isinstance(texture, dict) else {}
+    run_config = run_config if isinstance(run_config, dict) else {}
+
+    if mode == "image":
+        global_condition = short_condition(
+            texture.get("global_image_path")
+            or run_config.get("globalTextureImagePath")
+            or run_config.get("appearanceImagePath")
+        ) or "global image"
+        local_values = texture.get("local_image_paths") or run_config.get("localTextureImagePaths") or []
+    else:
+        global_condition = short_condition(
+            texture.get("global_text")
+            or run_config.get("globalTextureText")
+            or run_config.get("appearanceText")
+            or run_config.get("textPrompt")
+        ) or "global text"
+        local_values = texture.get("local_text_prompts") or run_config.get("localTextureTexts") or []
+
+    if not isinstance(local_values, list):
+        local_values = []
+    local_conditions = [short_condition(value) for value in local_values[:primitive_count]]
+    if len(local_conditions) < primitive_count:
+        local_conditions.extend([""] * (primitive_count - len(local_conditions)))
+    return mode, local_conditions, global_condition
+
+
+def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
+    primitives = primitive_rows(manifest)
+    mode, local_conditions, global_condition = texture_conditions(meta, len(primitives))
+    global_line = f"Global {mode} condition: {global_condition}"
+    if not primitives:
+        return global_line
+
+    pieces = []
+    for row in primitives:
+        index = int(row["index"])
+        local = local_conditions[index] if index < len(local_conditions) else ""
+        condition = local or f"global ({global_condition})"
+        pieces.append(f"{index + 1}. {row['name']} [{row['controlLevel']}]: {condition}")
+    return global_line + "\nSQ conditions: " + "; ".join(pieces)
+
+
+def sq_mesh_path(run_dir: Path) -> Path | None:
+    return first_existing(run_dir, SQ_RENDER_PATHS)
 
 
 def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
@@ -168,37 +291,116 @@ def load_mesh(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return vertices, faces, face_colors
 
 
+def _sq_face_colors(mesh: trimesh.Trimesh, faces: np.ndarray, primitives: list[dict[str, object]]) -> np.ndarray:
+    if not primitives:
+        return np.tile(SQ_FALLBACK_COLOR, (len(faces), 1))
+
+    n_primitives = len(primitives)
+    vertices_per_primitive = len(mesh.vertices) // n_primitives
+    if vertices_per_primitive <= 0:
+        return np.tile(SQ_FALLBACK_COLOR, (len(faces), 1))
+
+    primitive_colors = np.array([
+        SQ_LOW_COLOR if primitive.get("controlLevel") == "low" else SQ_HIGH_COLOR
+        for primitive in primitives
+    ])
+    face_primitive_indices = np.clip(faces.min(axis=1) // vertices_per_primitive, 0, n_primitives - 1)
+    return primitive_colors[face_primitive_indices]
+
+
+def _sq_label_positions(vertices: np.ndarray, primitives: list[dict[str, object]]) -> list[tuple[str, np.ndarray]]:
+    if not primitives:
+        return []
+    vertices_per_primitive = len(vertices) // len(primitives)
+    labels = []
+    for ordinal, primitive in enumerate(primitives):
+        start = ordinal * vertices_per_primitive
+        end = len(vertices) if ordinal == len(primitives) - 1 else (ordinal + 1) * vertices_per_primitive
+        if start >= len(vertices) or end <= start:
+            continue
+        index = int(primitive.get("index", ordinal)) + 1
+        labels.append((str(index), vertices[start:end].mean(axis=0)))
+    return labels
+
+
+def load_sq_mesh(path: Path, manifest: dict[str, object]) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[str, np.ndarray]]]:
+    mesh = trimesh.load(path, force="mesh", process=False)
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    if len(vertices) == 0 or len(faces) == 0:
+        raise RuntimeError(f"Empty SQ mesh: {path}")
+    primitives = primitive_rows(manifest)
+    face_colors = _sq_face_colors(mesh, faces, primitives)
+    label_positions = _sq_label_positions(vertices, primitives)
+    center = (vertices.min(axis=0) + vertices.max(axis=0)) / 2.0
+    vertices = vertices - center
+    label_positions = [(label, position - center) for label, position in label_positions]
+    return vertices, faces, face_colors, label_positions
+
+
 def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float) -> Path:
     variant_paths = complete_experiment_paths(run_dir)
     if variant_paths is None:
         raise RuntimeError(f"Missing one or more variants: {run_dir}")
 
+    meta = run_meta(run_dir)
+    manifest = asset_manifest(meta)
+    footer = prompt_footer(meta, manifest)
     rotation = camera_rotation(azim, elev)
     light_dir = np.array([-0.35, -0.45, 0.82])
     light_dir /= np.linalg.norm(light_dir)
 
-    meshes = []
+    meshes: list[dict[str, object]] = []
     max_extent = 0.0
+    control_mesh_path = sq_mesh_path(run_dir)
+    if control_mesh_path is not None:
+        vertices, faces, face_colors, annotations = load_sq_mesh(control_mesh_path, manifest)
+        max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
+        meshes.append({
+            "label": "SQ controls\nteal high / orange low",
+            "vertices": vertices,
+            "faces": faces,
+            "face_colors": face_colors,
+            "annotations": annotations,
+            "edge_alpha": 0.30,
+        })
+
     for label, path in variant_paths:
         vertices, faces, face_colors = load_mesh(path)
         max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
-        meshes.append((label, vertices, faces, face_colors))
+        meshes.append({
+            "label": label,
+            "vertices": vertices,
+            "faces": faces,
+            "face_colors": face_colors,
+            "annotations": [],
+            "edge_alpha": 0.20,
+        })
 
     scale = 1.0 / max(max_extent, 1e-8)
     projected = []
     max_abs = np.array([0.0, 0.0])
-    for label, vertices, faces, face_colors in meshes:
-        vertices = (vertices * scale) @ rotation.T
-        projected.append((label, vertices, faces, face_colors))
+    for mesh_info in meshes:
+        vertices = (np.asarray(mesh_info["vertices"]) * scale) @ rotation.T
+        annotations = [
+            (label, (position * scale) @ rotation.T)
+            for label, position in mesh_info["annotations"]
+        ]
+        projected.append({**mesh_info, "vertices": vertices, "annotations": annotations})
         max_abs = np.maximum(max_abs, np.max(np.abs(vertices[:, :2]), axis=0))
 
     lim_x = float(max_abs[0] * 1.10)
     lim_y = float(max_abs[1] * 1.16)
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.4), dpi=220)
+    fig, axes = plt.subplots(1, len(projected), figsize=(4.7 * len(projected), 5.9), dpi=220)
+    axes = np.atleast_1d(axes)
     fig.patch.set_facecolor("white")
 
-    for ax, (label, vertices, faces, face_colors) in zip(axes, projected):
+    for ax, mesh_info in zip(axes, projected):
+        label = str(mesh_info["label"])
+        vertices = np.asarray(mesh_info["vertices"])
+        faces = np.asarray(mesh_info["faces"])
+        face_colors = np.asarray(mesh_info["face_colors"])
         tri = vertices[faces]
         polys = tri[:, :, :2]
         depths = tri[:, :, 2].mean(axis=1)
@@ -211,11 +413,30 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
             PolyCollection(
                 polys[order],
                 facecolors=colors[order],
-                edgecolors=(0.45, 0.49, 0.52, 0.20),
+                edgecolors=(0.45, 0.49, 0.52, float(mesh_info["edge_alpha"])),
                 linewidths=0.15,
                 antialiaseds=True,
             )
         )
+        for annotation, position in mesh_info["annotations"]:
+            ax.text(
+                position[0],
+                position[1],
+                annotation,
+                ha="center",
+                va="center",
+                fontsize=9,
+                fontweight="bold",
+                color="black",
+                bbox={
+                    "boxstyle": "circle,pad=0.22",
+                    "facecolor": "white",
+                    "edgecolor": "black",
+                    "linewidth": 0.6,
+                    "alpha": 0.82,
+                },
+                zorder=10,
+            )
         ax.set_aspect("equal", adjustable="box")
         ax.set_xlim(-lim_x, lim_x)
         ax.set_ylim(-lim_y, lim_y)
@@ -224,8 +445,11 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         ax.set_title(label, fontsize=13, pad=6)
 
     fig.suptitle(title_for(run_dir), fontsize=16, y=0.98)
-    plt.subplots_adjust(left=0.015, right=0.985, top=0.79, bottom=0.02, wspace=0.03)
+    footer_wrapped = "\n".join(textwrap.wrap(footer, width=190))
+    fig.text(0.5, 0.045, footer_wrapped, ha="center", va="bottom", fontsize=8.5, color="#20242a")
+    plt.subplots_adjust(left=0.015, right=0.985, top=0.78, bottom=0.18, wspace=0.035)
     output_path = run_dir / output_name
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, facecolor="white", bbox_inches="tight", pad_inches=0.04)
     plt.close(fig)
     return output_path
