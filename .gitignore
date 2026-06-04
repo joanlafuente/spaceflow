@@ -105,3 +105,6 @@ examples/**/*.npy
 
 *.png
 *.csv
+
+
+*.txt

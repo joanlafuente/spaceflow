@@ -9,7 +9,7 @@ This branch is the delivery-oriented version of the SpaceFlow repository. It kee
 - `sq_ui/scripts/run_spaceflow_experiment.py`: SpaceFlow variant runner used by the experiment button.
 - `sq_ui/scripts/render_spaceflow_experiment_comparison.py`: helper for experiment comparison renders.
 - `run_local_tau.py`: main SpaceFlow pipeline entrypoint used by the service.
-- `lib`, `third_party`, `gui`, and `config`: runtime source/configuration required by the pipeline.
+- `lib`, `third_party`, and `config`: runtime source/configuration required by the pipeline.
 
 ## Excluded
 
