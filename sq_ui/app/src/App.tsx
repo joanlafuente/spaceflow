@@ -8,6 +8,20 @@ import { importNpzToPrimitives } from './mesh/npzImport';
 import { getNpzUrlRequest, npzFetchUrl } from './state/npzUrl';
 import './App.css';
 
+type ThemeMode = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'sq-ui-theme';
+
+function readInitialTheme(): ThemeMode {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {
+    // Keep the editor usable when localStorage is unavailable.
+  }
+  return 'dark';
+}
+
 export default function App() {
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
@@ -16,7 +30,18 @@ export default function App() {
   const duplicatePrimitive = useStore(s => s.duplicatePrimitive);
   const loadPreset = useStore(s => s.loadPreset);
   const [urlToast, setUrlToast] = useState<string | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readInitialTheme);
   const loadedNpzRequestRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    document.documentElement.style.colorScheme = themeMode;
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    } catch {
+      // Non-fatal: the current session still updates immediately.
+    }
+  }, [themeMode]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -92,11 +117,11 @@ export default function App() {
   }, [loadPreset]);
 
   return (
-    <div className="app">
-      <TopBar />
+    <div className="app" data-theme={themeMode}>
+      <TopBar themeMode={themeMode} onThemeModeChange={setThemeMode} />
       <div className="workspace">
         <PrimitiveList />
-        <Viewport />
+        <Viewport themeMode={themeMode} />
         <ParameterPanel />
       </div>
       {urlToast && <div className="toast" onClick={() => setUrlToast(null)}>{urlToast}</div>}
