@@ -1,5 +1,5 @@
 /**
- * Load superquadric .npz (ZIP of .npy) produced by the SQ Editor export or run.py.
+ * Load superquadric .npz (ZIP of .npy) produced by the SQ Editor export or pipeline.
  */
 import JSZip from 'jszip';
 import type { Primitive } from '../state/store';

@@ -4,7 +4,7 @@
 # After this, start the proxy from the printed path, then run the SQ UI dev server.
 #
 # Usage:
-#   cd /work/courses/3dv/team3/spaceflow
+#   cd /path/to/spaceflow
 #   bash sq_ui/setup_ollama.sh
 #
 # Optional environment:

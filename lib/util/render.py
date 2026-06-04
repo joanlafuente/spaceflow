@@ -1,16 +1,24 @@
 import os
 import json
+from pathlib import Path
 from subprocess import call, DEVNULL
 import numpy as np
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 BLENDER_LINK = 'https://download.blender.org/release/Blender3.0/blender-3.0.1-linux-x64.tar.xz'
-BLENDER_INSTALLATION_PATH = '/work/courses/3dv/team3/guideflow3d'
-BLENDER_PATH = f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender'
+BLENDER_INSTALLATION_PATH = os.environ.get('SPACEFLOW_BLENDER_ROOT', str(REPO_ROOT))
+BLENDER_PATH = os.environ.get(
+    'SPACEFLOW_BLENDER_PATH',
+    f'{BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64/blender',
+)
+BLENDER_RENDER_SCRIPT = os.environ.get(
+    'SPACEFLOW_BLENDER_RENDER_SCRIPT',
+    str(REPO_ROOT / 'third_party' / 'TRELLIS' / 'dataset_toolkits' / 'blender_script' / 'render.py'),
+)
 
 def _install_blender():
     if not os.path.exists(BLENDER_PATH):
-        
-        
+        os.makedirs(BLENDER_INSTALLATION_PATH, exist_ok=True)
         os.system(f'wget {BLENDER_LINK} -P {BLENDER_INSTALLATION_PATH}')
         os.system(f'tar -xvf {BLENDER_INSTALLATION_PATH}/blender-3.0.1-linux-x64.tar.xz -C {BLENDER_INSTALLATION_PATH}')
 
@@ -29,7 +37,7 @@ def render_all_views(file_path, output_folder, num_views=150):
     views = [{'yaw': y, 'pitch': p, 'radius': r, 'fov': f} for y, p, r, f in zip(yaws, pitchs, radius, fov)]
     
     args = [
-        BLENDER_PATH, '-b', '-P', os.path.join(os.getcwd(), 'third_party/TRELLIS/dataset_toolkits', 'blender_script', 'render.py'),
+        BLENDER_PATH, '-b', '-P', BLENDER_RENDER_SCRIPT,
         '--',
         '--views', json.dumps(views),
         '--object', os.path.expanduser(file_path),
@@ -50,7 +58,7 @@ def render_all_views(file_path, output_folder, num_views=150):
 def export_normalized_mesh(file_path, output_folder):
     _install_blender()
     args = [
-        BLENDER_PATH, '-b', '-P', os.path.join(os.getcwd(), 'third_party/TRELLIS/dataset_toolkits', 'blender_script', 'render.py'),
+        BLENDER_PATH, '-b', '-P', BLENDER_RENDER_SCRIPT,
         '--',
         '--views', '[]',
         '--object', os.path.expanduser(file_path),

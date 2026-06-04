@@ -1,5 +1,0 @@
-# ninja log v7
-2	21507	1774008251755843931	/work/courses/3dv/team3/guideflow3d/third_party/TRELLIS/extensions/vox2seq/build/temp.linux-x86_64-cpython-310/src/ext.o	a4f0f7673bd77c03
-21527	32569	1774008273281453802	/work/courses/3dv/team3/guideflow3d/third_party/TRELLIS/extensions/vox2seq/build/temp.linux-x86_64-cpython-310/src/hilbert.o	43218ff746fa445e
-32571	43752	1774008284325254304	/work/courses/3dv/team3/guideflow3d/third_party/TRELLIS/extensions/vox2seq/build/temp.linux-x86_64-cpython-310/src/z_order.o	398836ec20868bb5
-1	154158	1774008251754843950	/work/courses/3dv/team3/guideflow3d/third_party/TRELLIS/extensions/vox2seq/build/temp.linux-x86_64-cpython-310/src/api.o	a8b735cc3b2ef600

@@ -17,7 +17,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-DEFAULT_RUN_ROOT = Path("/work/courses/3dv/team3/spaceflow_runtime/sq_ui_runs")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_RUN_ROOT = REPO_ROOT / "spaceflow_runtime" / "sq_ui_runs"
 SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
 SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
 SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)

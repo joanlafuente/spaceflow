@@ -4,7 +4,7 @@
 # under the shared Spaceflow checkout. After this, start the SuperDec service and point the UI at it.
 #
 # Usage:
-#   cd /work/courses/3dv/team3/spaceflow
+#   cd /path/to/spaceflow
 #   bash sq_ui/setup_superdec.sh
 #
 # Optional environment:

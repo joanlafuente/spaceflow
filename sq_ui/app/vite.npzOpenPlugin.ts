@@ -5,7 +5,7 @@ import type { Plugin } from 'vite';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(appDir, '../..');
-const defaultRuntimeRoot = '/work/courses/3dv/team3/spaceflow_runtime';
+const defaultRuntimeRoot = path.resolve(projectRoot, 'spaceflow_runtime');
 
 function defaultAllowedRoots(): string[] {
   return [

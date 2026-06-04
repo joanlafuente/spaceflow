@@ -1,5 +1,5 @@
 /**
- * Superquadric mesh generation — exact port of run.py's
+ * Superquadric mesh generation — exact port of run_local_tau.py's
  * add_superquadric_compact_rot_mat / create_superquadric_mesh.
  */
 
@@ -172,7 +172,7 @@ export function createSuperquadricMesh(
     vertices[k * 3 + 2] = rotation[2][0] * vx + rotation[2][1] * vy + rotation[2][2] * vz + translation[2];
   }
 
-  // Build triangles (matching run.py exactly)
+  // Build triangles (matching run_local_tau.py exactly)
   const triangles: number[] = [];
   for (let i = 0; i < N - 1; i++) {
     for (let j = 0; j < N - 1; j++) {

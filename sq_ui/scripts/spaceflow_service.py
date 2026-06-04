@@ -28,8 +28,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 PORT = int(os.environ.get("SQ_SPACEFLOW_PORT", "11438"))
 USER = os.environ.get("USER", "user")
+DEFAULT_STORAGE_ROOT = REPO_ROOT / "spaceflow_runtime"
 TEAM_STORAGE_ROOT = Path(
-    os.environ.get("SQ_SPACEFLOW_STORAGE_ROOT", "/work/courses/3dv/team3/spaceflow_runtime")
+    os.environ.get("SQ_SPACEFLOW_STORAGE_ROOT", str(DEFAULT_STORAGE_ROOT))
 ).expanduser()
 SAVE_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_ASSET_ROOT", str(TEAM_STORAGE_ROOT / "sq_ui_assets"))

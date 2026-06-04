@@ -37,13 +37,17 @@ wandb/
 # Large local datasets, checkpoints, and downloaded models
 datasets/
 models/
+!third_party/TRELLIS/trellis/models/
+!third_party/TRELLIS/trellis/models/**/
+!third_party/TRELLIS/trellis/models/**/*.py
 *.ckpt
 *.pt
 *.pth
 *.safetensors
 *.onnx
 third_party/PartField/models/
-third_party/TRELLIS/trellis/models/
+third_party/TRELLIS/trellis/models/**/__pycache__/
+third_party/TRELLIS/trellis/models/trellis_models_backup/
 
 # Generated experiment outputs and scratch space
 ## Ignore Visual Studio temporary files, build results, and
@@ -59,6 +63,7 @@ outputs/
 outputs_old/
 outputs_neil/
 outputs_f/
+spaceflow_runtime/
 tmp/
 debug/
 merged_mesh_voxelized.ply

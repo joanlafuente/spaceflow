@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Validate that the NPZ writer in the browser produces files compatible
-with run.py's load_superquadric_from_file.
+with run_local_tau.py's load_superquadric_from_file.
 
 Usage: python test_npz_compat.py <path_to_npz>
   or: python test_npz_compat.py --generate  (creates a test .npz for comparison)

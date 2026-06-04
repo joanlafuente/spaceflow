@@ -73,7 +73,7 @@ def _resolve_work_dir() -> Path:
     # repository to serve as the working directory without requiring the installed
     # wrapper script.
     repo_root = SCRIPT_PATH.parents[2]
-    if (repo_root / "sq_ui").exists() and (repo_root / "run.py").exists():
+    if (repo_root / "sq_ui").exists() and (repo_root / "run_local_tau.py").exists():
         return repo_root
 
     return WORK_DIR
