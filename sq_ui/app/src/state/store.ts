@@ -164,11 +164,11 @@ function sqPreset(
 }
 
 export const PRESETS: Record<string, () => Partial<Primitive>> = {
-  Ball: () => sqPreset([0.5, 0.5, 0.5], [1, 1], [0, 0, 0]),
+  Ball: () => sqPreset([0.2, 0.2, 0.2], [1, 1], [0, 0, 0]),
   Ellipsoid: () => sqPreset([0.25, 0.25, 0.5], [1, 1], [0, 0, 0]),
-  Cylinder: () => sqPreset([0.5, 0.5, 0.5], [0.05, 1], [90, 0, 0]),
-  Cube: () => sqPreset([0.5, 0.5, 0.5], [0.05, 0.05], [90, 0, 0]),
-  'Astroid (star)': () => sqPreset([0.5, 0.5, 0.5], [4, 4], [0, 0, 0]),
+  Cylinder: () => sqPreset([0.2, 0.2, 0.2], [0.05, 1], [90, 0, 0]),
+  Cube: () => sqPreset([0.2, 0.2, 0.2], [0.05, 0.05], [90, 0, 0]),
+  'Astroid (star)': () => sqPreset([0.2, 0.2, 0.2], [4, 4], [0, 0, 0]),
 };
 
 export const useStore = create<AppState>((set, get) => ({
