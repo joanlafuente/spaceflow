@@ -85,6 +85,7 @@ KNOWN_OUTPUTS = [
     "input_superquadrics_all.npz",
     "input_superquadrics_high_control.npz",
     "input_superquadrics_low_control_bbox.npz",
+    "variant_comparison_lower_camera.png",
     "out_sim.glb",
     "out_sim_geometry.glb",
     "out_app.glb",
@@ -431,7 +432,20 @@ def _write_experiment_runner_config(config_path: Path, variants: list[dict[str, 
             "polyak_tau": variant["polyak_tau"],
         })
     config_path.write_text(
-        json.dumps({"spaceflow_config": "config/default.yaml", "variants": runner_variants}, indent=2),
+        json.dumps(
+            {
+                "spaceflow_config": "config/default.yaml",
+                "run_dir": str(config_path.parent),
+                "variants": runner_variants,
+                "comparison": {
+                    "enabled": True,
+                    "output_name": "output/variant_comparison_lower_camera.png",
+                    "azim": 0.0,
+                    "elev": 55.0,
+                },
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
