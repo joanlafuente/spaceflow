@@ -111,3 +111,5 @@ examples/**/*.npy
 
 
 *.txt
+
+*.tar.xz

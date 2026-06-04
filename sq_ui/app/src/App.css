@@ -366,6 +366,16 @@ body {
   background: var(--bg-hover);
 }
 
+.dropdown-item:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dropdown-item:disabled:hover {
+  background: none;
+}
+
 .toast {
   position: fixed;
   bottom: 24px;

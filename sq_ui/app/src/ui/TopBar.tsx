@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
@@ -21,6 +21,12 @@ import { useTextureUploadStore } from '../state/textureUploads';
 import { captureSuperquadricRenderBlob } from '../state/viewportCapture';
 
 type ThemeMode = 'dark' | 'light';
+
+interface DownloadableGlbMesh {
+  url: string;
+  filename: string;
+  label: string;
+}
 
 interface TopBarProps {
   themeMode: ThemeMode;
@@ -90,6 +96,26 @@ function outputFileLabel(file: SpaceflowOutputFile) {
   }
 }
 
+function isGlbPath(value: string | undefined) {
+  return Boolean(value?.toLowerCase().split(/[?#]/, 1)[0]?.endsWith('.glb'));
+}
+
+function filenameBaseFromPath(value: string | undefined, fallback: string) {
+  const clean = value?.split(/[?#]/, 1)[0] ?? '';
+  const basename = clean.split(/[\\/]/).pop() ?? '';
+  return basename.replace(/\.glb$/i, '') || fallback;
+}
+
+function downloadableGlbFromOutput(file: SpaceflowOutputFile, runId?: string): DownloadableGlbMesh {
+  const relBase = filenameBaseFromPath(file.relative_path, file.name.replace(/\.glb$/i, '') || 'mesh');
+  const prefix = runId ? `${runId}_` : '';
+  return {
+    url: resolveSpaceflowUrl(file.url),
+    filename: `${safeName(`${prefix}${relBase}`, 'spaceflow_mesh')}.glb`,
+    label: outputFileLabel(file),
+  };
+}
+
 const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
   'out_sim.glb',
   'struct_mesh_zup.glb',
@@ -111,6 +137,7 @@ let nextPresetId = 0;
 export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
   const loadPreset = useStore(s => s.loadPreset);
+  const meshInspection = useStore(s => s.meshInspection);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
   const undo = useStore(s => s.undo);
@@ -121,6 +148,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const spaceflowLocalTextureImageFiles = useTextureUploadStore(s => s.localTextureImageFiles);
 
   const [toast, setToast] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showRotateAll, setShowRotateAll] = useState(false);
   const [showSpaceflow, setShowSpaceflow] = useState(false);
@@ -482,7 +510,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       }
     };
     input.click();
-    setShowExport(false);
+    setShowImport(false);
   }, [loadPreset, showToast]);
 
   const handleImportNpz = useCallback(() => {
@@ -502,7 +530,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       }
     };
     input.click();
-    setShowExport(false);
+    setShowImport(false);
   }, [loadPreset, showToast]);
 
   const handleImportNpzZUp = useCallback(() => {
@@ -522,7 +550,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       }
     };
     input.click();
-    setShowExport(false);
+    setShowImport(false);
   }, [loadPreset, showToast]);
 
   const handleOpenNpzPath = useCallback(() => {
@@ -533,7 +561,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       showToast('Please enter a .npz path.', 5000);
       return;
     }
-    setShowExport(false);
+    setShowImport(false);
     window.location.assign(npzEditorUrl(source));
   }, [showToast]);
 
@@ -630,6 +658,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       loadPreset(factory());
       showToast(`Loaded "${template}" template`);
     }
+    setShowImport(false);
     setShowExport(false);
   }, [loadPreset, showToast]);
 
@@ -639,12 +668,49 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const hasWarnings = !allOrtho;
   const spaceflowOutputFiles = spaceflowRun?.output_files ?? [];
   const spaceflowInspectionMesh = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
+  const spaceflowDownloadGlb = useMemo<DownloadableGlbMesh | null>(() => {
+    const runGlb = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
+    if (runGlb) return downloadableGlbFromOutput(runGlb, spaceflowRun?.run_id);
+    if (
+      meshInspection &&
+      (
+        isGlbPath(meshInspection.relativePath) ||
+        isGlbPath(meshInspection.path) ||
+        isGlbPath(meshInspection.url)
+      )
+    ) {
+      const fallbackBase = filenameBaseFromPath(
+        meshInspection.relativePath ?? meshInspection.path ?? meshInspection.url,
+        meshInspection.name || 'mesh',
+      );
+      return {
+        url: meshInspection.url,
+        filename: `${safeName(fallbackBase, 'spaceflow_mesh')}.glb`,
+        label: meshInspection.name,
+      };
+    }
+    return null;
+  }, [meshInspection, spaceflowOutputFiles, spaceflowRun?.run_id]);
   const spaceflowPreviewImage =
     spaceflowOutputFiles.find(file => file.relative_path === 'struct_renders/000.png') ??
     spaceflowOutputFiles.find(file => file.kind === 'image');
   const spaceflowVisibleOutputs = spaceflowOutputFiles
     .filter(file => file.kind !== 'log')
     .slice(0, 14);
+  const handleDownloadGlbMesh = useCallback(async () => {
+    if (!spaceflowDownloadGlb) return;
+    try {
+      const res = await fetch(spaceflowDownloadGlb.url);
+      if (!res.ok) throw new Error(`download returned ${res.status}`);
+      const blob = await res.blob();
+      downloadBlob(blob, spaceflowDownloadGlb.filename);
+      showToast(`Downloaded ${spaceflowDownloadGlb.filename}`);
+    } catch (err) {
+      showToast(`GLB download failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setShowExport(false);
+    }
+  }, [showToast, spaceflowDownloadGlb]);
 
   return (
     <div className="top-bar">
@@ -666,6 +732,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             className={`toolbar-btn toolbar-btn-menu${showRotateAll ? ' is-open' : ''}`}
             onClick={() => {
               setShowRotateAll(v => !v);
+              setShowImport(false);
               setShowExport(false);
               setShowSpaceflow(false);
             }}
@@ -691,6 +758,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             <button
               className="btn-generate btn-spaceflow"
               onClick={() => {
+                setShowImport(false);
                 setShowExport(false);
                 setShowRotateAll(false);
                 setShowSpaceflow(true);
@@ -1053,11 +1121,42 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           <button
             className="btn-accent"
             onClick={() => {
-              setShowExport(!showExport);
+              setShowImport(!showImport);
+              setShowExport(false);
               setShowRotateAll(false);
               setShowSpaceflow(false);
             }}
-            title="Export, copy, or import presets"
+            title="Import presets or open NPZ files"
+          >
+            Import
+          </button>
+          {showImport && (
+            <div className="dropdown-menu">
+              <button type="button" className="dropdown-item" onClick={handleImportJson}>
+                Import JSON preset
+              </button>
+              <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
+                Open .npz path...
+              </button>
+              <button type="button" className="dropdown-item" onClick={handleImportNpz}>
+                Import .npz (as stored)
+              </button>
+              <button type="button" className="dropdown-item" onClick={handleImportNpzZUp} title="Use if the object looks sideways: applies x,y,z to x,z,-y">
+                Import .npz (Z-up to Y-up)
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="export-dropdown">
+          <button
+            className="btn-accent"
+            onClick={() => {
+              setShowExport(!showExport);
+              setShowImport(false);
+              setShowRotateAll(false);
+              setShowSpaceflow(false);
+            }}
+            title="Export or copy presets"
           >
             Export
           </button>
@@ -1082,22 +1181,23 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
               <button
                 type="button"
                 className="dropdown-item"
+                onClick={() => void handleDownloadGlbMesh()}
+                disabled={!spaceflowDownloadGlb}
+                title={
+                  spaceflowDownloadGlb
+                    ? `Download ${spaceflowDownloadGlb.label}`
+                    : 'No generated GLB mesh is available yet'
+                }
+              >
+                Download GLB mesh
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
                 onClick={handleCopyJson}
                 disabled={primitives.length === 0}
               >
                 Copy JSON preset
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportJson}>
-                Import JSON preset
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
-                Open .npz path...
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportNpz}>
-                Import .npz (as stored)
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportNpzZUp} title="Use if the object looks sideways: applies x,y,z to x,z,-y">
-                Import .npz (Z-up to Y-up)
               </button>
             </div>
           )}
