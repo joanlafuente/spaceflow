@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
-import { eulerToMatrix, isOrthogonal, matMul3, matVec3, matrixToEuler } from '../state/rotation';
+import { eulerToMatrix, isOrthogonal, matrixToEuler } from '../state/rotation';
 import {
   fetchSpaceflowHistory,
   getSpaceflowRunStatus,
@@ -114,19 +114,6 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
 }
 
 let nextPresetId = 0;
-
-function rotateTemplateWorld(primitives: Primitive[], deltaEulerDeg: [number, number, number]): Primitive[] {
-  const rotationDelta = eulerToMatrix(deltaEulerDeg);
-  return primitives.map(primitive => {
-    const rotation = matMul3(rotationDelta, primitive.rotation);
-    return {
-      ...primitive,
-      rotation,
-      translation: matVec3(rotationDelta, primitive.translation),
-      eulerDeg: matrixToEuler(rotation),
-    };
-  });
-}
 
 export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
@@ -574,14 +561,14 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         }];
       },
       'Table (5 parts)': () => {
-        const leg = (x: number, z: number, idx: number): Primitive => ({
+        const leg = (x: number, y: number, idx: number): Primitive => ({
           id: `t_${++nextPresetId}_${Date.now()}`,
           name: `Leg ${idx}`,
           visible: true,
           controlLevel: 'high',
-          scales: [0.06, 0.4, 0.06],
+          scales: [0.06, 0.06, 0.4],
           shapes: [0.4, 0.4],
-          translation: [x, -0.44, z],
+          translation: [x, y, -0.44],
           rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
           eulerDeg: [0, 0, 0],
         });
@@ -591,7 +578,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             name: 'Top',
             visible: true,
             controlLevel: 'high',
-            scales: [0.8, 0.04, 0.5],
+            scales: [0.8, 0.5, 0.04],
             shapes: [0.3, 0.3],
             translation: [0, 0, 0],
             rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -604,24 +591,24 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         ];
       },
       'Chair (6 parts)': () => {
-        const leg = (x: number, z: number, idx: number): Primitive => ({
+        const leg = (x: number, y: number, idx: number): Primitive => ({
           id: `t_${++nextPresetId}_${Date.now()}`,
           name: `Leg ${idx}`,
           visible: true,
           controlLevel: 'high',
-          scales: [0.05, 0.35, 0.05],
+          scales: [0.05, 0.05, 0.35],
           shapes: [0.4, 0.4],
-          translation: [x, -0.39, z],
+          translation: [x, y, -0.39],
           rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
           eulerDeg: [0, 0, 0],
         });
-        return rotateTemplateWorld([
+        return [
           {
             id: `t_${++nextPresetId}_${Date.now()}`,
             name: 'Seat',
             visible: true,
             controlLevel: 'high',
-            scales: [0.5, 0.04, 0.45],
+            scales: [0.5, 0.45, 0.04],
             shapes: [0.3, 0.3],
             translation: [0, 0, 0],
             rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -632,17 +619,17 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             name: 'Backrest',
             visible: true,
             controlLevel: 'high',
-            scales: [0.5, 0.35, 0.04],
+            scales: [0.5, 0.04, 0.35],
             shapes: [0.3, 0.3],
-            translation: [0, 0.39, -0.4],
+            translation: [0, -0.43, 0.36],
             rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
             eulerDeg: [0, 0, 0],
           },
-          leg(-0.42, -0.38, 1),
-          leg(0.42, -0.38, 2),
-          leg(-0.42, 0.38, 3),
-          leg(0.42, 0.38, 4),
-        ], [-90, 0, 180]);
+          leg(-0.42, 0.35, 1),
+          leg(0.42, 0.35, 2),
+          leg(-0.42, -0.35, 3),
+          leg(0.42, -0.35, 4),
+        ];
       },
     };
     const factory = templates[template];
