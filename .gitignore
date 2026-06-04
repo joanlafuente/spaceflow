@@ -104,6 +104,9 @@ examples/**/*.npy
 *.ply
 
 *.png
+!docs/
+!docs/**/*.png
+!docs/**/*.mp4
 *.csv
 
 

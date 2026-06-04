@@ -405,6 +405,9 @@ def predict_part(obj_path, output_dir):
     partfield_config = 'third_party/PartField/config.yaml'
     partfield_cfg = OmegaConf.load(partfield_config)
     partfield_cfg.dataset.val_num_workers = 0
+    partfield_ckpt = partfield_cfg.continue_ckpt
+    if partfield_ckpt and not osp.isabs(partfield_ckpt):
+        partfield_ckpt = osp.join(osp.dirname(osp.abspath(partfield_config)), partfield_ckpt)
 
     seed_everything(partfield_cfg.seed)
 
@@ -432,7 +435,7 @@ def predict_part(obj_path, output_dir):
                      )
 
     partfield_model = Model(partfield_cfg, obj_path)
-    output = trainer.predict(partfield_model, ckpt_path=partfield_cfg.continue_ckpt)
+    output = trainer.predict(partfield_model, ckpt_path=partfield_ckpt)
     part_planes, uid = output[0]
     np.save(f'{output_dir}/part_feat_{uid}_batch_part_plane.npy', part_planes)
 
