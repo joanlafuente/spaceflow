@@ -1,6 +1,7 @@
-# SpaceFlow Minimal
+# SpaceFlow
 
-Spatially controlled text-to-3D generation from editable superquadric layouts.
+SpaceFlow: Part-Wise Spatial and Semantic Guidance for Controllable 3D
+Generation
 
 SpaceFlow explores a practical question for text-to-3D systems: how can a user keep coarse geometric intent while still benefiting from a generative model's learned shape and appearance priors? The system uses a superquadric scene as an explicit control signal, applies local diffusion-time control over selected parts, and then refines the generated mesh with part-aware similarity guidance.
 
