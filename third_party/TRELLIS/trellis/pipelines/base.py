@@ -38,10 +38,12 @@ class Pipeline:
 
         _models = {}
         for k, v in args['models'].items():
-            try:
-                _models[k] = models.from_pretrained(f"{path}/{v}")
-            except:
-                _models[k] = models.from_pretrained(v)
+            model_path = v
+            if is_local:
+                local_model_path = os.path.join(path, v)
+                if os.path.exists(f"{local_model_path}.json") and os.path.exists(f"{local_model_path}.safetensors"):
+                    model_path = local_model_path
+            _models[k] = models.from_pretrained(model_path)
 
         new_pipeline = Pipeline(_models)
         new_pipeline._pretrained_args = args

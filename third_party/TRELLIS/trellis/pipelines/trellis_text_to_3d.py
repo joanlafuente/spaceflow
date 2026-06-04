@@ -134,7 +134,10 @@ class TrellisTextTo3DPipeline(Pipeline):
         self.slat_sampler_params = {}
         self.slat_normalization = slat_normalization
         self._init_text_cond_model(text_cond_model)
-        self._init_image_cond_model(image_cond_model)
+        self.image_cond_model_name = image_cond_model
+        self.image_cond_model_transform = None
+        if os.environ.get("TRELLIS_EAGER_IMAGE_COND", "").strip().lower() in {"1", "true", "yes", "on"}:
+            self._init_image_cond_model(image_cond_model)
 
     @staticmethod
     def from_pretrained(path: str) -> "TrellisTextTo3DPipeline":
@@ -158,8 +161,13 @@ class TrellisTextTo3DPipeline(Pipeline):
         new_pipeline.slat_normalization = args['slat_normalization']
 
         new_pipeline._init_text_cond_model(args['text_cond_model'])
-        
-        if 'image_cond_model' in args:
+
+        new_pipeline.image_cond_model_name = args.get('image_cond_model')
+        new_pipeline.image_cond_model_transform = None
+        if (
+            new_pipeline.image_cond_model_name
+            and os.environ.get("TRELLIS_EAGER_IMAGE_COND", "").strip().lower() in {"1", "true", "yes", "on"}
+        ):
             new_pipeline._init_image_cond_model(args['image_cond_model'])
 
         return new_pipeline
@@ -183,13 +191,27 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         Initialize the image conditioning model.
         """
+        if not name:
+            raise ValueError("No image conditioning model configured for this pipeline")
+        if (
+            'image_cond_model' in self.models
+            and getattr(self, 'image_cond_model_name', None) == name
+            and getattr(self, 'image_cond_model_transform', None) is not None
+        ):
+            return
         dinov2_model = torch.hub.load('facebookresearch/dinov2', name, pretrained=True)
-        dinov2_model.eval()
+        target_device = self.device
+        dinov2_model.eval().to(target_device)
         self.models['image_cond_model'] = dinov2_model
+        self.image_cond_model_name = name
         transform = transforms.Compose([
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
         self.image_cond_model_transform = transform
+
+    def _ensure_image_cond_model(self) -> None:
+        if 'image_cond_model' not in self.models or getattr(self, 'image_cond_model_transform', None) is None:
+            self._init_image_cond_model(getattr(self, 'image_cond_model_name', None))
 
     @torch.no_grad()
     def encode_text(self, text: List[str]) -> torch.Tensor:
@@ -225,6 +247,7 @@ class TrellisTextTo3DPipeline(Pipeline):
         else:
             raise ValueError(f"Unsupported type of image: {type(image)}")
         
+        self._ensure_image_cond_model()
         image = self.image_cond_model_transform(image).to(self.device)
         features = self.models['image_cond_model'](image, is_training=True)['x_prenorm']
         patchtokens = F.layer_norm(features, features.shape[-1:])

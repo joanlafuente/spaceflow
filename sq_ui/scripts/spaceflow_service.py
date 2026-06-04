@@ -49,6 +49,7 @@ CONSTRAINT = os.environ.get("SQ_SPACEFLOW_SLURM_CONSTRAINT", "5060ti").strip()
 EXCLUDE_NODES = "" # os.environ.get("SQ_SPACEFLOW_SLURM_EXCLUDE", "studgpu-node09").strip()
 TIME_LIMIT = os.environ.get("SQ_SPACEFLOW_SLURM_TIME", "02:00:00")
 EXTRA_ARGS = os.environ.get("SQ_SPACEFLOW_SLURM_EXTRA_ARGS", "").strip()
+GPU_PREFLIGHT_MODE = os.environ.get("SQ_SPACEFLOW_GPU_PREFLIGHT", "fast").strip().lower() or "fast"
 RUN_SCRIPT = Path(os.environ.get("SQ_SPACEFLOW_RUN_SCRIPT", str(REPO_ROOT / "run_local_tau.py"))).expanduser()
 EXPERIMENT_RUNNER_SCRIPT = Path(
     os.environ.get(
@@ -56,7 +57,7 @@ EXPERIMENT_RUNNER_SCRIPT = Path(
         str(REPO_ROOT / "sq_ui" / "scripts" / "run_spaceflow_experiment.py"),
     )
 ).expanduser()
-OFFLINE_CACHE = os.environ.get("SQ_SPACEFLOW_OFFLINE_CACHE", "0").strip().lower() not in {"0", "false", "no", "off"}
+OFFLINE_CACHE_MODE = os.environ.get("SQ_SPACEFLOW_OFFLINE_CACHE", "auto").strip().lower() or "auto"
 HF_OFFLINE_ENV_KEYS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE")
 CACHE_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_CACHE_ROOT", str(TEAM_STORAGE_ROOT / "huggingface"))
@@ -192,6 +193,76 @@ def _should_use_srun() -> bool:
     return shutil.which("srun") is not None
 
 
+def _gpu_preflight_mode() -> str:
+    if GPU_PREFLIGHT_MODE in {"fast", "full", "skip"}:
+        return GPU_PREFLIGHT_MODE
+    return "fast"
+
+
+def _srun_bash_wrapper(safe_cmd: str, python_bin: str) -> str:
+    mode = _gpu_preflight_mode()
+    if mode == "skip":
+        preflight = """
+    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+    echo "[sq-spaceflow] GPU preflight: skipped"
+    export SPCONV_ALGO="${SPCONV_ALGO:-native}"
+    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+"""
+    elif mode == "full":
+        preflight = f"""
+    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+    REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
+    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
+        echo "$NVIDIA_SMI_OUTPUT"
+        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
+        exit 88
+    fi
+    NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
+    if [ -z "$NODE_CUDA" ]; then
+        NODE_CUDA="Unknown"
+    fi
+    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
+    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
+    source /etc/profile.d/modules.sh 2>/dev/null || true
+    if command -v module &> /dev/null; then
+        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
+        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
+    fi
+    export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
+    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
+        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
+        exit 88
+    fi
+"""
+    else:
+        preflight = """
+    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
+    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+    echo "[sq-spaceflow] GPU preflight: fast"
+    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi -L 2>&1); then
+        echo "$NVIDIA_SMI_OUTPUT"
+        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        echo "[sq-spaceflow] Hint: set SQ_SPACEFLOW_GPU_PREFLIGHT=full for deeper diagnostics or exclude this node."
+        exit 88
+    fi
+    printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n '1,4p'
+    export SPCONV_ALGO="${SPCONV_ALGO:-native}"
+    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+"""
+
+    return f"""
+    set -o pipefail
+    echo "========================================"
+{preflight.rstrip()}
+    echo "========================================"
+    exec {safe_cmd}
+    """
+
+
 def _wrap_with_srun(cmd: list[str]) -> list[str]:
     srun_cmd = [
         "srun",
@@ -210,55 +281,9 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
         
     srun_cmd.extend(_drop_gres_tokens(_split_args(EXTRA_ARGS)))
     
-    # Safely format the python command so spaces in paths don't break bash
     safe_cmd = shlex.join(cmd)
     python_bin = shlex.quote(cmd[0])
-    
-    # Create the dynamic wrapper script that runs ON the compute node
-    bash_wrapper = f"""
-    set -o pipefail
-    echo "========================================"
-    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
-    echo "[sq-spaceflow] Compute host: $HOSTNAME"
-
-    # 1. Get PyTorch's required CUDA version
-    REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
-    
-    # 2. Get the Node's actual supported CUDA version
-    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
-        echo "$NVIDIA_SMI_OUTPUT"
-        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
-        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
-        exit 88
-    fi
-    NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
-    if [ -z "$NODE_CUDA" ]; then
-        NODE_CUDA="Unknown"
-    fi
-    
-    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
-    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
-
-    # 3. Load the correct module
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    if command -v module &> /dev/null; then
-        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
-        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
-    fi
-    export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
-    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
-    if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
-        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
-        exit 88
-    fi
-    echo "========================================"
-    
-    # 4. Execute the actual python command
-    exec {safe_cmd}
-    """
-
-    # Instruct srun to execute the bash wrapper
-    srun_cmd.extend(["bash", "-c", bash_wrapper])
+    srun_cmd.extend(["bash", "-c", _srun_bash_wrapper(safe_cmd, python_bin)])
     return srun_cmd
 
 
@@ -281,39 +306,7 @@ def _wrap_shell_with_srun(script_path: Path, job_name: str = "sq_spaceflow_exp")
 
     python_bin = shlex.quote(PYTHON_BIN)
     safe_cmd = shlex.join(["bash", str(script_path)])
-    bash_wrapper = f"""
-    set -o pipefail
-    echo "========================================"
-    HOSTNAME=$(hostname -f 2>/dev/null || hostname)
-    echo "[sq-spaceflow] Compute host: $HOSTNAME"
-    REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
-    if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
-        echo "$NVIDIA_SMI_OUTPUT"
-        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
-        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
-        exit 88
-    fi
-    NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
-    if [ -z "$NODE_CUDA" ]; then
-        NODE_CUDA="Unknown"
-    fi
-    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
-    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
-    source /etc/profile.d/modules.sh 2>/dev/null || true
-    if command -v module &> /dev/null; then
-        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
-        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
-    fi
-    export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
-    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
-    if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
-        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
-        exit 88
-    fi
-    echo "========================================"
-    exec {safe_cmd}
-    """
-    srun_cmd.extend(["bash", "-c", bash_wrapper])
+    srun_cmd.extend(["bash", "-c", _srun_bash_wrapper(safe_cmd, python_bin)])
     return srun_cmd
 
 
@@ -530,6 +523,20 @@ def _parse_nonnegative_int(value: object, default: int, name: str) -> int:
     return parsed
 
 
+def _offline_cache_enabled() -> bool:
+    mode = OFFLINE_CACHE_MODE
+    if mode in {"1", "true", "yes", "on"}:
+        return True
+    if mode in {"0", "false", "no", "off"}:
+        return False
+    required_cache_dirs = [
+        CACHE_ROOT / "hub" / "models--microsoft--TRELLIS-text-xlarge",
+        CACHE_ROOT / "hub" / "models--microsoft--TRELLIS-image-large",
+        CACHE_ROOT / "hub" / "models--openai--clip-vit-large-patch14",
+    ]
+    return all(path.is_dir() for path in required_cache_dirs)
+
+
 def _build_run_env() -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault("HF_HOME", str(CACHE_ROOT))
@@ -540,7 +547,7 @@ def _build_run_env() -> dict[str, str]:
     env.setdefault("TMPDIR", str(RUN_ROOT / "tmp"))
     env.setdefault("SPCONV_ALGO", "native")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-    if OFFLINE_CACHE:
+    if _offline_cache_enabled():
         for key in HF_OFFLINE_ENV_KEYS:
             env.setdefault(key, "1")
     else:
@@ -932,6 +939,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "python": PYTHON_BIN,
                     "run_script": str(RUN_SCRIPT),
                     "uses_srun": _should_use_srun(),
+                    "gpu_preflight": _gpu_preflight_mode(),
+                    "offline_cache": _offline_cache_enabled(),
                     "slurm_constraint": CONSTRAINT,
                     "slurm_exclude": EXCLUDE_NODES,
                 },
@@ -1379,7 +1388,8 @@ def main() -> None:
         f"[sq-spaceflow] Cache root: {CACHE_ROOT}\n"
         f"[sq-spaceflow] Python: {PYTHON_BIN}\n"
         f"[sq-spaceflow] Run script: {RUN_SCRIPT}\n"
-        f"[sq-spaceflow] Slurm: uses_srun={_should_use_srun()} gpu_flag=--gpus={GPUS or '1'} constraint={CONSTRAINT or 'none'} exclude={EXCLUDE_NODES or 'none'}\n",
+        f"[sq-spaceflow] Slurm: uses_srun={_should_use_srun()} gpu_flag=--gpus={GPUS or '1'} constraint={CONSTRAINT or 'none'} exclude={EXCLUDE_NODES or 'none'} preflight={_gpu_preflight_mode()}\n"
+        f"[sq-spaceflow] Cache: offline={_offline_cache_enabled()} mode={OFFLINE_CACHE_MODE}\n",
         flush=True,
     )
     server.serve_forever()
