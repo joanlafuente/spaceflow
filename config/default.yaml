@@ -1,11 +1,3 @@
-# dinov2
-dinov2_repo: "facebookresearch/dinov2"
-feature_name: "dinov2_vitl14_reg"
-
-# slat
-enc_pretrained: "JeffreyXiang/TRELLIS-image-large/ckpts/slat_enc_swin8_B_64l8_fp16"
-latent_name: "dinov2_vitl14_reg_slat_enc_swin8_B_64l8_fp16"
-
 # render
 num_views: 0
 
@@ -15,7 +7,7 @@ trellis_img_model_name: "JeffreyXiang/TRELLIS-image-large"
 # decoders) with TRELLIS-text-xlarge (sparse-structure & SLAT flow models).
 # Necessary for spatial-control: microsoft/TRELLIS-text-large does not ship a
 # sparse_structure_encoder, but encode_spatial_control() requires one.
-trellis_text_model_name: "gui"
+trellis_text_model_name: "config/trellis_pipeline"
 flow_model_in_channels: 8
 
 img_model:
@@ -27,22 +19,6 @@ text_model:
   rescale_t: 3.0
   cfg_strength: 7.5
   cfg_interval: [0.5, 9.5]
-
-# appearance guidance — SUPERDEC-driven correspondence (replaces PartField + k-means)
-app_guidance:
-  steps: 300
-  learning_rate: 5e-4
-  loss_weight: 10.0
-  # SUPERDEC primitive filtering / voxel projection
-  superdec_exist_threshold: 0.5         # keep primitives with exist > threshold
-  superdec_boundary_refine: true        # use implicit-SDF refinement at fuzzy seams
-  superdec_boundary_softmax_beta: 50.0  # higher → sharper soft membership at seams
-  # Sinkhorn segment matcher
-  superdec_match_eps: 0.05              # entropy regulariser
-  superdec_match_iters: 30
-  superdec_conf_threshold: 0.15         # tau(p) = ⊥ if top-1 row mass < this
-  superdec_inside_threshold: 0.0        # min boundary confidence for a voxel to count (0 disables)
-  superdec_include_translation: true    # primitive translation + radial distance (both shapes share the Blender-normalised [-0.5, 0.5]^3 frame, so this is safe and is needed to disambiguate identical primitives at different positions)
 
 # self-similarity guidance
 sim_guidance:

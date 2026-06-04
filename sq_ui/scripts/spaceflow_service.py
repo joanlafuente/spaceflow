@@ -56,7 +56,8 @@ EXPERIMENT_RUNNER_SCRIPT = Path(
         str(REPO_ROOT / "sq_ui" / "scripts" / "run_spaceflow_experiment.py"),
     )
 ).expanduser()
-OFFLINE_CACHE = os.environ.get("SQ_SPACEFLOW_OFFLINE_CACHE", "1").strip().lower() not in {"0", "false", "no", "off"}
+OFFLINE_CACHE = os.environ.get("SQ_SPACEFLOW_OFFLINE_CACHE", "0").strip().lower() not in {"0", "false", "no", "off"}
+HF_OFFLINE_ENV_KEYS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE")
 CACHE_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_CACHE_ROOT", str(TEAM_STORAGE_ROOT / "huggingface"))
 ).expanduser()
@@ -89,9 +90,7 @@ KNOWN_OUTPUTS = [
     "variant_comparison_lower_camera.png",
     "out_sim.glb",
     "out_sim_geometry.glb",
-    "out_app.glb",
     "out_gaussian_sim.mp4",
-    "out_gaussian_app.mp4",
     "sample.glb",
     "struct_mesh_zup.glb",
     "struct_mesh.glb",
@@ -102,11 +101,7 @@ KNOWN_OUTPUTS = [
     "struct_renders/000.png",
     "struct_renders/mesh.ply",
     "voxels/struct_voxels.ply",
-    "app_mesh_zup.glb",
-    "app_mesh.glb",
     "app_image.png",
-    "app_renders/000.png",
-    "voxels/app_voxels.ply",
 ]
 
 
@@ -514,9 +509,11 @@ def _build_run_env() -> dict[str, str]:
     env.setdefault("SPCONV_ALGO", "native")
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     if OFFLINE_CACHE:
-        env.setdefault("HF_HUB_OFFLINE", "1")
-        env.setdefault("TRANSFORMERS_OFFLINE", "1")
-        env.setdefault("HF_DATASETS_OFFLINE", "1")
+        for key in HF_OFFLINE_ENV_KEYS:
+            env.setdefault(key, "1")
+    else:
+        for key in HF_OFFLINE_ENV_KEYS:
+            env.pop(key, None)
     for key in ("HF_HOME", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE", "XDG_CACHE_HOME", "TORCH_HOME", "TMPDIR"):
         Path(env[key]).expanduser().mkdir(parents=True, exist_ok=True)
     return env

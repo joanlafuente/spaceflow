@@ -65,12 +65,8 @@ function outputFileLabel(file: SpaceflowOutputFile) {
       return 'Textured refined mesh';
     case 'out_sim_geometry.glb':
       return 'White refined geometry';
-    case 'out_app.glb':
-      return 'Appearance-refined geometry';
     case 'out_gaussian_sim.mp4':
       return 'Refined Gaussian video';
-    case 'out_gaussian_app.mp4':
-      return 'Appearance Gaussian video';
     case 'sample.glb':
       return 'Structure mesh';
     case 'struct_mesh_zup.glb':
@@ -96,12 +92,9 @@ function outputFileLabel(file: SpaceflowOutputFile) {
 
 const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
   'out_sim.glb',
-  'out_app.glb',
   'struct_mesh_zup.glb',
   'sample.glb',
   'struct_mesh.glb',
-  'app_mesh_zup.glb',
-  'app_mesh.glb',
 ];
 
 function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
