@@ -670,26 +670,19 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     <div className="top-bar">
       <div className="top-left">
         <span className="app-name">SpaceFlow</span>
-        <div className="theme-toggle" role="group" aria-label="Color theme">
-          <button
-            type="button"
-            className={`theme-toggle-btn ${themeMode === 'light' ? 'active' : ''}`}
-            onClick={() => onThemeModeChange('light')}
-            aria-pressed={themeMode === 'light'}
-            title="Use light mode"
-          >
-            Light
-          </button>
-          <button
-            type="button"
-            className={`theme-toggle-btn ${themeMode === 'dark' ? 'active' : ''}`}
-            onClick={() => onThemeModeChange('dark')}
-            aria-pressed={themeMode === 'dark'}
-            title="Use dark mode"
-          >
-            Dark
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`theme-toggle ${themeMode}`}
+          role="switch"
+          aria-checked={themeMode === 'dark'}
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          onClick={() => onThemeModeChange(themeMode === 'dark' ? 'light' : 'dark')}
+        >
+          <span className="theme-toggle-thumb" aria-hidden />
+          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>☀</span>
+          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>☾</span>
+        </button>
       </div>
 
       <div className="top-center">
