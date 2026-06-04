@@ -249,10 +249,7 @@ export function npzArraysToExports(
 
 /** Median half-axis after auto-rescale (middle of 0–5 scale sliders). */
 export const EDITOR_TYPICAL_HALF_AXIS = 2.5;
-/**
- * If every half-axis is below this, the preset is treated as a normalized fit (e.g. SuperDec)
- * and scales + translations are multiplied so the median half-axis ≈ EDITOR_TYPICAL_HALF_AXIS.
- */
+/** If every half-axis is tiny, expand the preset into the editor's slider range. */
 export const AUTO_RESCALE_SCENE_MAX_HALF_AXIS = 0.04;
 
 function median(nums: number[]): number {
@@ -303,11 +300,6 @@ export interface ImportNpzOptions {
   basisZUpToYUp?: boolean | 'auto';
   /** If true, skip expanding tiny normalized fits for slider range (default false). */
   skipEditorRescale?: boolean;
-  /**
-   * SuperFlex HTTP path: ensure every primitive has `tapering` + `bending` so the editor shows
-   * deform controls and JSON export matches NPZ. Fills zeros if legacy NPZ omits those arrays.
-   */
-  inferSuperflex?: boolean;
 }
 
 function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
@@ -361,7 +353,7 @@ export async function importNpzToPrimitives(
     return parseNpyBuffer(buf);
   };
 
-  const isRawSuperflex = !!findZipNpy(zip, 'scale.npy') && !!findZipNpy(zip, 'shape.npy')
+  const hasLegacyArrayNames = !!findZipNpy(zip, 'scale.npy') && !!findZipNpy(zip, 'shape.npy')
     && !!findZipNpy(zip, 'trans.npy') && !!findZipNpy(zip, 'rotate.npy');
   const [scales, shapes, translations, rotations] = await Promise.all([
     readNpy(['scales.npy', 'scale.npy']),
@@ -389,7 +381,7 @@ export async function importNpzToPrimitives(
       controlLevel: levels[i]! <= 0.5 ? 'low' : 'high',
     }));
   }
-  if (isRawSuperflex && confidence) {
+  if (hasLegacyArrayNames && confidence) {
     exports = filterByConfidence(exports, confidence);
   }
   const basisZUpToYUp = options?.basisZUpToYUp === true || (options?.basisZUpToYUp === 'auto' && zUp === true);
@@ -403,13 +395,11 @@ export async function importNpzToPrimitives(
   const t = Date.now();
   let prims: Primitive[] = exports.map((e, i): Primitive => {
     const euler = matrixToEuler(e.rotation);
-    const hasTaper = e.tapering !== undefined || options?.inferSuperflex;
-    const hasBend = e.bending !== undefined || options?.inferSuperflex;
-    const tapering: [number, number] | undefined = hasTaper
-      ? ([...(e.tapering ?? [0, 0])] as [number, number])
+    const tapering: [number, number] | undefined = e.tapering !== undefined
+      ? ([...e.tapering] as [number, number])
       : undefined;
-    const bending: [number, number, number, number, number, number] | undefined = hasBend
-      ? ([...(e.bending ?? [0, 0, 0, 0, 0, 0])] as [number, number, number, number, number, number])
+    const bending: [number, number, number, number, number, number] | undefined = e.bending !== undefined
+      ? ([...e.bending] as [number, number, number, number, number, number])
       : undefined;
     return {
       id: `npz_${i}_${t}`,

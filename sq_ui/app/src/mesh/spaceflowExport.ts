@@ -37,7 +37,7 @@ export interface SpaceflowSqBundleBlobs {
   lowControlBbox: Blob;
 }
 
-function superflexDeformForPrimitive(p: Primitive) {
+function deformForPrimitive(p: Primitive) {
   if (p.tapering === undefined && p.bending === undefined) return undefined;
   return {
     tapering: (p.tapering ?? [0, 0]) as [number, number],
@@ -84,7 +84,7 @@ function paddedBBoxFromLowPrimitives(
       p.rotation,
       p.translation,
       BBOX_RESOLUTION,
-      superflexDeformForPrimitive(p),
+      deformForPrimitive(p),
     );
     for (let i = 0; i < vertices.length; i += 3) {
       min[0] = Math.min(min[0], vertices[i]);

@@ -431,24 +431,6 @@ body {
   color: #ddd6fe;
 }
 
-.btn-superdec {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(56, 189, 248, 0.18));
-  color: #bbf7d0;
-  border-color: rgba(34, 197, 94, 0.35);
-}
-
-.btn-superflex {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(45, 212, 191, 0.16));
-  color: #e9d5ff;
-  border-color: rgba(167, 139, 250, 0.42);
-}
-
-.btn-superflex:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.32), rgba(45, 212, 191, 0.24));
-  border-color: rgba(167, 139, 250, 0.55);
-  color: #f3e8ff;
-}
-
 .btn-spaceflow {
   background: linear-gradient(135deg, rgba(45, 212, 191, 0.18), rgba(245, 158, 11, 0.16));
   color: #ccfbf1;
@@ -473,30 +455,6 @@ body {
   color: #4c1d95;
 }
 
-:root[data-theme="light"] .btn-superdec {
-  background: linear-gradient(135deg, rgba(22, 163, 74, 0.1), rgba(2, 132, 199, 0.1));
-  color: #166534;
-  border-color: rgba(22, 163, 74, 0.3);
-}
-
-:root[data-theme="light"] .btn-superdec:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(22, 163, 74, 0.15), rgba(2, 132, 199, 0.14));
-  border-color: rgba(22, 163, 74, 0.44);
-  color: #14532d;
-}
-
-:root[data-theme="light"] .btn-superflex {
-  background: linear-gradient(135deg, rgba(109, 40, 217, 0.1), rgba(13, 148, 136, 0.1));
-  color: #6d28d9;
-  border-color: rgba(109, 40, 217, 0.3);
-}
-
-:root[data-theme="light"] .btn-superflex:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(109, 40, 217, 0.16), rgba(13, 148, 136, 0.14));
-  border-color: rgba(109, 40, 217, 0.44);
-  color: #581c87;
-}
-
 :root[data-theme="light"] .btn-spaceflow {
   background: linear-gradient(135deg, rgba(13, 148, 136, 0.1), rgba(217, 119, 6, 0.1));
   color: #0f766e;
@@ -514,7 +472,7 @@ body {
   cursor: default;
 }
 
-/* Compact bar when AI panel is open (Create / Edit + close) */
+/* Compact bar when the SpaceFlow panel is open */
 .generate-open-bar {
   display: flex;
   align-items: center;
@@ -527,7 +485,7 @@ body {
   align-items: center;
 }
 
-/* Floating panel below header — does not stretch the top bar or cover the viewport awkwardly */
+/* Floating panel below the header */
 .generate-popover {
   position: fixed;
   top: 52px;
@@ -546,10 +504,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.superdec-popover {
-  width: min(460px, calc(100vw - 24px));
 }
 
 .spaceflow-popover {
@@ -605,7 +559,7 @@ body {
   cursor: default;
 }
 
-.superdec-open-label {
+.spaceflow-open-label {
   padding: 4px 10px;
   font-size: 11px;
   border-radius: var(--radius);
@@ -615,7 +569,7 @@ body {
   font-weight: 600;
 }
 
-.edit-focus-block {
+.spaceflow-panel-block {
   width: 100%;
   padding: 8px 10px;
   border-radius: var(--radius);
@@ -623,14 +577,14 @@ body {
   border: 1px solid var(--border);
 }
 
-.edit-focus-head {
+.spaceflow-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
 }
 
-.edit-focus-title {
+.spaceflow-panel-title {
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -638,7 +592,7 @@ body {
   color: var(--text-secondary);
 }
 
-.edit-focus-add-sel {
+.spaceflow-panel-action {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: 4px;
@@ -649,41 +603,23 @@ body {
   font-family: inherit;
 }
 
-.edit-focus-add-sel:hover:not(:disabled) {
+.spaceflow-panel-action:hover:not(:disabled) {
   border-color: var(--accent);
 }
 
-.edit-focus-add-sel:disabled {
+.spaceflow-panel-action:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.edit-focus-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 140px;
-  overflow-y: auto;
-  padding: 4px 2px 2px 0;
-}
-
-.edit-focus-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.edit-focus-hint {
+.spaceflow-panel-hint {
   font-size: 10px;
   color: var(--text-dim);
   margin: 6px 0 0;
   line-height: 1.35;
 }
 
-.edit-viewport-include {
+.spaceflow-toggle-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -696,77 +632,13 @@ body {
   cursor: pointer;
 }
 
-.edit-viewport-include input {
+.spaceflow-toggle-row input {
   margin-top: 2px;
   accent-color: var(--accent);
   flex-shrink: 0;
 }
 
-.edit-viewport-preview-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.edit-viewport-thumb {
-  width: 72px;
-  height: 72px;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  overflow: hidden;
-  cursor: zoom-in;
-  flex-shrink: 0;
-}
-
-.edit-viewport-thumb:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.edit-viewport-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-.edit-viewport-thumb-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  font-size: 9px;
-  color: var(--text-dim);
-  padding: 4px;
-  text-align: center;
-}
-
-.edit-viewport-refresh {
-  font-size: 10px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.edit-viewport-refresh:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.edit-viewport-refresh:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.superdec-file-picker {
+.spaceflow-file-picker {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -774,19 +646,19 @@ body {
   font-size: 12px;
 }
 
-.superdec-file-picker input[type="file"] {
+.spaceflow-file-picker input[type="file"] {
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.superdec-number-grid {
+.spaceflow-number-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
 }
 
-.superdec-number-field {
+.spaceflow-number-field {
   display: flex;
   flex-direction: column;
   gap: 6px;

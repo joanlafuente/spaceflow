@@ -10,7 +10,7 @@ export interface SuperquadricParams {
   rotation: number[][];                 // 3×3
 }
 
-/** Tapering + bending (SuperFlex packed layout) applied in local space before world rotation. */
+/** Optional tapering and bending applied in local space before world rotation. */
 export interface SuperquadricDeform {
   tapering: [number, number];
   /** [k_z, α_z, k_x, α_x, k_y, α_y] — matches Python visualization order. */

@@ -15,9 +15,9 @@ export interface Primitive {
   translation: [number, number, number];
   rotation: number[][];
   eulerDeg: [number, number, number]; // cached Euler ZYX in degrees
-  /** SuperFlex-style linear taper along local Z (dimensionless); omitted for plain superquadrics. */
+  /** Linear taper along local Z (dimensionless); omitted for plain superquadrics. */
   tapering?: [number, number];
-  /** Packed [k_z, α_z, k_x, α_x, k_y, α_y] for SuperFlex bending; omitted for plain superquadrics. */
+  /** Packed [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y] bending; omitted for plain superquadrics. */
   bending?: [number, number, number, number, number, number];
   /** Optional per-primitive SpaceFlow texture text override. Empty/omitted falls back to the global texture prompt. */
   localTextureText?: string;

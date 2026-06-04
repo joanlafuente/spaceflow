@@ -192,7 +192,6 @@ export async function openSpaceflowAsset(entry: SpaceflowHistoryEntry): Promise<
   }
   const blob = await res.blob();
   return importNpzToPrimitives(blob, entry.project_name || 'spaceflow_asset', {
-    inferSuperflex: true,
     basisZUpToYUp: false,
   });
 }

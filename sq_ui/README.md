@@ -1,14 +1,10 @@
-# Superquadric UI
+# SpaceFlow UI
 
-Web UI for editing superquadrics and launching the SpaceFlow-related services in this checkout.
+Web UI for editing superquadrics and launching SpaceFlow runs from this checkout.
 
-Default service ports:
+Default service port:
 
-- SuperDec: `http://127.0.0.1:11435`
-- SuperFlex: `http://127.0.0.1:11436`
-- TRELLIS/Create: `http://127.0.0.1:11437`
 - SpaceFlow runs/assets: `http://127.0.0.1:11438`
-- Ollama/Edit: `http://127.0.0.1:11434`
 
 ## SpaceFlow Service
 
@@ -25,20 +21,6 @@ curl -s http://127.0.0.1:11438/spaceflow/health | head
 ```
 
 Set `SQ_SPACEFLOW_FORCE_LOCAL=1` when already running on a GPU node and you do not want the service to wrap requests in `srun`.
-
-## Optional Services
-
-```bash
-python sq_ui/scripts/trellis_service.py
-python sq_ui/scripts/superdec_service.py
-python sq_ui/scripts/superflex_service.py
-```
-
-Use environment variables to point those services at external checkpoints or installs:
-
-- `SQ_TRELLIS_PYTHON`, `SQ_TRELLIS_REPO_ROOT`, `SQ_TRELLIS_SCRATCH`
-- `SUPERDEC_BASE`, `SQ_SUPERDEC_PYTHON`, `SQ_SUPERDEC_CHECKPOINT_DIR`
-- `SUPERFLEX_BASE`, `SQ_SUPERFLEX_PYTHON`, `SQ_SUPERFLEX_CHECKPOINT_DIR`, `SQ_SUPERFLEX_WORK_DIR`
 
 ## Frontend
 

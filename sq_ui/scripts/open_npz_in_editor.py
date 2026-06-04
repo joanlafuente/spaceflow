@@ -36,7 +36,7 @@ def detect_port(start: int = 5173, end: int = 5199) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("npz", type=Path, help="Path to superflex.npz")
+    parser.add_argument("npz", type=Path, help="Path to a .npz file")
     parser.add_argument("--port", type=int, default=0, help="Vite port; auto-detects by default")
     parser.add_argument("--host", default="localhost", help="Browser host; default: localhost")
     args = parser.parse_args()

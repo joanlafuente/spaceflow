@@ -12,7 +12,7 @@ import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superqu
 import { buildLowControlBoundingBoxPrimitive } from '../mesh/spaceflowExport';
 import { setViewportCapture, setViewportRenderExport } from '../state/viewportCapture';
 
-function superflexDeformForPrimitive(p: Primitive) {
+function deformForPrimitive(p: Primitive) {
   if (p.tapering === undefined && p.bending === undefined) return undefined;
   return {
     tapering: (p.tapering ?? [0, 0]) as [number, number],
@@ -197,7 +197,7 @@ function cloneExportableSuperquadrics(sourceScene: THREE.Scene, targetScene: THR
   return meshes;
 }
 
-/** Registers WebGL canvas readback for AI Edit screenshots and clean SQ render exports. */
+/** Registers WebGL canvas readback for viewport snapshots and clean SQ render exports. */
 function ViewportCaptureRegister() {
   const gl = useThree(s => s.gl);
   const scene = useThree(s => s.scene);
@@ -447,7 +447,7 @@ function SuperquadricMesh({
       primitive.rotation,
       primitive.translation,
       resolution,
-      superflexDeformForPrimitive(primitive),
+      deformForPrimitive(primitive),
     );
 
     const geo = new THREE.BufferGeometry();
@@ -702,7 +702,7 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
           p.scales[0], p.scales[1], p.scales[2],
           p.shapes[0], p.shapes[1],
           p.rotation, p.translation, resolution,
-          superflexDeformForPrimitive(p),
+          deformForPrimitive(p),
         );
         return vertices;
       });
