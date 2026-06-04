@@ -11,8 +11,6 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 import trimesh
-from matplotlib.collections import PolyCollection
-from trimesh.visual.color import uv_to_interpolated_color
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -22,6 +20,7 @@ DEFAULT_RUN_ROOT = Path("/work/courses/3dv/team3/spaceflow_runtime/sq_ui_runs")
 SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
 SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
 SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
+PANEL_RENDER_SIZE = 900
 
 VARIANTS = [
     (
@@ -254,13 +253,47 @@ def _material_color(mesh: trimesh.Trimesh) -> np.ndarray:
     return color[:3]
 
 
+def _material_texture(mesh: trimesh.Trimesh) -> np.ndarray | None:
+    image = _material_image(mesh)
+    if image is None:
+        return None
+    return np.asarray(image.convert("RGBA"), dtype=np.float64) / 255.0
+
+
+def _sample_texture(texture: np.ndarray, uv: np.ndarray) -> np.ndarray:
+    height, width = texture.shape[:2]
+    x = uv[:, 0] * (width - 1)
+    y = (1.0 - uv[:, 1]) * (height - 1)
+
+    x_floor = np.floor(x).astype(np.int64) % width
+    y_floor = np.floor(y).astype(np.int64) % height
+    x_ceil = np.ceil(x).astype(np.int64) % width
+    y_ceil = np.ceil(y).astype(np.int64) % height
+
+    dx = (x % width) - x_floor
+    dy = (y % height) - y_floor
+    dx = dx[:, None]
+    dy = dy[:, None]
+
+    colors00 = texture[y_floor, x_floor]
+    colors01 = texture[y_floor, x_ceil]
+    colors10 = texture[y_ceil, x_floor]
+    colors11 = texture[y_ceil, x_ceil]
+    return (
+        colors00 * (1.0 - dx) * (1.0 - dy)
+        + colors01 * dx * (1.0 - dy)
+        + colors10 * (1.0 - dx) * dy
+        + colors11 * dx * dy
+    )
+
+
 def _face_colors(mesh: trimesh.Trimesh, faces: np.ndarray) -> np.ndarray:
     visual = getattr(mesh, "visual", None)
-    image = _material_image(mesh)
+    image = _material_texture(mesh)
     uv = getattr(visual, "uv", None)
     if image is not None and uv is not None:
-        vertex_colors = uv_to_interpolated_color(np.asarray(uv)[faces].reshape(-1, 2), image)
-        colors = vertex_colors.reshape((-1, 3, 4)).astype(np.float64).mean(axis=1)[:, :3] / 255.0
+        vertex_colors = _sample_texture(image, np.asarray(uv)[faces].reshape(-1, 2))
+        colors = vertex_colors.reshape((-1, 3, 4)).mean(axis=1)[:, :3]
         return colors * _material_color(mesh)[None, :]
 
     if visual is not None and hasattr(visual, "face_colors"):
@@ -280,15 +313,43 @@ def _face_colors(mesh: trimesh.Trimesh, faces: np.ndarray) -> np.ndarray:
     return np.tile(_material_color(mesh), (len(faces), 1))
 
 
-def load_mesh(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _vertex_normals(mesh: trimesh.Trimesh, vertices: np.ndarray) -> np.ndarray:
+    normals = np.asarray(mesh.vertex_normals, dtype=np.float64)
+    if normals.shape != vertices.shape:
+        normals = np.tile(np.array([0.0, 0.0, 1.0], dtype=np.float64), (len(vertices), 1))
+    return normals
+
+
+def _visual_uv(mesh: trimesh.Trimesh, vertices: np.ndarray) -> np.ndarray | None:
+    uv = getattr(getattr(mesh, "visual", None), "uv", None)
+    if uv is None:
+        return None
+    uv = np.asarray(uv, dtype=np.float64)
+    if len(uv) != len(vertices):
+        return None
+    return uv
+
+
+def load_mesh(path: Path) -> dict[str, object]:
     mesh = trimesh.load(path, force="mesh", process=False)
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
     faces = np.asarray(mesh.faces, dtype=np.int64)
     if len(vertices) == 0 or len(faces) == 0:
         raise RuntimeError(f"Empty mesh: {path}")
+    texture = _material_texture(mesh)
+    uv = _visual_uv(mesh, vertices) if texture is not None else None
     face_colors = _face_colors(mesh, faces)
+    vertex_normals = _vertex_normals(mesh, vertices)
     vertices = vertices - (vertices.min(axis=0) + vertices.max(axis=0)) / 2.0
-    return vertices, faces, face_colors
+    return {
+        "vertices": vertices,
+        "faces": faces,
+        "face_colors": face_colors,
+        "uv": uv,
+        "texture": texture,
+        "material_color": _material_color(mesh),
+        "vertex_normals": vertex_normals,
+    }
 
 
 def _sq_face_colors(mesh: trimesh.Trimesh, faces: np.ndarray, primitives: list[dict[str, object]]) -> np.ndarray:
@@ -323,7 +384,7 @@ def _sq_label_positions(vertices: np.ndarray, primitives: list[dict[str, object]
     return labels
 
 
-def load_sq_mesh(path: Path, manifest: dict[str, object]) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[str, np.ndarray]]]:
+def load_sq_mesh(path: Path, manifest: dict[str, object]) -> dict[str, object]:
     mesh = trimesh.load(path, force="mesh", process=False)
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
     faces = np.asarray(mesh.faces, dtype=np.int64)
@@ -335,7 +396,86 @@ def load_sq_mesh(path: Path, manifest: dict[str, object]) -> tuple[np.ndarray, n
     center = (vertices.min(axis=0) + vertices.max(axis=0)) / 2.0
     vertices = vertices - center
     label_positions = [(label, position - center) for label, position in label_positions]
-    return vertices, faces, face_colors, label_positions
+    return {
+        "vertices": vertices,
+        "faces": faces,
+        "face_colors": face_colors,
+        "uv": None,
+        "texture": None,
+        "material_color": np.array([1.0, 1.0, 1.0], dtype=np.float64),
+        "vertex_normals": _vertex_normals(mesh, np.asarray(mesh.vertices, dtype=np.float64)),
+        "annotations": label_positions,
+    }
+
+
+def _rasterize_panel(mesh_info: dict[str, object], lim_x: float, lim_y: float, light_dir: np.ndarray) -> np.ndarray:
+    resolution = PANEL_RENDER_SIZE
+    image = np.ones((resolution, resolution, 3), dtype=np.float64)
+    zbuffer = np.full((resolution, resolution), -np.inf, dtype=np.float64)
+
+    vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
+    faces = np.asarray(mesh_info["faces"], dtype=np.int64)
+    normals = np.asarray(mesh_info["vertex_normals"], dtype=np.float64)
+    face_colors = np.asarray(mesh_info["face_colors"], dtype=np.float64)
+    uv = mesh_info.get("uv")
+    uv = np.asarray(uv, dtype=np.float64) if uv is not None else None
+    texture = mesh_info.get("texture")
+    texture = np.asarray(texture, dtype=np.float64) if texture is not None else None
+    material_color = np.asarray(mesh_info["material_color"], dtype=np.float64)[:3]
+
+    screen_x = (vertices[:, 0] + lim_x) / max(2.0 * lim_x, 1e-8) * (resolution - 1)
+    screen_y = (lim_y - vertices[:, 1]) / max(2.0 * lim_y, 1e-8) * (resolution - 1)
+    screen_vertices = np.column_stack([screen_x, screen_y, vertices[:, 2]])
+
+    for face_index, face in enumerate(faces):
+        tri = screen_vertices[face]
+        min_x = max(int(np.floor(tri[:, 0].min())), 0)
+        max_x = min(int(np.ceil(tri[:, 0].max())), resolution - 1)
+        min_y = max(int(np.floor(tri[:, 1].min())), 0)
+        max_y = min(int(np.ceil(tri[:, 1].max())), resolution - 1)
+        if min_x > max_x or min_y > max_y:
+            continue
+
+        x0, y0 = tri[0, :2]
+        x1, y1 = tri[1, :2]
+        x2, y2 = tri[2, :2]
+        denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+        if abs(denom) < 1e-10:
+            continue
+
+        yy, xx = np.mgrid[min_y : max_y + 1, min_x : max_x + 1]
+        px = xx.astype(np.float64) + 0.5
+        py = yy.astype(np.float64) + 0.5
+        w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom
+        w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom
+        w2 = 1.0 - w0 - w1
+        mask = (w0 >= -1e-6) & (w1 >= -1e-6) & (w2 >= -1e-6)
+        if not np.any(mask):
+            continue
+
+        depth = w0 * tri[0, 2] + w1 * tri[1, 2] + w2 * tri[2, 2]
+        local_zbuffer = zbuffer[min_y : max_y + 1, min_x : max_x + 1]
+        update = mask & (depth > local_zbuffer)
+        if not np.any(update):
+            continue
+
+        weights = np.stack([w0[update], w1[update], w2[update]], axis=1)
+        if texture is not None and uv is not None:
+            sample_uv = weights @ uv[face]
+            colors = _sample_texture(texture, sample_uv)[:, :3] * material_color[None, :]
+        else:
+            colors = np.tile(face_colors[face_index], (len(weights), 1))
+
+        pixel_normals = weights @ normals[face]
+        pixel_normals /= np.maximum(np.linalg.norm(pixel_normals, axis=1, keepdims=True), 1e-8)
+        intensity = np.clip(0.68 + 0.32 * np.abs(pixel_normals @ light_dir), 0.50, 1.0)
+        colors = np.clip(colors * intensity[:, None], 0.0, 1.0)
+
+        patch = image[min_y : max_y + 1, min_x : max_x + 1]
+        patch[update] = colors
+        local_zbuffer[update] = depth[update]
+
+    return image
 
 
 def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float) -> Path:
@@ -354,39 +494,45 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     max_extent = 0.0
     control_mesh_path = sq_mesh_path(run_dir)
     if control_mesh_path is not None:
-        vertices, faces, face_colors, annotations = load_sq_mesh(control_mesh_path, manifest)
+        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+        vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
         max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
         meshes.append({
+            **mesh_info,
             "label": "SQ controls\nteal high / orange low",
-            "vertices": vertices,
-            "faces": faces,
-            "face_colors": face_colors,
-            "annotations": annotations,
-            "edge_alpha": 0.30,
         })
 
     for label, path in variant_paths:
-        vertices, faces, face_colors = load_mesh(path)
+        mesh_info = load_mesh(path)
+        vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
         max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
         meshes.append({
+            **mesh_info,
             "label": label,
-            "vertices": vertices,
-            "faces": faces,
-            "face_colors": face_colors,
             "annotations": [],
-            "edge_alpha": 0.20,
         })
 
     scale = 1.0 / max(max_extent, 1e-8)
     projected = []
     max_abs = np.array([0.0, 0.0])
     for mesh_info in meshes:
-        vertices = (np.asarray(mesh_info["vertices"]) * scale) @ rotation.T
-        annotations = [
-            (label, (position * scale) @ rotation.T)
-            for label, position in mesh_info["annotations"]
-        ]
-        projected.append({**mesh_info, "vertices": vertices, "annotations": annotations})
+        vertices_camera = (np.asarray(mesh_info["vertices"]) * scale) @ rotation.T
+        vertices = vertices_camera.copy()
+        vertices[:, 1] *= -1.0
+        vertex_normals = np.asarray(mesh_info["vertex_normals"], dtype=np.float64) @ rotation.T
+        annotations = []
+        for label, position in mesh_info["annotations"]:
+            position_camera = (position * scale) @ rotation.T
+            annotations.append((
+                label,
+                np.array([position_camera[0], -position_camera[1], position_camera[2]], dtype=np.float64),
+            ))
+        projected.append({
+            **mesh_info,
+            "vertices": vertices,
+            "vertex_normals": vertex_normals,
+            "annotations": annotations,
+        })
         max_abs = np.maximum(max_abs, np.max(np.abs(vertices[:, :2]), axis=0))
 
     lim_x = float(max_abs[0] * 1.10)
@@ -398,26 +544,8 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
 
     for ax, mesh_info in zip(axes, projected):
         label = str(mesh_info["label"])
-        vertices = np.asarray(mesh_info["vertices"])
-        faces = np.asarray(mesh_info["faces"])
-        face_colors = np.asarray(mesh_info["face_colors"])
-        tri = vertices[faces]
-        polys = tri[:, :, :2]
-        depths = tri[:, :, 2].mean(axis=1)
-        normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
-        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-8)
-        intensity = np.clip(0.42 + 0.58 * np.abs(normals @ light_dir), 0.25, 1.0)
-        colors = np.clip(face_colors * intensity[:, None], 0, 1)
-        order = np.argsort(depths)
-        ax.add_collection(
-            PolyCollection(
-                polys[order],
-                facecolors=colors[order],
-                edgecolors=(0.45, 0.49, 0.52, float(mesh_info["edge_alpha"])),
-                linewidths=0.15,
-                antialiaseds=True,
-            )
-        )
+        panel = _rasterize_panel(mesh_info, lim_x, lim_y, light_dir)
+        ax.imshow(panel, extent=(-lim_x, lim_x, -lim_y, lim_y), origin="upper")
         for annotation, position in mesh_info["annotations"]:
             ax.text(
                 position[0],
@@ -440,7 +568,6 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         ax.set_aspect("equal", adjustable="box")
         ax.set_xlim(-lim_x, lim_x)
         ax.set_ylim(-lim_y, lim_y)
-        ax.invert_yaxis()
         ax.axis("off")
         ax.set_title(label, fontsize=13, pad=6)
 
