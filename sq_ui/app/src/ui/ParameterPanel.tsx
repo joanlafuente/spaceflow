@@ -121,6 +121,34 @@ export default function ParameterPanel() {
     updatePrimitive(prim.id, { eulerDeg: e });
   }, [prim, updatePrimitive]);
 
+  const setTaperEnabled = useCallback((enabled: boolean) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, {
+      tapering: enabled ? (prim.tapering ?? [0, 0]) : undefined,
+    });
+  }, [prim, updatePrimitive]);
+
+  const setBendEnabled = useCallback((enabled: boolean) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, {
+      bending: enabled ? (prim.bending ?? [0, 0, 0, 0, 0, 0]) : undefined,
+    });
+  }, [prim, updatePrimitive]);
+
+  const updateTaper = useCallback((idx: number, val: number) => {
+    if (!prim || prim.tapering === undefined) return;
+    const t: [number, number] = [...prim.tapering];
+    t[idx] = val;
+    updatePrimitive(prim.id, { tapering: t });
+  }, [prim, updatePrimitive]);
+
+  const updateBend = useCallback((idx: number, val: number) => {
+    if (!prim || prim.bending === undefined) return;
+    const b: [number, number, number, number, number, number] = [...prim.bending];
+    b[idx] = val;
+    updatePrimitive(prim.id, { bending: b });
+  }, [prim, updatePrimitive]);
+
   const updateName = useCallback((name: string) => {
     if (!prim) return;
     updatePrimitive(prim.id, { name });
@@ -458,6 +486,85 @@ export default function ParameterPanel() {
           <div className="info-badge">
             ℹ Improper rotation (det = -1): u-parameter will be reversed in mesh
           </div>
+        )}
+      </div>
+
+      <div className="section">
+        <div className="section-title">
+          Deform
+          <span
+            className="help-badge"
+            title="Optional local-space tapering and bending. Bending is packed as [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y], with alpha in radians."
+          >
+            ?
+          </span>
+        </div>
+        <div className="deform-toggle-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={prim.tapering !== undefined}
+              onChange={(e) => setTaperEnabled(e.target.checked)}
+            />
+            <span>Taper</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={prim.bending !== undefined}
+              onChange={(e) => setBendEnabled(e.target.checked)}
+            />
+            <span>Bend</span>
+          </label>
+        </div>
+        {prim.tapering !== undefined && (
+          <>
+            <SliderRow
+              label="Kx"
+              value={prim.tapering[0]}
+              onChange={(v) => updateTaper(0, v)}
+              min={-3}
+              max={3}
+              step={0.001}
+              tooltip="Taper along X vs normalized local Z"
+              inputDecimals={6}
+            />
+            <SliderRow
+              label="Ky"
+              value={prim.tapering[1]}
+              onChange={(v) => updateTaper(1, v)}
+              min={-3}
+              max={3}
+              step={0.001}
+              tooltip="Taper along Y vs normalized local Z"
+              inputDecimals={6}
+            />
+          </>
+        )}
+        {prim.bending !== undefined && (
+          <>
+            {(
+              [
+                ['kz', 0],
+                ['alpha z', 1],
+                ['kx', 2],
+                ['alpha x', 3],
+                ['ky', 4],
+                ['alpha y', 5],
+              ] as const
+            ).map(([label, j]) => (
+              <SliderRow
+                key={label}
+                label={label}
+                value={prim.bending![j]}
+                onChange={(v) => updateBend(j, v)}
+                min={label.startsWith('alpha') ? -3.15 : -2}
+                max={label.startsWith('alpha') ? 3.15 : 2}
+                step={label.startsWith('alpha') ? 0.01 : 0.001}
+                inputDecimals={label.startsWith('alpha') ? 4 : 6}
+              />
+            ))}
+          </>
         )}
       </div>
 

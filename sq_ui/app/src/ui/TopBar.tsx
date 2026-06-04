@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
-import { eulerToMatrix, isOrthogonal, matrixToEuler } from '../state/rotation';
+import { eulerToMatrix, isOrthogonal, matMul3, matVec3, matrixToEuler } from '../state/rotation';
 import {
   fetchSpaceflowHistory,
   getSpaceflowRunStatus,
@@ -114,6 +114,19 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
 }
 
 let nextPresetId = 0;
+
+function rotateTemplateWorld(primitives: Primitive[], deltaEulerDeg: [number, number, number]): Primitive[] {
+  const rotationDelta = eulerToMatrix(deltaEulerDeg);
+  return primitives.map(primitive => {
+    const rotation = matMul3(rotationDelta, primitive.rotation);
+    return {
+      ...primitive,
+      rotation,
+      translation: matVec3(rotationDelta, primitive.translation),
+      eulerDeg: matrixToEuler(rotation),
+    };
+  });
+}
 
 export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
@@ -602,7 +615,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
           eulerDeg: [0, 0, 0],
         });
-        return [
+        return rotateTemplateWorld([
           {
             id: `t_${++nextPresetId}_${Date.now()}`,
             name: 'Seat',
@@ -629,7 +642,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           leg(0.42, -0.38, 2),
           leg(-0.42, 0.38, 3),
           leg(0.42, 0.38, 4),
-        ];
+        ], [-90, 0, 180]);
       },
     };
     const factory = templates[template];
@@ -688,12 +701,12 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       </div>
 
       <div className="top-center">
-        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo">Undo</button>
-        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo">Redo</button>
+        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo" aria-label="Undo">↩</button>
+        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo" aria-label="Redo">↪</button>
         <span className="separator" />
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single ellipsoid">Ellipsoid</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template">Table</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template">Chair</button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single ellipsoid" aria-label="Load single ellipsoid template">⊙</button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template" aria-label="Load table template">⊞</button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template" aria-label="Load chair template">⊟</button>
         <span className="separator" />
         <div className={`export-dropdown rotate-all-group${showRotateAll ? ' is-open' : ''}`}>
           <button
@@ -1068,10 +1081,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
 
       <div className="top-right">
         {hasWarnings && (
-          <span className="validation-warn" title="Some rotation matrices are not orthogonal">!</span>
-        )}
-        {!hasWarnings && primitives.length > 0 && (
-          <span className="validation-ok" title="All rotations valid">OK</span>
+          <span className="validation-warn" title="Some rotation matrices are not orthogonal">⚠</span>
         )}
         <div className="export-dropdown">
           <button
