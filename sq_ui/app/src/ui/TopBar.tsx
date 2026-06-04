@@ -118,7 +118,14 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
 
 let nextPresetId = 0;
 
-export default function TopBar() {
+type ThemeMode = 'dark' | 'light';
+
+interface TopBarProps {
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}
+
+export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
   const selectedId = useStore(s => s.selectedId);
   const selectPrimitive = useStore(s => s.selectPrimitive);
@@ -900,6 +907,26 @@ export default function TopBar() {
           onChange={(e) => setProjectName(e.target.value)}
           title="Project name (used as export filename)"
         />
+        <div className="theme-toggle" role="group" aria-label="Color theme">
+          <button
+            type="button"
+            className={`theme-toggle-btn ${themeMode === 'light' ? 'active' : ''}`}
+            onClick={() => onThemeModeChange('light')}
+            aria-pressed={themeMode === 'light'}
+            title="Use light mode"
+          >
+            Light
+          </button>
+          <button
+            type="button"
+            className={`theme-toggle-btn ${themeMode === 'dark' ? 'active' : ''}`}
+            onClick={() => onThemeModeChange('dark')}
+            aria-pressed={themeMode === 'dark'}
+            title="Use dark mode"
+          >
+            Dark
+          </button>
+        </div>
       </div>
 
       <div className="top-center">

@@ -32,6 +32,34 @@ const RENDER_EXPORT_HIGH_COLOR = '#f59e0b';
 const RENDER_EXPORT_LOW_COLOR = '#f8fafc';
 const RENDER_EXPORT_FRAME_FILL = 0.82;
 
+type ThemeMode = 'dark' | 'light';
+
+const VIEWPORT_THEME = {
+  dark: {
+    background: '#0e1014',
+    gridCell: '#333a48',
+    gridSection: '#4a5568',
+    outline: '#ffffff',
+    gizmoLabel: '#ffffff',
+    lowControlBBox: '#fbbf24',
+  },
+  light: {
+    background: '#f6f8fb',
+    gridCell: '#cbd5e1',
+    gridSection: '#94a3b8',
+    outline: '#1e293b',
+    gizmoLabel: '#0f172a',
+    lowControlBBox: '#d97706',
+  },
+} satisfies Record<ThemeMode, {
+  background: string;
+  gridCell: string;
+  gridSection: string;
+  outline: string;
+  gizmoLabel: string;
+  lowControlBBox: string;
+}>;
+
 function cloneExportCamera(camera: THREE.Camera, width: number, height: number): THREE.Camera {
   const exportCamera = camera.clone();
   if ((exportCamera as THREE.PerspectiveCamera).isPerspectiveCamera) {
@@ -384,6 +412,7 @@ function SuperquadricMesh({
   normScale,
   showNormalized,
   showControlPreview,
+  outlineColor,
 }: {
   primitive: Primitive;
   index: number;
@@ -393,6 +422,7 @@ function SuperquadricMesh({
   normScale: number;
   showNormalized: boolean;
   showControlPreview: boolean;
+  outlineColor: string;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const outlineRef = useRef<THREE.LineSegments>(null);
@@ -584,7 +614,7 @@ function SuperquadricMesh({
         />
       </mesh>
       <lineSegments ref={outlineRef} geometry={edgesGeometry} visible={selected}>
-        <lineBasicMaterial color="#ffffff" linewidth={1} />
+        <lineBasicMaterial color={outlineColor} linewidth={1} />
       </lineSegments>
     </group>
   );
@@ -596,12 +626,14 @@ function LowControlBBoxPreview({
   normScale,
   showNormalized,
   marginFraction,
+  color,
 }: {
   primitives: Primitive[];
   normCenter: [number, number, number];
   normScale: number;
   showNormalized: boolean;
   marginFraction: number;
+  color: string;
 }) {
   const geometry = useMemo(() => {
     try {
@@ -639,12 +671,12 @@ function LowControlBBoxPreview({
   if (!geometry) return null;
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#fbbf24" transparent opacity={0.95} />
+      <lineBasicMaterial color={color} transparent opacity={0.95} />
     </lineSegments>
   );
 }
 
-function Scene() {
+function Scene({ themeMode }: { themeMode: ThemeMode }) {
   const primitives = useStore(s => s.primitives);
   const meshInspection = useStore(s => s.meshInspection);
   const selectedId = useStore(s => s.selectedId);
@@ -653,6 +685,7 @@ function Scene() {
   const showControlPreview = useStore(s => s.showControlPreview);
   const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
   const selectPrimitive = useStore(s => s.selectPrimitive);
+  const theme = VIEWPORT_THEME[themeMode];
 
   // Pipeline normalization is useful for matching training/export conventions,
   // but recomputing the center on every drag makes the whole scene "swim".
@@ -715,10 +748,10 @@ function Scene() {
         position={[0, 0, 0]}
         cellSize={0.5}
         cellThickness={0.5}
-        cellColor="#333a48"
+        cellColor={theme.gridCell}
         sectionSize={2}
         sectionThickness={1}
-        sectionColor="#4a5568"
+        sectionColor={theme.gridSection}
         fadeDistance={15}
         infiniteGrid
       />
@@ -743,6 +776,7 @@ function Scene() {
               normScale={normScale}
               showNormalized={showNormalized}
               showControlPreview={showControlPreview}
+              outlineColor={theme.outline}
             />
           ))}
           {showControlPreview && (
@@ -752,6 +786,7 @@ function Scene() {
               normScale={normScale}
               showNormalized={showNormalized}
               marginFraction={lowControlBBoxMargin}
+              color={theme.lowControlBBox}
             />
           )}
         </group>
@@ -759,26 +794,27 @@ function Scene() {
 
       <OrbitControls makeDefault />
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-        <GizmoViewport labelColor="#fff" axisHeadScale={0.8} />
+        <GizmoViewport labelColor={theme.gizmoLabel} axisHeadScale={0.8} />
       </GizmoHelper>
     </>
   );
 }
 
-export default function Viewport() {
+export default function Viewport({ themeMode }: { themeMode: ThemeMode }) {
   const meshInspection = useStore(s => s.meshInspection);
   const setMeshInspection = useStore(s => s.setMeshInspection);
+  const theme = VIEWPORT_THEME[themeMode];
 
   return (
     <div className="viewport-shell">
       <Canvas
         // Z-up camera position (like the viser GUI).
         camera={{ position: [2.5, -2.2, 2.2], fov: 50, near: 0.01, far: 100 }}
-        style={{ background: '#0e1014' }}
+        style={{ background: theme.background }}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
       >
         <ViewportCaptureRegister />
-        <Scene />
+        <Scene themeMode={themeMode} />
       </Canvas>
       {meshInspection && (
         <div className="viewport-inspection-bar">
