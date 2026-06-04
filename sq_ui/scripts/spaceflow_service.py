@@ -335,6 +335,7 @@ def _spaceflow_cmd(
     low_tau: float,
     high_tau: float | None,
     polyak_tau: float,
+    n_repaint_steps: int,
     convert_yup_to_zup: bool,
 ) -> list[str]:
     cmd = [
@@ -350,6 +351,8 @@ def _spaceflow_cmd(
         str(low_tau),
         "--polyak_update_tau",
         str(polyak_tau),
+        "--n_repaint_steps",
+        str(n_repaint_steps),
         "--text_prompt",
         text_prompt,
     ]
@@ -430,6 +433,7 @@ def _write_experiment_runner_config(config_path: Path, variants: list[dict[str, 
             "low_tau": variant["low_tau"],
             "high_tau": variant["high_tau"],
             "polyak_tau": variant["polyak_tau"],
+            "n_repaint_steps": variant["n_repaint_steps"],
         })
     config_path.write_text(
         json.dumps(
@@ -478,6 +482,24 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     if v in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _parse_nonnegative_int(value: object, default: int, name: str) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a non-negative integer")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float) and value.is_integer():
+        parsed = int(value)
+    elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
+        parsed = int(value.strip())
+    else:
+        raise ValueError(f"{name} must be a non-negative integer")
+    if parsed < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return parsed
 
 
 def _build_run_env() -> dict[str, str]:
@@ -980,6 +1002,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             low_tau = float(run_config.get("lowTau", 3.0))
             high_tau = float(run_config.get("highTau", 10.0))
             polyak = float(run_config.get("polyakTau", 0.18))
+            n_repaint_steps = _parse_nonnegative_int(
+                run_config.get(
+                    "repaintSteps",
+                    run_config.get("nRepaintSteps", run_config.get("n_repaint_steps", 10)),
+                ),
+                10,
+                "Repaint steps",
+            )
             texture_mode = str(run_config.get("textureMode") or run_config.get("appearanceMode", "text")).strip().lower()
             if texture_mode not in {"text", "image"}:
                 raise ValueError(f"Unknown texture mode: {texture_mode}")
@@ -1096,6 +1126,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         low_tau=float(spec["low_tau"]),
                         high_tau=None if spec["high_tau"] is None else float(spec["high_tau"]),
                         polyak_tau=float(spec["polyak_tau"]),
+                        n_repaint_steps=n_repaint_steps,
                         convert_yup_to_zup=convert_yup_to_zup,
                     )
                     variant_argv = [str(part) for part in variant_cmd[2:]]
@@ -1108,6 +1139,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "low_tau": spec["low_tau"],
                         "high_tau": spec["high_tau"],
                         "polyak_tau": spec["polyak_tau"],
+                        "n_repaint_steps": n_repaint_steps,
                     })
                 _write_experiment_manifest(output_dir, experiment_variants)
                 experiment_runner_config = run_dir / "experiment_runner_config.json"
@@ -1131,6 +1163,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     low_tau=low_tau,
                     high_tau=high_tau,
                     polyak_tau=polyak,
+                    n_repaint_steps=n_repaint_steps,
                     convert_yup_to_zup=convert_yup_to_zup,
                 )
                 final_cmd = _wrap_with_srun(cmd) if _should_use_srun() else cmd

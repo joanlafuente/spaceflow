@@ -178,6 +178,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowLowTau, setSpaceflowLowTau] = useState('3.0');
   const [spaceflowHighTau, setSpaceflowHighTau] = useState('10.0');
   const [spaceflowPolyakTau, setSpaceflowPolyakTau] = useState('0.18');
+  const [spaceflowRepaintSteps, setSpaceflowRepaintSteps] = useState('10');
   const [spaceflowOutputName, setSpaceflowOutputName] = useState('');
   const [spaceflowConvertYupToZup, setSpaceflowConvertYupToZup] = useState(true);
   const [spaceflowDryRun, setSpaceflowDryRun] = useState(false);
@@ -422,8 +423,14 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     const lowTau = experimentMode ? 3 : Number.parseFloat(spaceflowLowTau);
     const highTau = experimentMode ? 10 : Number.parseFloat(spaceflowHighTau);
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
+    const repaintStepsRaw = spaceflowRepaintSteps.trim();
+    const repaintSteps = Number.parseInt(repaintStepsRaw, 10);
     if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
       showToast('High tau must be greater than low tau.', 5000);
+      return;
+    }
+    if (!/^\d+$/.test(repaintStepsRaw) || !Number.isInteger(repaintSteps)) {
+      showToast('Repaint steps must be a non-negative whole number.', 5000);
       return;
     }
     if (!spaceflowTextPrompt.trim()) {
@@ -470,6 +477,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
+          repaintSteps,
           outputName: runOutputName,
           convertYupToZup: spaceflowConvertYupToZup,
           lowControlBBoxMargin,
@@ -507,6 +515,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     spaceflowLowTau,
     spaceflowOutputName,
     spaceflowPolyakTau,
+    spaceflowRepaintSteps,
     spaceflowRunning,
     spaceflowTextPrompt,
     spaceflowTextureMode,
@@ -1748,6 +1757,10 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     <label className="superdec-number-field">
                       <span>Polyak tau</span>
                       <input className="num-input" type="number" step="0.01" value={spaceflowPolyakTau} onChange={(e) => setSpaceflowPolyakTau(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="superdec-number-field">
+                      <span>Repaint steps</span>
+                      <input className="num-input" type="number" min="0" step="1" value={spaceflowRepaintSteps} onChange={(e) => setSpaceflowRepaintSteps(e.target.value)} disabled={spaceflowRunning} />
                     </label>
                     <label className="superdec-number-field">
                       <span>Output name</span>

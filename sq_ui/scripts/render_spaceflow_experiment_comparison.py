@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 import trimesh
+from PIL import Image, ImageOps
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -21,6 +22,7 @@ SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
 SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
 SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
 PANEL_RENDER_SIZE = 900
+CONDITION_THUMB_SIZE = 256
 
 VARIANTS = [
     (
@@ -158,6 +160,140 @@ def texture_conditions(meta: dict[str, object], primitive_count: int) -> tuple[s
     if len(local_conditions) < primitive_count:
         local_conditions.extend([""] * (primitive_count - len(local_conditions)))
     return mode, local_conditions, global_condition
+
+
+def resolve_condition_image_path(run_dir: Path, value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    candidates = [path] if path.is_absolute() else [run_dir / path, Path.cwd() / path, path]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _condition_image_values(meta: dict[str, object]) -> tuple[object, list[object]]:
+    texture = meta.get("texture_guidance")
+    run_config = meta.get("run_config")
+    texture = texture if isinstance(texture, dict) else {}
+    run_config = run_config if isinstance(run_config, dict) else {}
+
+    global_value = (
+        texture.get("global_image_path")
+        or run_config.get("globalTextureImagePath")
+        or run_config.get("appearanceImagePath")
+    )
+    local_values = texture.get("local_image_paths") or run_config.get("localTextureImagePaths") or []
+    if not isinstance(local_values, list):
+        local_values = []
+    return global_value, local_values
+
+
+def _condition_label(labels: list[str]) -> str:
+    global_label = "Global" if "Global" in labels else ""
+    sq_numbers = [label.removeprefix("SQ ") for label in labels if label.startswith("SQ ")]
+    sq_label = f"SQ {', '.join(sq_numbers)}" if sq_numbers else ""
+    if global_label and sq_label:
+        return f"{global_label} + {sq_label}"
+    return global_label or sq_label
+
+
+def condition_image_tiles(run_dir: Path, meta: dict[str, object]) -> list[dict[str, object]]:
+    if texture_mode(meta) != "image":
+        return []
+
+    global_value, local_values = _condition_image_values(meta)
+    grouped: dict[str, dict[str, object]] = {}
+
+    def add_tile(path: Path, label: str) -> None:
+        key = str(path.resolve(strict=False))
+        tile = grouped.setdefault(key, {"path": path, "labels": []})
+        labels = tile["labels"]
+        if isinstance(labels, list) and label not in labels:
+            labels.append(label)
+
+    global_path = resolve_condition_image_path(run_dir, global_value)
+    if global_path is not None:
+        add_tile(global_path, "Global")
+
+    for index, value in enumerate(local_values):
+        local_path = resolve_condition_image_path(run_dir, value)
+        if local_path is not None:
+            add_tile(local_path, f"SQ {index + 1}")
+
+    tiles = []
+    for tile in grouped.values():
+        labels = tile.get("labels")
+        path = tile.get("path")
+        if not isinstance(labels, list) or not isinstance(path, Path):
+            continue
+        tiles.append({
+            "path": path,
+            "label": _condition_label([str(label) for label in labels]),
+            "caption": path.name,
+        })
+    return tiles
+
+
+def _ellipsize(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3] + "..."
+
+
+def _thumbnail(path: Path) -> np.ndarray:
+    image = Image.open(path).convert("RGBA")
+    resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+    image = ImageOps.contain(image, (CONDITION_THUMB_SIZE, CONDITION_THUMB_SIZE), method=resampling)
+    canvas = Image.new("RGBA", (CONDITION_THUMB_SIZE, CONDITION_THUMB_SIZE), (255, 255, 255, 255))
+    offset = ((CONDITION_THUMB_SIZE - image.width) // 2, (CONDITION_THUMB_SIZE - image.height) // 2)
+    canvas.alpha_composite(image, offset)
+    return np.asarray(canvas.convert("RGB"), dtype=np.float64) / 255.0
+
+
+def draw_condition_strip(fig: plt.Figure, tiles: list[dict[str, object]]) -> None:
+    if not tiles:
+        return
+
+    fig_width, fig_height = fig.get_size_inches()
+    available_width = 0.88
+    gap = 0.014
+    max_tile_height = 0.165
+    tile_width = min(max_tile_height * fig_height / fig_width, (available_width - gap * (len(tiles) - 1)) / len(tiles))
+    tile_height = tile_width * fig_width / fig_height
+    total_width = tile_width * len(tiles) + gap * (len(tiles) - 1)
+    x = 0.5 - total_width / 2.0
+    y = 0.720
+
+    fig.text(0.5, y + tile_height + 0.040, "Conditioning images", ha="center", va="bottom", fontsize=10.5, color="#20242a")
+
+    for tile in tiles:
+        path = tile.get("path")
+        if not isinstance(path, Path):
+            continue
+        ax = fig.add_axes([x, y, tile_width, tile_height])
+        ax.imshow(_thumbnail(path))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("#20242a")
+            spine.set_linewidth(0.8)
+        ax.set_title(str(tile.get("label") or ""), fontsize=8.8, pad=3, color="#20242a")
+        fig.text(
+            x + tile_width / 2.0,
+            y - 0.018,
+            _ellipsize(str(tile.get("caption") or ""), 30),
+            ha="center",
+            va="top",
+            fontsize=7.2,
+            color="#4b5563",
+        )
+        x += tile_width + gap
 
 
 def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
@@ -486,6 +622,7 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     meta = run_meta(run_dir)
     manifest = asset_manifest(meta)
     footer = prompt_footer(meta, manifest)
+    condition_tiles = condition_image_tiles(run_dir, meta)
     rotation = camera_rotation(azim, elev)
     light_dir = np.array([-0.35, -0.45, 0.82])
     light_dir /= np.linalg.norm(light_dir)
@@ -538,7 +675,8 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     lim_x = float(max_abs[0] * 1.10)
     lim_y = float(max_abs[1] * 1.16)
 
-    fig, axes = plt.subplots(1, len(projected), figsize=(4.7 * len(projected), 5.9), dpi=220)
+    fig_height = 6.9 if condition_tiles else 5.9
+    fig, axes = plt.subplots(1, len(projected), figsize=(4.7 * len(projected), fig_height), dpi=220)
     axes = np.atleast_1d(axes)
     fig.patch.set_facecolor("white")
 
@@ -572,9 +710,10 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         ax.set_title(label, fontsize=13, pad=6)
 
     fig.suptitle(title_for(run_dir), fontsize=16, y=0.98)
+    draw_condition_strip(fig, condition_tiles)
     footer_wrapped = "\n".join(textwrap.wrap(footer, width=190))
     fig.text(0.5, 0.045, footer_wrapped, ha="center", va="bottom", fontsize=8.5, color="#20242a")
-    plt.subplots_adjust(left=0.015, right=0.985, top=0.78, bottom=0.18, wspace=0.035)
+    plt.subplots_adjust(left=0.015, right=0.985, top=0.665 if condition_tiles else 0.78, bottom=0.18, wspace=0.035)
     output_path = run_dir / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, facecolor="white", bbox_inches="tight", pad_inches=0.04)

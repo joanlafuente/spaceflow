@@ -284,6 +284,11 @@ type GeneratedMeshState = {
   error: string | null;
 };
 
+function prepareGeneratedMaterial(material: THREE.Material) {
+  material.side = THREE.DoubleSide;
+  material.needsUpdate = true;
+}
+
 function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
   const object = gltf.scene.clone(true);
   object.traverse(child => {
@@ -298,13 +303,9 @@ function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
         metalness: 0.05,
         side: THREE.DoubleSide,
       });
-      return;
     }
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach(material => {
-      material.side = THREE.DoubleSide;
-      material.needsUpdate = true;
-    });
+    materials.forEach(prepareGeneratedMaterial);
   });
 
   const box = new THREE.Box3().setFromObject(object);
@@ -737,9 +738,15 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 8, 5]} intensity={1} />
-      <directionalLight position={[-3, -4, -2]} intensity={0.3} />
+      <ambientLight intensity={meshInspection ? 0.82 : 0.5} />
+      <directionalLight position={[5, 8, 5]} intensity={meshInspection ? 1.35 : 1} />
+      <directionalLight position={[-3, -4, -2]} intensity={meshInspection ? 0.48 : 0.3} />
+      {meshInspection && (
+        <>
+          <hemisphereLight color="#ffffff" groundColor="#cbd5e1" intensity={0.28} />
+          <directionalLight position={[0, -6, 6]} intensity={0.32} />
+        </>
+      )}
 
       <Grid
         args={[20, 20]}
