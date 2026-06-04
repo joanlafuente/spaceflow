@@ -97,3 +97,6 @@ examples/**/*.npy
 
 # Generated sbatch experiments. Tracked scripts stay tracked.
 *.ply
+
+*.png
+*.csv
