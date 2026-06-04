@@ -55,7 +55,13 @@ VARIANTS = [
     ),
 ]
 
+SINGLE_RESULT_PATHS = [
+    "output/out_sim.glb",
+    "output/out_sim_geometry.glb",
+]
+
 SQ_RENDER_PATHS = [
+    "output/spatial_control_mesh.ply",
     "output/01_local_tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/02_global_tau3_polyak0/spatial_control_mesh.ply",
@@ -327,6 +333,10 @@ def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
     return paths
 
 
+def single_result_path(run_dir: Path) -> Path | None:
+    return first_existing(run_dir, SINGLE_RESULT_PATHS)
+
+
 def discover_experiments(root: Path) -> list[Path]:
     candidates = sorted(path for path in root.glob("*_experiment") if path.is_dir())
     return [path for path in candidates if complete_experiment_paths(path) is not None]
@@ -346,6 +356,39 @@ def title_for(run_dir: Path) -> str:
     if "_" in name:
         name = name.split("_", 1)[1]
     return "Textured comparison: " + name.replace("_experiment", "").replace("_", " ")
+
+
+def _fmt_number(value: object) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.3g}"
+
+
+def single_title_for(run_dir: Path) -> str:
+    meta = run_meta(run_dir)
+    run_config = meta.get("run_config")
+    if isinstance(run_config, dict):
+        prompt = str(run_config.get("textPrompt") or "").strip()
+        if prompt:
+            return f"Tau-by-parts result: {prompt}"
+    name = run_dir.name
+    if "_" in name:
+        name = name.split("_", 1)[1]
+    return "Tau-by-parts result: " + name.replace("_", " ")
+
+
+def tau_by_parts_label(meta: dict[str, object]) -> str:
+    run_config = meta.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    low_tau = run_config.get("lowTau", 3)
+    high_tau = run_config.get("highTau")
+    if high_tau is None:
+        return f"tau-by-parts\nlow {_fmt_number(low_tau)}"
+    return f"tau-by-parts\nlow {_fmt_number(low_tau)} / high {_fmt_number(high_tau)}"
 
 
 def camera_rotation(azim_deg: float, elev_deg: float) -> np.ndarray:
@@ -615,40 +658,24 @@ def _rasterize_panel(mesh_info: dict[str, object], lim_x: float, lim_y: float, l
     return image
 
 
-def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float) -> Path:
-    variant_paths = complete_experiment_paths(run_dir)
-    if variant_paths is None:
-        raise RuntimeError(f"Missing one or more variants: {run_dir}")
-
-    meta = run_meta(run_dir)
-    manifest = asset_manifest(meta)
-    footer = prompt_footer(meta, manifest)
-    condition_tiles = condition_image_tiles(run_dir, meta)
+def _render_labeled_meshes(
+    run_dir: Path,
+    output_name: str,
+    azim: float,
+    elev: float,
+    meshes: list[dict[str, object]],
+    title: str,
+    footer: str,
+    condition_tiles: list[dict[str, object]],
+) -> Path:
     rotation = camera_rotation(azim, elev)
     light_dir = np.array([-0.35, -0.45, 0.82])
     light_dir /= np.linalg.norm(light_dir)
 
-    meshes: list[dict[str, object]] = []
     max_extent = 0.0
-    control_mesh_path = sq_mesh_path(run_dir)
-    if control_mesh_path is not None:
-        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+    for mesh_info in meshes:
         vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
         max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
-        meshes.append({
-            **mesh_info,
-            "label": "SQ controls\nteal high / orange low",
-        })
-
-    for label, path in variant_paths:
-        mesh_info = load_mesh(path)
-        vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
-        max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
-        meshes.append({
-            **mesh_info,
-            "label": label,
-            "annotations": [],
-        })
 
     scale = 1.0 / max(max_extent, 1e-8)
     projected = []
@@ -710,9 +737,10 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         ax.axis("off")
         ax.set_title(label, fontsize=13, pad=6)
 
-    fig.suptitle(title_for(run_dir), fontsize=16, y=0.98)
+    fig.suptitle(title, fontsize=16, y=0.98)
     draw_condition_strip(fig, condition_tiles)
-    footer_wrapped = "\n".join(textwrap.wrap(footer, width=190))
+    footer_width = max(90, min(190, 48 * len(projected)))
+    footer_wrapped = "\n".join(textwrap.wrap(footer, width=footer_width))
     fig.text(0.5, 0.045, footer_wrapped, ha="center", va="bottom", fontsize=8.5, color="#20242a")
     plt.subplots_adjust(left=0.015, right=0.985, top=0.665 if condition_tiles else 0.78, bottom=0.18, wspace=0.035)
     output_path = run_dir / output_name
@@ -722,6 +750,77 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     return output_path
 
 
+def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float) -> Path:
+    variant_paths = complete_experiment_paths(run_dir)
+    if variant_paths is None:
+        raise RuntimeError(f"Missing one or more variants: {run_dir}")
+
+    meta = run_meta(run_dir)
+    manifest = asset_manifest(meta)
+
+    meshes: list[dict[str, object]] = []
+    control_mesh_path = sq_mesh_path(run_dir)
+    if control_mesh_path is not None:
+        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+        meshes.append({
+            **mesh_info,
+            "label": "SQ controls\nteal high / orange low",
+        })
+
+    for label, path in variant_paths:
+        mesh_info = load_mesh(path)
+        meshes.append({
+            **mesh_info,
+            "label": label,
+            "annotations": [],
+        })
+
+    return _render_labeled_meshes(
+        run_dir,
+        output_name,
+        azim,
+        elev,
+        meshes,
+        title_for(run_dir),
+        prompt_footer(meta, manifest),
+        condition_image_tiles(run_dir, meta),
+    )
+
+
+def render_single_result(run_dir: Path, output_name: str, azim: float, elev: float = 25.0) -> Path:
+    result_path = single_result_path(run_dir)
+    if result_path is None:
+        raise RuntimeError(f"Missing tau-by-parts result: {run_dir}")
+
+    meta = run_meta(run_dir)
+    manifest = asset_manifest(meta)
+    meshes: list[dict[str, object]] = []
+    control_mesh_path = sq_mesh_path(run_dir)
+    if control_mesh_path is not None:
+        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+        meshes.append({
+            **mesh_info,
+            "label": "SQ controls\nteal high / orange low",
+        })
+
+    meshes.append({
+        **load_mesh(result_path),
+        "label": tau_by_parts_label(meta),
+        "annotations": [],
+    })
+
+    return _render_labeled_meshes(
+        run_dir,
+        output_name,
+        azim,
+        elev,
+        meshes,
+        single_title_for(run_dir),
+        prompt_footer(meta, manifest),
+        condition_image_tiles(run_dir, meta),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("runs", nargs="*", type=Path, help="Experiment run directories. Defaults to all complete experiments.")
@@ -729,19 +828,23 @@ def main() -> None:
     parser.add_argument("--output-name", default="variant_comparison.png")
     parser.add_argument("--azim", type=float, default=-58.0)
     parser.add_argument("--elev", type=float, default=20.0)
+    parser.add_argument("--single", action="store_true", help="Render one tau-by-parts result plus SQ controls.")
     args = parser.parse_args()
 
-    run_dirs = args.runs or discover_experiments(args.root)
+    run_dirs = args.runs or ([] if args.single else discover_experiments(args.root))
     if not run_dirs:
-        raise SystemExit("No complete experiment runs found.")
+        raise SystemExit("No run directories provided." if args.single else "No complete experiment runs found.")
 
     for run_dir in run_dirs:
-        variants = complete_experiment_paths(run_dir)
-        if variants is None:
-            print(f"skip missing variants: {run_dir}")
-            continue
         try:
-            output_path = render_comparison(run_dir, args.output_name, args.azim, args.elev)
+            if args.single:
+                output_path = render_single_result(run_dir, args.output_name, args.azim, args.elev)
+            else:
+                variants = complete_experiment_paths(run_dir)
+                if variants is None:
+                    print(f"skip missing variants: {run_dir}")
+                    continue
+                output_path = render_comparison(run_dir, args.output_name, args.azim, args.elev)
         except Exception as exc:  # noqa: BLE001
             print(f"failed {run_dir}: {exc}")
             continue

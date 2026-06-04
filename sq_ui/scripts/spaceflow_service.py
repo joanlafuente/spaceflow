@@ -262,13 +262,13 @@ def _wrap_with_srun(cmd: list[str]) -> list[str]:
     return srun_cmd
 
 
-def _wrap_shell_with_srun(script_path: Path) -> list[str]:
+def _wrap_shell_with_srun(script_path: Path, job_name: str = "sq_spaceflow_exp") -> list[str]:
     srun_cmd = [
         "srun",
         f"--partition={PARTITION}",
         f"--account={ACCOUNT}",
         f"--time={TIME_LIMIT}",
-        "--job-name=sq_spaceflow_exp",
+        f"--job-name={job_name}",
         "--ntasks=1",
         "--export=ALL",
         f"--gpus={GPUS or '1'}",
@@ -413,6 +413,38 @@ def _write_command_script(script_path: Path, cmd: list[str]) -> None:
         "#!/usr/bin/env bash",
         "set -uo pipefail",
         f"exec {shlex.join([str(part) for part in cmd])}",
+    ]
+    script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    script_path.chmod(0o755)
+
+
+def _write_single_run_script(script_path: Path, cmd: list[str], run_dir: Path) -> None:
+    render_cmd = [
+        PYTHON_BIN,
+        str(REPO_ROOT / "sq_ui" / "scripts" / "render_spaceflow_experiment_comparison.py"),
+        "--single",
+        str(run_dir),
+        "--output-name",
+        "output/variant_comparison_lower_camera.png",
+        "--azim",
+        "0.0",
+        "--elev",
+        "55.0",
+    ]
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -uo pipefail",
+        shlex.join([str(part) for part in cmd]),
+        "spaceflow_status=$?",
+        'if [ "$spaceflow_status" -eq 0 ]; then',
+        '  echo "[sq-spaceflow] Rendering tau-by-parts summary figure..."',
+        f"  if {shlex.join([str(part) for part in render_cmd])}; then",
+        '    echo "[sq-spaceflow] Rendered tau-by-parts summary figure."',
+        "  else",
+        '    echo "[sq-spaceflow] Warning: tau-by-parts summary render failed."',
+        "  fi",
+        "fi",
+        'exit "$spaceflow_status"',
     ]
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     script_path.chmod(0o755)
@@ -1087,6 +1119,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             experiment_variants: list[dict[str, object]] = []
             experiment_script: Path | None = None
+            run_script: Path | None = None
 
             if experiment_mode:
                 experiment_specs = [
@@ -1164,7 +1197,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     n_repaint_steps=n_repaint_steps,
                     convert_yup_to_zup=convert_yup_to_zup,
                 )
-                final_cmd = _wrap_with_srun(cmd) if _should_use_srun() else cmd
+                run_script = run_dir / "run_spaceflow.sh"
+                _write_single_run_script(run_script, cmd, run_dir)
+                final_cmd = (
+                    _wrap_shell_with_srun(run_script, job_name="sq_spaceflow")
+                    if _should_use_srun()
+                    else ["bash", str(run_script)]
+                )
 
             meta = {
                 "run_id": run_id,
@@ -1188,6 +1227,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     {key: value for key, value in variant.items() if key not in {"command", "argv"}}
                     for variant in experiment_variants
                 ]
+            elif run_script is not None:
+                meta["run_script"] = str(run_script)
             _write_run_meta(run_id, meta)
 
             if dry_run:
