@@ -669,7 +669,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   return (
     <div className="top-bar">
       <div className="top-left">
-        <span className="app-name">SpaceFlow SQ Editor</span>
+        <span className="app-name">SpaceFlow</span>
         <span className="app-sep">/</span>
         <input
           type="text"

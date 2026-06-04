@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   --bg-base: #0e1014;
@@ -117,9 +117,15 @@ body {
 }
 
 .app-name {
+  font-family: 'Caveat', cursive;
   font-weight: 700;
-  font-size: 15px;
-  color: var(--text-primary);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0;
+  background: linear-gradient(90deg, #ff66c4, #ffde59);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
   white-space: nowrap;
 }
 
