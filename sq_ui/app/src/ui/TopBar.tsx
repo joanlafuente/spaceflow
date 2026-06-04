@@ -657,19 +657,6 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     <div className="top-bar">
       <div className="top-left">
         <span className="app-name">SpaceFlow</span>
-        <button
-          type="button"
-          className={`theme-toggle ${themeMode}`}
-          role="switch"
-          aria-checked={themeMode === 'dark'}
-          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-          title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
-          onClick={() => onThemeModeChange(themeMode === 'dark' ? 'light' : 'dark')}
-        >
-          <span className="theme-toggle-thumb" aria-hidden />
-          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>☀</span>
-          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>☾</span>
-        </button>
       </div>
 
       <div className="top-center">
@@ -1056,6 +1043,19 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         {hasWarnings && (
           <span className="validation-warn" title="Some rotation matrices are not orthogonal">⚠</span>
         )}
+        <button
+          type="button"
+          className={`theme-toggle ${themeMode}`}
+          role="switch"
+          aria-checked={themeMode === 'dark'}
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          onClick={() => onThemeModeChange(themeMode === 'dark' ? 'light' : 'dark')}
+        >
+          <span className="theme-toggle-thumb" aria-hidden />
+          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>☀</span>
+          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>☾</span>
+        </button>
         <div className="export-dropdown">
           <button
             className="btn-accent"
