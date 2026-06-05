@@ -202,6 +202,54 @@ def _dilate_condition_indices(coords_dense_indices, n_conditions, radius=1):
         dilated_indices[(dilated_indices == 0) & dilated] = cond_idx
     return dilated_indices
 
+def _nonnegative_int(value, default=0):
+    if value is None:
+        return default
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+def _expand_small_condition_indices(coords_dense_indices, n_conditions, min_cells=0, max_dilation=0):
+    """Grow under-covered local conditions into global cells.
+
+    The local routing grid is 32^3, so small SQs such as wheels can collapse to
+    very few routed cells. This keeps local prompts active by expanding only
+    conditions that are below min_cells, never overwriting another local prompt.
+    """
+    min_cells = _nonnegative_int(min_cells, 0)
+    max_dilation = _nonnegative_int(max_dilation, 0)
+    if min_cells <= 0 or max_dilation <= 0 or n_conditions <= 1:
+        return coords_dense_indices, {}
+
+    expanded_indices = coords_dense_indices.clone()
+    stats = {}
+    for cond_idx in range(1, n_conditions):
+        initial_count = int((expanded_indices == cond_idx).sum().item())
+        stats[cond_idx] = {
+            "initial": initial_count,
+            "final": initial_count,
+            "dilation": 0,
+        }
+        if initial_count <= 0 or initial_count >= min_cells:
+            continue
+
+        count = initial_count
+        for radius in range(1, max_dilation + 1):
+            mask = (expanded_indices == cond_idx).float()
+            grown = F.max_pool3d(mask, kernel_size=3, stride=1, padding=1) > 0
+            candidates = grown & (expanded_indices == 0)
+            if not candidates.any():
+                break
+            expanded_indices[candidates] = cond_idx
+            count = int((expanded_indices == cond_idx).sum().item())
+            stats[cond_idx]["final"] = count
+            stats[cond_idx]["dilation"] = radius
+            if count >= min_cells:
+                break
+
+    return expanded_indices, stats
+
 def attn_cosine_sim(x, eps=1e-08):
     x = x[0]  # TEMP: getting rid of redundant dimension, TBF
     norm1 = x.norm(dim=2, keepdim=True)
@@ -361,9 +409,11 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         # Build remap: SQ 1-index → new condition index (0=global fallback, 1..n_conditioned).
         remap = torch.zeros(n_sq + 1, dtype=torch.long, device='cuda')
         new_idx = 1
+        condition_to_sq = {}
         for sq_i, is_cond in enumerate(conditioned_mask):
             remap[sq_i + 1] = new_idx if is_cond else 0
             if is_cond:
+                condition_to_sq[new_idx] = sq_i
                 new_idx += 1
         sq_cond_map = remap[1:].tolist()  # condition index per SQ (0=global)
         log.info(f"SQ condition mapping (0=global): {sq_cond_map}")
@@ -374,18 +424,46 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             struct_coords, individual_sq_meshes, struct_labels, active_indices, 'cuda')
         coords_dense_indices = remap[coords_dense_indices.long()]
         condition_counts_before_dilation = _dense_condition_counts(coords_dense_indices, len(cond_list))
-        local_condition_dilation = int(getattr(cfg.sim_guidance, 'local_condition_dilation', 0))
+        local_condition_dilation = _nonnegative_int(
+            getattr(cfg.sim_guidance, 'local_condition_dilation', 0), 0)
         coords_dense_indices = _dilate_condition_indices(
             coords_dense_indices, len(cond_list), radius=local_condition_dilation)
+        condition_counts_after_dilation = _dense_condition_counts(coords_dense_indices, len(cond_list))
+        local_condition_min_cells = _nonnegative_int(
+            getattr(cfg.sim_guidance, 'local_condition_min_cells', 0), 0)
+        local_condition_max_dilation = _nonnegative_int(
+            getattr(cfg.sim_guidance, 'local_condition_max_dilation', 0), 0)
+        coords_dense_indices, adaptive_expansion_stats = _expand_small_condition_indices(
+            coords_dense_indices,
+            len(cond_list),
+            min_cells=local_condition_min_cells,
+            max_dilation=local_condition_max_dilation,
+        )
         condition_counts = _dense_condition_counts(coords_dense_indices, len(cond_list))
         active_sq_counts = {idx: sq_route_counts.get(idx, 0) for idx in active_indices}
         log.info(
             f"Local routing source: {routing_source}; active SQ counts: {active_sq_counts}"
         )
+        if adaptive_expansion_stats:
+            active_expansions = {
+                f"cond_{cond_idx}_sq_{condition_to_sq.get(cond_idx, 'unknown')}": values
+                for cond_idx, values in adaptive_expansion_stats.items()
+                if values["dilation"] > 0 or values["initial"] < local_condition_min_cells
+            }
+            if active_expansions:
+                log.info(
+                    "Adaptive local condition expansion: min_cells=%d, max_dilation=%d, stats=%s",
+                    local_condition_min_cells,
+                    local_condition_max_dilation,
+                    active_expansions,
+                )
         log.info(
             f"coords_dense_indices: shape={coords_dense_indices.shape}, "
             f"condition_counts_before_dilation={condition_counts_before_dilation}, "
+            f"condition_counts_after_dilation={condition_counts_after_dilation}, "
             f"dilation_radius={local_condition_dilation}, "
+            f"adaptive_min_cells={local_condition_min_cells}, "
+            f"adaptive_max_dilation={local_condition_max_dilation}, "
             f"condition_counts={condition_counts}, non-zero={int((coords_dense_indices > 0).sum())}"
         )
 
