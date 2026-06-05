@@ -128,6 +128,66 @@ def compute_coords_dense_indices(struct_coords, individual_sq_meshes, device='cu
 
     return coords_dense_indices
 
+def _dense_sq_counts(coords_dense_indices, n_sq):
+    flat = coords_dense_indices.reshape(-1)
+    return {
+        sq_idx: int((flat == sq_idx + 1).sum().item())
+        for sq_idx in range(n_sq)
+    }
+
+def _dense_condition_counts(coords_dense_indices, n_conditions):
+    flat = coords_dense_indices.reshape(-1)
+    return {
+        cond_idx: int((flat == cond_idx).sum().item())
+        for cond_idx in range(1, n_conditions)
+    }
+
+def _active_route_coverage(sq_counts, active_indices):
+    counts = [sq_counts.get(idx, 0) for idx in active_indices]
+    return sum(count > 0 for count in counts), sum(counts)
+
+def _format_nonzero_counts(counts):
+    nonzero = {idx: count for idx, count in counts.items() if count > 0}
+    return nonzero if nonzero else {}
+
+def _choose_local_routing(struct_coords, individual_sq_meshes, struct_labels, active_indices, device='cuda'):
+    clustered = compute_coords_dense_indices(
+        struct_coords, individual_sq_meshes, device, vox_cluster_labels=struct_labels)
+    n_sq = len(individual_sq_meshes)
+    clustered_counts = _dense_sq_counts(clustered, n_sq)
+    log.info(f"PartField local routing SQ counts: {_format_nonzero_counts(clustered_counts)}")
+
+    if not active_indices:
+        return clustered, "partfield", clustered_counts
+
+    clustered_coverage = _active_route_coverage(clustered_counts, active_indices)
+    if clustered_coverage[0] == len(active_indices):
+        return clustered, "partfield", clustered_counts
+
+    geometric = compute_coords_dense_indices(
+        struct_coords, individual_sq_meshes, device, vox_cluster_labels=None)
+    geometric_counts = _dense_sq_counts(geometric, n_sq)
+    geometric_coverage = _active_route_coverage(geometric_counts, active_indices)
+    log.info(f"Geometric local routing SQ counts: {_format_nonzero_counts(geometric_counts)}")
+
+    if geometric_coverage > clustered_coverage:
+        missing = [idx for idx in active_indices if clustered_counts.get(idx, 0) == 0]
+        log.warning(
+            "PartField local routing missed active SQ(s) %s; using geometric routing "
+            "for local texture conditions instead.",
+            missing,
+        )
+        return geometric, "geometric", geometric_counts
+
+    missing = [idx for idx in active_indices if clustered_counts.get(idx, 0) == 0]
+    if missing:
+        log.warning(
+            "PartField local routing missed active SQ(s) %s, and geometric routing "
+            "did not improve coverage; keeping PartField routing.",
+            missing,
+        )
+    return clustered, "partfield", clustered_counts
+
 def attn_cosine_sim(x, eps=1e-08):
     x = x[0]  # TEMP: getting rid of redundant dimension, TBF
     norm1 = x.norm(dim=2, keepdim=True)
@@ -277,10 +337,18 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         log.info(f"Built cond_list with {len(cond_list)} entries "
                  f"(1 global + {len(conditioned_embs)} real local out of {n_sq} SQs)")
 
-        coords_dense_indices = compute_coords_dense_indices(struct_coords, individual_sq_meshes, 'cuda',
-                                                             vox_cluster_labels=struct_labels)
+        coords_dense_indices, routing_source, sq_route_counts = _choose_local_routing(
+            struct_coords, individual_sq_meshes, struct_labels, active_indices, 'cuda')
         coords_dense_indices = remap[coords_dense_indices.long()]
-        log.info(f"coords_dense_indices: shape={coords_dense_indices.shape}, non-zero={int((coords_dense_indices > 0).sum())}")
+        condition_counts = _dense_condition_counts(coords_dense_indices, len(cond_list))
+        active_sq_counts = {idx: sq_route_counts.get(idx, 0) for idx in active_indices}
+        log.info(
+            f"Local routing source: {routing_source}; active SQ counts: {active_sq_counts}"
+        )
+        log.info(
+            f"coords_dense_indices: shape={coords_dense_indices.shape}, "
+            f"condition_counts={condition_counts}, non-zero={int((coords_dense_indices > 0).sum())}"
+        )
 
         log.info("Skipping condition routing visualization; routing indices are still used for local conditioning.")
         torch.cuda.empty_cache()
