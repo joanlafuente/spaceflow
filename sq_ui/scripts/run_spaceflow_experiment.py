@@ -244,8 +244,8 @@ def main(argv=None):
     texture_optim_steps = config.get("texture_optim_steps")
     if texture_optim_steps is not None:
         texture_optim_steps = int(texture_optim_steps)
-        if texture_optim_steps < 0:
-            raise ValueError("texture_optim_steps must be a non-negative integer")
+        if texture_optim_steps < 2:
+            raise ValueError("texture_optim_steps must be an integer at least 2")
         cfg.sim_guidance.steps = texture_optim_steps
         _experiment_log(f"overriding texture optimization steps: {texture_optim_steps}")
     parsed_variants = _parse_variants(variants)

@@ -365,8 +365,8 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       showToast('Repaint steps must be a non-negative whole number.', 5000);
       return;
     }
-    if (!/^\d+$/.test(textureOptimStepsRaw) || !Number.isInteger(textureOptimSteps)) {
-      showToast('Texture optimization steps must be a non-negative whole number.', 5000);
+    if (!/^\d+$/.test(textureOptimStepsRaw) || !Number.isInteger(textureOptimSteps) || textureOptimSteps < 2) {
+      showToast('Texture optimization steps must be at least 2.', 5000);
       return;
     }
     if (!spaceflowTextPrompt.trim()) {
@@ -1053,7 +1053,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     </label>
                     <label className="spaceflow-number-field">
                       <span>Texture optim steps</span>
-                      <input className="num-input" type="number" min="0" step="1" value={spaceflowTextureOptimSteps} onChange={(e) => setSpaceflowTextureOptimSteps(e.target.value)} disabled={spaceflowRunning} />
+                      <input className="num-input" type="number" min="2" step="1" value={spaceflowTextureOptimSteps} onChange={(e) => setSpaceflowTextureOptimSteps(e.target.value)} disabled={spaceflowRunning} />
                     </label>
                     <label className="spaceflow-number-field">
                       <span>Output name</span>

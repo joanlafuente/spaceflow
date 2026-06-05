@@ -127,7 +127,7 @@ def init_args(argv=None):
     parser.add_argument('--n_repaint_steps', type=int, default=10,
                         help='Number of repaint resampling steps to perform during structure generation to improve blending (default: 10). Set to 0 to disable.')                        
     parser.add_argument('--texture_optim_steps', type=int, default=None,
-                        help='Override config/default.yaml sim_guidance.steps for texture similarity optimization.')
+                        help='Override config/default.yaml sim_guidance.steps for texture similarity optimization. Minimum: 2.')
     parser.add_argument('--trellis_pipeline_path', type=str, default=None,
                         help='TRELLIS pipeline config/model path. Defaults to SPACEFLOW_TRELLIS_PIPELINE_PATH or config/default.yaml trellis_text_model_name.')
     parser.add_argument('--geometry_only_decode', action='store_true',
@@ -521,8 +521,8 @@ def run(args, cfg=None, generation_pipeline=None):
     reset_run_state()
     cfg = cfg or OmegaConf.load('config/default.yaml')
     if args.texture_optim_steps is not None:
-        if args.texture_optim_steps < 0:
-            raise ValueError("--texture_optim_steps must be a non-negative integer")
+        if args.texture_optim_steps < 2:
+            raise ValueError("--texture_optim_steps must be an integer at least 2")
         cfg = copy.deepcopy(cfg)
         cfg.sim_guidance.steps = int(args.texture_optim_steps)
         log.info("Overriding texture optimization steps: %d", int(cfg.sim_guidance.steps))

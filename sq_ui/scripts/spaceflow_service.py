@@ -552,11 +552,12 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     return default
 
 
-def _parse_nonnegative_int(value: object, default: int, name: str) -> int:
+def _parse_nonnegative_int(value: object, default: int, name: str, *, min_value: int = 0) -> int:
     if value is None:
         return default
+    requirement = "a non-negative integer" if min_value == 0 else f"an integer at least {min_value}"
     if isinstance(value, bool):
-        raise ValueError(f"{name} must be a non-negative integer")
+        raise ValueError(f"{name} must be {requirement}")
     if isinstance(value, int):
         parsed = value
     elif isinstance(value, float) and value.is_integer():
@@ -564,9 +565,9 @@ def _parse_nonnegative_int(value: object, default: int, name: str) -> int:
     elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
         parsed = int(value.strip())
     else:
-        raise ValueError(f"{name} must be a non-negative integer")
-    if parsed < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
+        raise ValueError(f"{name} must be {requirement}")
+    if parsed < min_value:
+        raise ValueError(f"{name} must be {requirement}")
     return parsed
 
 
@@ -1145,6 +1146,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 ),
                 300,
                 "Texture optimization steps",
+                min_value=2,
             )
             texture_mode = str(run_config.get("textureMode") or run_config.get("appearanceMode", "text")).strip().lower()
             if texture_mode not in {"text", "image"}:
