@@ -1,0 +1,46 @@
+[
+  {
+    "scene_id": "test_sofa_pic",
+    "mapping": { "A": "ours", "B": "sc" },
+    "outputs_a": ["static/data/sofa/ours/output.glb"],
+    "outputs_b": ["static/data/sofa/sc/output.glb"],
+    "ref_a": "static/data/sofa/reference_a.png",
+    "ref_b": "static/data/sofa/reference_b.png",
+    "prompt": "A white sofa with a patterned backrest",
+    "ref_a_label": "sofa (white)",
+    "ref_b_label": "backrest (patterned)"
+  },
+  {
+    "scene_id": "test_sofa_pic",
+    "mapping": { "A": "ours", "B": "sc" },
+    "outputs_a": ["static/data/sofa/ours/output.glb"],
+    "outputs_b": ["static/data/sofa/sc/output.glb"],
+    "ref_a": "static/data/sofa/reference_a.png",
+    "ref_b": "static/data/sofa/reference_b.png",
+    "prompt": "A white sofa with a patterned backrest",
+    "ref_a_label": "sofa (white)",
+    "ref_b_label": "backrest (patterned)"
+  },
+  {
+    "scene_id": "test_sofa_pic",
+    "mapping": { "A": "ours", "B": "sc" },
+    "outputs_a": ["static/data/sofa/ours/output.glb"],
+    "outputs_b": ["static/data/sofa/sc/output.glb"],
+    "ref_a": "static/data/sofa/reference_a.png",
+    "ref_b": "static/data/sofa/reference_b.png",
+    "prompt": "A white sofa with a patterned backrest",
+    "ref_a_label": "sofa (white)",
+    "ref_b_label": "backrest (patterned)"
+  },
+  {
+    "scene_id": "test_sofa_pic",
+    "mapping": { "A": "ours", "B": "sc" },
+    "outputs_a": ["static/data/sofa/ours/output.glb"],
+    "outputs_b": ["static/data/sofa/sc/output.glb"],
+    "ref_a": "static/data/sofa/reference_a.png",
+    "ref_b": "static/data/sofa/reference_b.png",
+    "prompt": "A white sofa with a patterned backrest",
+    "ref_a_label": "sofa (white)",
+    "ref_b_label": "backrest (patterned)"
+  }
+]

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpaceFlow — User Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./static/css/style.css">
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
+</head>
+<body>
+
+  <!-- ── USERNAME MODAL ─────────────────────────────────────────── -->
+  <div id="username-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-logo">SpaceFlow</div>
+      <h2 class="modal-title">User Study</h2>
+      <p class="modal-subtitle">
+        We're comparing different 3D generation methods on how well they apply
+        different materials to different parts of an object.<br>
+        Your task: compare two outputs given reference images.
+      </p>
+      <input type="text" id="username-input" class="modal-input"
+             placeholder="Enter your name or any username" autocomplete="off">
+      <p class="modal-error" id="username-error"></p>
+      <button id="username-submit" class="btn btn-primary">Start Study →</button>
+    </div>
+  </div>
+
+  <!-- ── MAIN STUDY ─────────────────────────────────────────────── -->
+  <div id="main-content" class="page" style="display:none;" data-study-id="appearance">
+
+    <!-- header -->
+    <header class="study-header">
+      <div class="study-header-left">
+        <a href="./index.html" class="back-link">← All Studies</a><span class="study-name">SpaceFlow &mdash; Local Appearance Control</span>
+      </div>
+      <div class="study-header-right">
+        <span class="participant-label">Participant: <strong id="display-username"></strong></span>
+      </div>
+    </header>
+
+    <!-- progress -->
+    <div class="progress-wrap">
+      <div class="progress-text" id="progress-text">Loading…</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- task description + prompt -->
+    <div class="task-card">
+      <div class="task-instruction">
+        Starting from a 3D geometric shape, we apply different methods to texture the object.
+        Each part should match its corresponding reference material below.
+        <strong>Judge each sample against the references — not against each other.</strong>
+      </div>
+      <div class="prompt-row">
+        <span class="prompt-label">Prompt</span>
+        <span class="prompt-text" id="prompt-box">—</span>
+      </div>
+    </div>
+
+    <!-- reference images -->
+    <div class="references-section">
+      <div class="section-label">Reference Materials</div>
+      <div class="references-row">
+        <div class="reference-card">
+          <img id="ref-a-img" src="" alt="Reference A" class="reference-img">
+          <div class="reference-tag" id="ref-a-label">Reference A</div>
+        </div>
+        <div class="reference-divider">+</div>
+        <div class="reference-card">
+          <img id="ref-b-img" src="" alt="Reference B" class="reference-img">
+          <div class="reference-tag" id="ref-b-label">Reference B</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A/B outputs -->
+    <div class="outputs-section">
+      <div class="output-col">
+        <div class="output-label">Sample A</div>
+        <div id="imgs-a" class="output-images"></div>
+      </div>
+      <div class="output-col">
+        <div class="output-label">Sample B</div>
+        <div id="imgs-b" class="output-images"></div>
+      </div>
+    </div>
+
+    <!-- hidden tracking spans (used by main.js) -->
+    <span id="scene"          style="display:none"></span>
+    <span id="model_a_method" style="display:none"></span>
+    <span id="model_b_method" style="display:none"></span>
+
+    <!-- questions -->
+    <div class="survey-section">
+      <form id="survey-form">
+
+        <div class="question">
+          <div class="question-text">
+            Q1 &mdash; Which sample's <em id="q1-part">part A</em>
+            better matches <strong>Reference A</strong>?
+          </div>
+          <div class="choices">
+            <label class="choice-label">
+              <input type="radio" name="q1" value="Model A" required>
+              <span class="choice-btn">Sample A</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q1" value="Model B">
+              <span class="choice-btn">Sample B</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q1" value="Equal">
+              <span class="choice-btn">Both Equal</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="question">
+          <div class="question-text">
+            Q2 &mdash; Which sample's <em id="q2-part">part B</em>
+            better matches <strong>Reference B</strong>?
+          </div>
+          <div class="choices">
+            <label class="choice-label">
+              <input type="radio" name="q2" value="Model A" required>
+              <span class="choice-btn">Sample A</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q2" value="Model B">
+              <span class="choice-btn">Sample B</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q2" value="Equal">
+              <span class="choice-btn">Both Equal</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="question">
+          <div class="question-text">
+            Q3 &mdash; Which sample do you <strong>prefer overall</strong>,
+            considering both parts together?
+          </div>
+          <div class="choices">
+            <label class="choice-label">
+              <input type="radio" name="q3" value="Model A" required>
+              <span class="choice-btn">Sample A</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q3" value="Model B">
+              <span class="choice-btn">Sample B</span>
+            </label>
+            <label class="choice-label">
+              <input type="radio" name="q3" value="Equal">
+              <span class="choice-btn">Both Equal</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="form-error" class="form-error" style="display:none">
+          Please answer all three questions before submitting.
+        </div>
+
+        <button type="submit" class="btn btn-submit" id="submit-btn">
+          Submit &amp; Next →
+        </button>
+      </form>
+
+      <div id="message" class="message" style="display:none"></div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <script src="./static/js/main.js?v=3"></script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+[
+  {
+    "scene_id": "scene_01",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/1_chair_small_backrest.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/1_chair_small_backrest.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/1_chair_small_backrest.png",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_08",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/8_elephant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/8_elephant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/8_elephant.png",
+    "prompt": "A low-poly elephant"
+  },
+  {
+    "scene_id": "scene_02",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/2_bar_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/2_bar_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/2_bar_chair.png",
+    "prompt": "A bar chair"
+  },
+  {
+    "scene_id": "scene_05",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/5_chese_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/5_chese_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/5_cheese_chair.png",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_04",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/4_toy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/4_toy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/4_toy.png",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_04",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/4_toy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/4_toy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/4_toy.png",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_01",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/1_chair_small_backrest.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/1_chair_small_backrest.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/1_chair_small_backrest.png",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_07",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/7_stool.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/7_stool.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/7_stool.png",
+    "prompt": "A stool with a pillow on top"
+  },
+  {
+    "scene_id": "scene_03",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/3_sofa.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/3_sofa.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/3_sofa.png",
+    "prompt": "A minimalist sofa"
+  },
+  {
+    "scene_id": "scene_06",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/6_working_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/6_working_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/6_working_chair.png",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_07",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/7_stool.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/7_stool.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/7_stool.png",
+    "prompt": "A stool with a pillow on top"
+  },
+  {
+    "scene_id": "scene_02",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/2_bar_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/2_bar_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/2_bar_chair.png",
+    "prompt": "A bar chair"
+  },
+  {
+    "scene_id": "scene_09",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/9_plane.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/9_plane.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/9_plane.png",
+    "prompt": "A plane"
+  },
+  {
+    "scene_id": "scene_10",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/10_classic_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/10_classic_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/10_classic_chair.png",
+    "prompt": "A classic chair"
+  },
+  {
+    "scene_id": "scene_08",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/8_elephant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/8_elephant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/8_elephant.png",
+    "prompt": "A low-poly elephant"
+  },
+  {
+    "scene_id": "scene_03",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/3_sofa.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/3_sofa.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/3_sofa.png",
+    "prompt": "A minimalist sofa"
+  },
+  {
+    "scene_id": "scene_05",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/5_chese_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/5_chese_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/5_cheese_chair.png",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_10",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/10_classic_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/10_classic_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/10_classic_chair.png",
+    "prompt": "A classic chair"
+  },
+  {
+    "scene_id": "scene_09",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/9_plane.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/9_plane.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/9_plane.png",
+    "prompt": "A plane"
+  },
+  {
+    "scene_id": "scene_06",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/6_working_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/6_working_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_images/6_working_chair.png",
+    "prompt": "A chair"
+  }
+]

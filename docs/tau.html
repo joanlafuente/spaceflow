@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpaceFlow — Geometric Control Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./static/css/style.css">
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
+</head>
+<body>
+
+  <!-- ── USERNAME MODAL ─────────────────────────────────────────── -->
+  <div id="username-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-logo">SpaceFlow</div>
+      <h2 class="modal-title">Geometric Control Study</h2>
+      <p class="modal-subtitle">
+        You will compare pairs of 3D objects generated from the same geometric
+        input, using different levels of shape control.
+      </p>
+      <input type="text" id="username-input" class="modal-input"
+             placeholder="Enter any name or nickname" autocomplete="off">
+      <p class="modal-error" id="username-error"></p>
+      <button id="username-submit" class="btn btn-primary">Start Study →</button>
+    </div>
+  </div>
+
+  <!-- ── INSTRUCTION MODAL ──────────────────────────────────────── -->
+  <div id="instruction-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card" style="max-width:560px">
+      <div class="modal-logo">Before you begin</div>
+      <h2 class="modal-title" style="font-size:20px;margin-bottom:16px">
+        How this study works
+      </h2>
+      <p style="font-size:14px;color:var(--text);line-height:1.7;margin-bottom:14px">
+        In each trial, a model generates a 3D asset from a text prompt and an
+        input geometric shape. The input shape is divided into two control regions:
+      </p>
+      <div style="background:var(--bg);border-radius:8px;padding:14px 18px;margin-bottom:14px;font-size:14px;line-height:1.8">
+        <div>
+          <strong style="color:#ac6f0c;">● Orange regions</strong> —
+          strongly controlled. The generated object should stay close to their shape.
+        </div>
+        <div style="margin-top:6px">
+          <strong>○ Grey/white regions</strong> —
+          weakly controlled. The model may generate freely to match the prompt.
+        </div>
+      </div>
+      <p style="font-size:14px;color:var(--text-muted);line-height:1.7;margin-bottom:24px">
+        You will compare <strong>pairs</strong> of generated objects and answer
+        three questions. Judge each question independently.
+        A good result should match the prompt <em>and</em> preserve the intended
+        structure in the orange regions.
+      </p>
+      <button id="instruction-ready" class="btn btn-primary">
+        I'm ready →
+      </button>
+    </div>
+  </div>
+  
+  <!-- ── MAIN STUDY ─────────────────────────────────────────────── -->
+  <div id="main-content" class="page" style="display:none;" data-study-id="tau_control">
+
+    <header class="study-header">
+      <div class="study-header-left">
+        <a href="./index.html" class="back-link">← All Studies</a>
+        <span class="study-name">SpaceFlow — Local Geometric Control</span>
+      </div>
+      <div class="study-header-right">
+        <span class="participant-label">Participant: <strong id="display-username"></strong></span>
+      </div>
+    </header>
+
+    <div class="progress-wrap">
+      <div class="progress-text" id="progress-text">Loading…</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Task description -->
+    <div class="task-card">
+      <div class="task-instruction">
+        In this task, a model generates a 3D asset from a text prompt and an
+        input geometric shape, shown below. The input shape is divided into two
+        control regions. <strong style="color:#ac6f0c;">Orange regions</strong>
+        are strongly controlled, so the generated object should stay close to their
+        shape and placement, while still allowing small adjustments. <strong>Grey regions</strong> are weakly controlled, 
+        so the model may modify them freely to match the prompt and produce natural
+        geometry. A good result should both match the prompt and preserve the
+        intended structure in the orange regions.
+      </div>
+      <div class="prompt-row">
+        <span class="prompt-label">Prompt</span>
+        <span class="prompt-text" id="prompt-box">—</span>
+      </div>
+    </div>
+
+    <!-- Single SQ prior reference -->
+    <div class="references-section">
+      <div class="section-label">Input Geometric Shape</div>
+      <div class="tau-reference-card" style="width:fit-content">
+        <div class="ref-img-wrap">
+          <img id="ref-img" src="" alt="Input shape" class="tau-reference-img">
+        </div>
+        <div class="reference-tag">
+          Input shape —
+          <span style="color:#ac6f0c; font-weight:600;">orange = high geometric control</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- A/B outputs (pairwise, same layout as appearance study) -->
+    <div class="outputs-section">
+      <div class="output-col">
+        <div class="output-label">Sample A</div>
+        <div id="imgs-a" class="output-images"></div>
+      </div>
+      <div class="output-col">
+        <div class="output-label">Sample B</div>
+        <div id="imgs-b" class="output-images"></div>
+      </div>
+    </div>
+
+    <!-- Hidden tracking spans -->
+    <span id="scene"          style="display:none"></span>
+    <span id="model_a_method" style="display:none"></span>
+    <span id="model_b_method" style="display:none"></span>
+
+    <!-- Questions -->
+    <div class="survey-section">
+      <form id="survey-form">
+
+        <div class="question">
+          <div class="question-text">
+            Q1 - Which object best matches the prompt in the grey regions while also closely following the orange input shape?
+          </div>
+          <div class="choices">
+            <label class="choice-label"><input type="radio" name="q1" value="Model A" required><span class="choice-btn">Sample A</span></label>
+            <label class="choice-label"><input type="radio" name="q1" value="Model B"><span class="choice-btn">Sample B</span></label>
+            <label class="choice-label"><input type="radio" name="q1" value="Equal"><span class="choice-btn">No difference</span></label>
+          </div>
+        </div>
+
+        <div class="question">
+          <div class="question-text">
+            Q2 — Which object looks more realistic?
+          </div>
+          <div class="choices">
+            <label class="choice-label"><input type="radio" name="q2" value="Model A" required><span class="choice-btn">Sample A</span></label>
+            <label class="choice-label"><input type="radio" name="q2" value="Model B"><span class="choice-btn">Sample B</span></label>
+            <label class="choice-label"><input type="radio" name="q2" value="Equal"><span class="choice-btn">No difference</span></label>
+          </div>
+        </div>
+
+        <div class="question">
+          <div class="question-text">
+            Q3 — Which object looks better overall?
+          </div>
+          <div class="choices">
+            <label class="choice-label"><input type="radio" name="q3" value="Model A" required><span class="choice-btn">Sample A</span></label>
+            <label class="choice-label"><input type="radio" name="q3" value="Model B"><span class="choice-btn">Sample B</span></label>
+            <label class="choice-label"><input type="radio" name="q3" value="Equal"><span class="choice-btn">No difference</span></label>
+          </div>
+        </div>
+
+        <div id="form-error" class="form-error" style="display:none">
+          Please answer all three questions before submitting.
+        </div>
+
+        <button type="submit" class="btn btn-submit" id="submit-btn">
+          Submit &amp; Next →
+        </button>
+      </form>
+
+      <div id="message" class="message" style="display:none"></div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <script src="./static/js/main_tau.js?v=2"></script>
+</body>
+</html>
