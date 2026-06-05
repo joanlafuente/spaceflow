@@ -1020,6 +1020,10 @@ body {
   background: linear-gradient(135deg, #0f766e, #f59e0b);
 }
 
+.btn-spaceflow-texture-experiment {
+  background: linear-gradient(135deg, #2563eb, #db2777);
+}
+
 .btn-spaceflow-stop {
   background: linear-gradient(135deg, #b91c1c, #f97316);
 }

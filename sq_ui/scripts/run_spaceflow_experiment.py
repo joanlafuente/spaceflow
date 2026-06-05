@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import sys
 import traceback
+from types import SimpleNamespace
 
 from omegaconf import OmegaConf
 
@@ -27,6 +28,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import run_local_tau  # noqa: E402
+from trellis_texture_variants import (  # noqa: E402
+    run_fixed_structure_appearance_fm_variant,
+    run_trellis_raw_text_variant,
+)
 
 
 class TeeStream:
@@ -88,6 +93,75 @@ def _variant_argv(variant: dict[str, object]) -> list[str]:
     return argv
 
 
+def _variant_runner(variant: dict[str, object]) -> str:
+    return str(variant.get("runner") or "spaceflow").strip() or "spaceflow"
+
+
+def _variant_output_dir(variant: dict[str, object], variant_args=None) -> Path:
+    if variant_args is not None:
+        return Path(variant_args.output_dir)
+    output_dir = variant.get("output_dir")
+    if not output_dir:
+        raise ValueError("Each experiment variant must provide output_dir")
+    return Path(str(output_dir))
+
+
+def _load_pipeline_for_experiment(pipeline, cfg, variant_args=None):
+    if pipeline is not None:
+        return pipeline
+    args = variant_args or SimpleNamespace(trellis_pipeline_path=None)
+    return run_local_tau.load_trellis_pipeline(args, cfg)
+
+
+def _parse_variants(variants: list[dict[str, object]]):
+    parsed = []
+    for variant in variants:
+        runner = _variant_runner(variant)
+        variant_args = run_local_tau.init_args(_variant_argv(variant)) if runner == "spaceflow" else None
+        parsed.append((variant, runner, variant_args))
+    return parsed
+
+
+def run_variant(
+    variant: dict[str, object],
+    runner: str,
+    variant_args,
+    cfg,
+    pipeline,
+):
+    if runner == "spaceflow":
+        pipeline = _load_pipeline_for_experiment(pipeline, cfg, variant_args)
+        run_local_tau.run(variant_args, cfg=cfg, generation_pipeline=pipeline)
+        return pipeline
+
+    pipeline = _load_pipeline_for_experiment(pipeline, cfg)
+    output_dir = _variant_output_dir(variant, variant_args)
+    prompt = str(variant.get("prompt") or variant.get("flattened_prompt") or "").strip()
+    if not prompt:
+        raise ValueError(f"Variant {variant.get('name') or runner} is missing prompt")
+    seed = int(variant.get("seed") or 1)
+
+    if runner == "trellis_raw_text":
+        run_trellis_raw_text_variant(pipeline, output_dir, prompt, seed=seed)
+        return pipeline
+
+    if runner == "fixed_structure_appearance_fm":
+        structure_voxels_raw = str(variant.get("structure_voxels_path") or "").strip()
+        if not structure_voxels_raw:
+            raise ValueError("fixed_structure_appearance_fm variant is missing structure_voxels_path")
+        structure_voxels_path = Path(structure_voxels_raw)
+        run_fixed_structure_appearance_fm_variant(
+            pipeline,
+            output_dir,
+            prompt,
+            structure_voxels_path,
+            seed=seed,
+        )
+        return pipeline
+
+    raise ValueError(f"Unknown experiment variant runner: {runner}")
+
+
 def render_experiment_comparison(config: dict[str, object], config_path: Path) -> None:
     comparison = config.get("comparison")
     if isinstance(comparison, dict) and comparison.get("enabled") is False:
@@ -119,27 +193,25 @@ def main(argv=None):
 
     cfg_path = str(config.get("spaceflow_config") or "config/default.yaml")
     cfg = OmegaConf.load(cfg_path)
-    parsed_variants = [(variant, run_local_tau.init_args(_variant_argv(variant))) for variant in variants]
+    parsed_variants = _parse_variants(variants)
 
     print("[experiment] starting SpaceFlow experiment")
     experiment_status = 0
     pipeline = None
 
     try:
-        for index, (variant, variant_args) in enumerate(parsed_variants, start=1):
+        for index, (variant, runner, variant_args) in enumerate(parsed_variants, start=1):
             name = str(variant.get("name") or f"variant_{index}")
-            output_dir = Path(variant_args.output_dir)
+            output_dir = _variant_output_dir(variant, variant_args)
             log_path = output_dir / "spaceflow.log"
             status_path = output_dir / "status.txt"
             output_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[experiment] variant {index}/{len(parsed_variants)}: {name}")
+            print(f"[experiment] variant {index}/{len(parsed_variants)}: {name} ({runner})")
 
             code = 0
             with tee_variant_log(log_path):
                 try:
-                    if pipeline is None:
-                        pipeline = run_local_tau.load_trellis_pipeline(variant_args, cfg)
-                    run_local_tau.run(variant_args, cfg=cfg, generation_pipeline=pipeline)
+                    pipeline = run_variant(variant, runner, variant_args, cfg, pipeline)
                 except Exception:  # noqa: BLE001 - mirror shell wrapper behavior
                     code = 1
                     traceback.print_exc()

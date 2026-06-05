@@ -5,8 +5,6 @@ Generation
 
 SpaceFlow explores a practical question for text-to-3D systems: how can a user keep coarse geometric intent while still benefiting from a generative model's learned shape and appearance priors? The system uses a superquadric scene as an explicit control signal, applies local diffusion-time control over selected parts, and then refines the generated mesh with part-aware similarity guidance.
 
-![Sailboat case study](docs/media/sailboat_case_study.png)
-
 <video src="docs/media/sailboat_spin.mp4" controls muted loop playsinline poster="docs/media/sailboat_spin_poster.png" width="520"></video>
 
 [View rotating sailboat preview](docs/media/sailboat_spin.mp4)

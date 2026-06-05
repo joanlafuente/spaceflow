@@ -443,36 +443,60 @@ def _write_single_run_script(script_path: Path, cmd: list[str], run_dir: Path) -
     script_path.chmod(0o755)
 
 
-def _write_experiment_runner_config(config_path: Path, variants: list[dict[str, object]]) -> None:
+def _write_experiment_runner_config(
+    config_path: Path,
+    variants: list[dict[str, object]],
+    *,
+    experiment_type: str | None = None,
+    texture_flattened_prompt: str | None = None,
+) -> None:
     runner_variants = []
     for variant in variants:
         runner_variants.append({
-            "name": variant["name"],
-            "output_dir": variant["output_dir"],
-            "argv": variant["argv"],
-            "mode": variant["mode"],
-            "low_tau": variant["low_tau"],
-            "high_tau": variant["high_tau"],
-            "polyak_tau": variant["polyak_tau"],
-            "n_repaint_steps": variant["n_repaint_steps"],
+            key: value
+            for key, value in variant.items()
+            if key != "command"
         })
+    payload: dict[str, object] = {
+        "spaceflow_config": "config/default.yaml",
+        "run_dir": str(config_path.parent),
+        "variants": runner_variants,
+        "comparison": {
+            "enabled": True,
+            "output_name": "output/variant_comparison_lower_camera.png",
+            "azim": 0.0,
+            "elev": 55.0,
+        },
+    }
+    if experiment_type:
+        payload["experiment_type"] = experiment_type
+    if texture_flattened_prompt:
+        payload["texture_flattened_prompt"] = texture_flattened_prompt
     config_path.write_text(
-        json.dumps(
-            {
-                "spaceflow_config": "config/default.yaml",
-                "run_dir": str(config_path.parent),
-                "variants": runner_variants,
-                "comparison": {
-                    "enabled": True,
-                    "output_name": "output/variant_comparison_lower_camera.png",
-                    "azim": 0.0,
-                    "elev": 55.0,
-                },
-            },
-            indent=2,
-        ),
+        json.dumps(payload, indent=2),
         encoding="utf-8",
     )
+
+
+def _assert_experiment_variant_layout(experiment_type: str, variants: list[dict[str, object]]) -> None:
+    if experiment_type == "texture":
+        expected = [
+            "01_spaceflow_local_texture_routing",
+            "02_trellis_raw_flat_prompt",
+            "03_fixed_structure_appearance_fm",
+        ]
+    else:
+        expected = [
+            "01_local_tau3_tau10_polyak0p18",
+            "02_global_tau3_polyak0",
+            "03_global_tau10_polyak0",
+        ]
+    actual = [str(variant.get("name") or "") for variant in variants]
+    if actual != expected:
+        raise ValueError(
+            f"{experiment_type} experiment variant layout mismatch: "
+            f"expected {expected}, got {actual}"
+        )
 
 
 def _write_experiment_manifest(output_dir: Path, variants: list[dict[str, object]]) -> None:
@@ -623,6 +647,12 @@ def _primitive_count_from_asset(asset_entry: dict[str, object]) -> int:
 
 def _primitive_name_tags(asset_entry: dict[str, object], count: int) -> list[str]:
     names = [f"primitive_{i}" for i in range(count)]
+    display_names = _primitive_display_names(asset_entry, count)
+    return [_sanitize_name(name) for name in display_names] or names
+
+
+def _primitive_display_names(asset_entry: dict[str, object], count: int) -> list[str]:
+    names = [f"SQ {i + 1}" for i in range(count)]
     manifest_path = str(asset_entry.get("manifest_path") or "")
     if not manifest_path:
         return names
@@ -636,7 +666,7 @@ def _primitive_name_tags(asset_entry: dict[str, object], count: int) -> list[str
                 continue
             index = int(item.get("index"))
             if 0 <= index < count:
-                names[index] = _sanitize_name(str(item.get("name") or names[index]))
+                names[index] = str(item.get("name") or names[index]).strip() or names[index]
     except Exception:
         return names
     return names
@@ -656,6 +686,34 @@ def _normalize_local_values(raw: object, count: int, field_name: str) -> list[st
     normalized = [str(value or "").strip() for value in values]
     normalized.extend([""] * (count - len(normalized)))
     return normalized
+
+
+def _flatten_texture_prompt(
+    *,
+    text_prompt: str,
+    global_texture_text: str,
+    local_text_prompts: list[str],
+    primitive_names: list[str],
+) -> str:
+    shape = text_prompt.strip()
+    global_texture = (global_texture_text.strip() or shape).strip()
+    parts = [
+        f"Create a 3D asset of: {shape}.",
+        f"Overall appearance and texture: {global_texture}.",
+    ]
+    local_parts = []
+    for index, prompt in enumerate(local_text_prompts):
+        prompt = prompt.strip()
+        if not prompt:
+            continue
+        name = primitive_names[index] if index < len(primitive_names) else f"SQ {index + 1}"
+        local_parts.append(f"part {index + 1} ({name}): {prompt}")
+    if local_parts:
+        parts.append("Local texture overrides: " + "; ".join(local_parts) + ".")
+        parts.append("All unspecified parts should use the overall appearance and texture.")
+    else:
+        parts.append("Apply the overall appearance and texture consistently to every part.")
+    return " ".join(parts)
 
 
 def _local_texture_upload_indices(form: cgi.FieldStorage) -> list[int]:
@@ -1027,8 +1085,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not text_prompt:
                 raise ValueError("Missing text prompt")
             output_name_raw = str(run_config.get("outputName") or text_prompt)
-            if experiment_mode and not output_name_raw.endswith("_experiment"):
-                output_name_raw = f"{output_name_raw}_experiment"
+            experiment_type_raw = str(run_config.get("experimentType") or "").strip().lower()
+            if not experiment_type_raw and experiment_mode:
+                experiment_type_raw = "texture" if output_name_raw.endswith("_texture_experiment") else "geometry"
+            experiment_type = experiment_type_raw or "single"
+            if experiment_mode and experiment_type not in {"geometry", "texture"}:
+                raise ValueError(f"Unknown experiment type: {experiment_type}")
+            if experiment_mode:
+                experiment_suffix = "_texture_experiment" if experiment_type == "texture" else "_experiment"
+                if not output_name_raw.endswith(experiment_suffix):
+                    output_name_raw = f"{output_name_raw}{experiment_suffix}"
             output_name = _sanitize_name(output_name_raw)
             run_id = f"{_utc_timestamp()}_{output_name}"
             asset_entry = _save_bundle_from_form(form, run_id=run_id)
@@ -1052,6 +1118,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             texture_mode = str(run_config.get("textureMode") or run_config.get("appearanceMode", "text")).strip().lower()
             if texture_mode not in {"text", "image"}:
                 raise ValueError(f"Unknown texture mode: {texture_mode}")
+            if experiment_mode and experiment_type == "texture" and texture_mode != "text":
+                raise ValueError("Texture experiment supports text texture guidance only. Switch Texture guidance to Text.")
             convert_yup_to_zup = _parse_bool(str(run_config.get("convertYupToZup", True)), True)
             dry_run = _parse_bool(str(run_config.get("dryRun", False)), False)
 
@@ -1063,6 +1131,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             appearance_args: list[str] = []
             local_texture_args: list[str] = []
+            appearance_text = ""
+            local_text_prompts = [""] * primitive_count
             texture_meta: dict[str, object] = {
                 "mode": texture_mode,
                 "saved_uploads": {},
@@ -1130,60 +1200,132 @@ class Handler(http.server.BaseHTTPRequestHandler):
             experiment_script: Path | None = None
             run_script: Path | None = None
 
+            texture_flattened_prompt: str | None = None
+
             if experiment_mode:
-                experiment_specs = [
-                    {
-                        "name": f"01_local_tau3_tau10_polyak{_num_tag(polyak)}",
-                        "mode": "local_tau",
-                        "low_tau": 3.0,
-                        "high_tau": 10.0,
-                        "polyak_tau": polyak,
-                    },
-                    {
-                        "name": "02_global_tau3_polyak0",
-                        "mode": "global_tau",
-                        "low_tau": 3.0,
-                        "high_tau": None,
-                        "polyak_tau": 0.0,
-                    },
-                    {
-                        "name": "03_global_tau10_polyak0",
-                        "mode": "global_tau",
-                        "low_tau": 10.0,
-                        "high_tau": None,
-                        "polyak_tau": 0.0,
-                    },
-                ]
-                for spec in experiment_specs:
-                    variant_name = _sanitize_name(str(spec["name"]))
-                    variant_output_dir = output_dir / variant_name
-                    variant_cmd = _spaceflow_cmd(
+                if experiment_type == "geometry":
+                    experiment_specs = [
+                        {
+                            "name": f"01_local_tau3_tau10_polyak{_num_tag(polyak)}",
+                            "mode": "local_tau",
+                            "low_tau": 3.0,
+                            "high_tau": 10.0,
+                            "polyak_tau": polyak,
+                        },
+                        {
+                            "name": "02_global_tau3_polyak0",
+                            "mode": "global_tau",
+                            "low_tau": 3.0,
+                            "high_tau": None,
+                            "polyak_tau": 0.0,
+                        },
+                        {
+                            "name": "03_global_tau10_polyak0",
+                            "mode": "global_tau",
+                            "low_tau": 10.0,
+                            "high_tau": None,
+                            "polyak_tau": 0.0,
+                        },
+                    ]
+                    for spec in experiment_specs:
+                        variant_name = _sanitize_name(str(spec["name"]))
+                        variant_output_dir = output_dir / variant_name
+                        variant_cmd = _spaceflow_cmd(
+                            asset_paths,
+                            variant_output_dir,
+                            text_prompt=text_prompt,
+                            appearance_args=appearance_args,
+                            local_texture_args=local_texture_args,
+                            low_tau=float(spec["low_tau"]),
+                            high_tau=None if spec["high_tau"] is None else float(spec["high_tau"]),
+                            polyak_tau=float(spec["polyak_tau"]),
+                            n_repaint_steps=n_repaint_steps,
+                            convert_yup_to_zup=convert_yup_to_zup,
+                        )
+                        variant_argv = [str(part) for part in variant_cmd[2:]]
+                        experiment_variants.append({
+                            "name": variant_name,
+                            "output_dir": str(variant_output_dir),
+                            "command": variant_cmd,
+                            "argv": variant_argv,
+                            "mode": spec["mode"],
+                            "low_tau": spec["low_tau"],
+                            "high_tau": spec["high_tau"],
+                            "polyak_tau": spec["polyak_tau"],
+                            "n_repaint_steps": n_repaint_steps,
+                        })
+                else:
+                    primitive_display_names = _primitive_display_names(asset_entry, primitive_count)
+                    texture_flattened_prompt = _flatten_texture_prompt(
+                        text_prompt=text_prompt,
+                        global_texture_text=appearance_text,
+                        local_text_prompts=local_text_prompts,
+                        primitive_names=primitive_display_names,
+                    )
+                    texture_meta["flattened_text_prompt"] = texture_flattened_prompt
+
+                    local_variant_name = "01_spaceflow_local_texture_routing"
+                    local_variant_output_dir = output_dir / local_variant_name
+                    local_variant_cmd = _spaceflow_cmd(
                         asset_paths,
-                        variant_output_dir,
+                        local_variant_output_dir,
                         text_prompt=text_prompt,
                         appearance_args=appearance_args,
                         local_texture_args=local_texture_args,
-                        low_tau=float(spec["low_tau"]),
-                        high_tau=None if spec["high_tau"] is None else float(spec["high_tau"]),
-                        polyak_tau=float(spec["polyak_tau"]),
+                        low_tau=3.0,
+                        high_tau=10.0,
+                        polyak_tau=polyak,
                         n_repaint_steps=n_repaint_steps,
                         convert_yup_to_zup=convert_yup_to_zup,
                     )
-                    variant_argv = [str(part) for part in variant_cmd[2:]]
                     experiment_variants.append({
-                        "name": variant_name,
-                        "output_dir": str(variant_output_dir),
-                        "command": variant_cmd,
-                        "argv": variant_argv,
-                        "mode": spec["mode"],
-                        "low_tau": spec["low_tau"],
-                        "high_tau": spec["high_tau"],
-                        "polyak_tau": spec["polyak_tau"],
+                        "name": local_variant_name,
+                        "output_dir": str(local_variant_output_dir),
+                        "command": local_variant_cmd,
+                        "argv": [str(part) for part in local_variant_cmd[2:]],
+                        "mode": "spaceflow_local_texture_routing",
+                        "low_tau": 3.0,
+                        "high_tau": 10.0,
+                        "polyak_tau": polyak,
                         "n_repaint_steps": n_repaint_steps,
                     })
+                    experiment_variants.append({
+                        "name": "02_trellis_raw_flat_prompt",
+                        "output_dir": str(output_dir / "02_trellis_raw_flat_prompt"),
+                        "runner": "trellis_raw_text",
+                        "mode": "trellis_raw_text",
+                        "prompt": texture_flattened_prompt,
+                        "flattened_prompt": texture_flattened_prompt,
+                        "seed": 1,
+                        "low_tau": None,
+                        "high_tau": None,
+                        "polyak_tau": None,
+                        "n_repaint_steps": n_repaint_steps,
+                    })
+                    experiment_variants.append({
+                        "name": "03_fixed_structure_appearance_fm",
+                        "output_dir": str(output_dir / "03_fixed_structure_appearance_fm"),
+                        "runner": "fixed_structure_appearance_fm",
+                        "mode": "fixed_structure_appearance_fm",
+                        "prompt": texture_flattened_prompt,
+                        "flattened_prompt": texture_flattened_prompt,
+                        "structure_voxels_path": str(local_variant_output_dir / "voxels" / "struct_voxels.ply"),
+                        "source_variant": local_variant_name,
+                        "seed": 1,
+                        "low_tau": None,
+                        "high_tau": None,
+                        "polyak_tau": None,
+                        "n_repaint_steps": n_repaint_steps,
+                    })
+                _assert_experiment_variant_layout(experiment_type, experiment_variants)
                 _write_experiment_manifest(output_dir, experiment_variants)
                 experiment_runner_config = run_dir / "experiment_runner_config.json"
-                _write_experiment_runner_config(experiment_runner_config, experiment_variants)
+                _write_experiment_runner_config(
+                    experiment_runner_config,
+                    experiment_variants,
+                    experiment_type=experiment_type if experiment_type == "texture" else None,
+                    texture_flattened_prompt=texture_flattened_prompt,
+                )
                 experiment_script = run_dir / "run_experiment.sh"
                 experiment_cmd = [
                     PYTHON_BIN,
@@ -1227,6 +1369,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "pipeline_stage": "full_pipeline" if FULL_PIPELINE else "structure_only",
                 "launch_mode": "srun" if _should_use_srun() else "subprocess",
                 "experiment_mode": experiment_mode,
+                "experiment_type": experiment_type if experiment_mode else None,
                 "texture_guidance": texture_meta,
             }
             if experiment_mode:

@@ -11,6 +11,7 @@ import logging as log
 from omegaconf import OmegaConf
 import argparse
 import random
+import time
 import numpy as np
 from skimage import measure
 
@@ -58,7 +59,10 @@ def trellis_pipeline_path_from_args(args, cfg):
 def load_trellis_pipeline(args, cfg):
     trellis_pipeline_path = trellis_pipeline_path_from_args(args, cfg)
     log.info(f"Loading TRELLIS pipeline from: {trellis_pipeline_path}")
-    return TrellisTextTo3DPipeline.from_pretrained(trellis_pipeline_path)
+    start = time.perf_counter()
+    pipeline = TrellisTextTo3DPipeline.from_pretrained(trellis_pipeline_path)
+    log.info(f"Loaded TRELLIS pipeline weights and CLIP in {time.perf_counter() - start:.2f}s")
+    return pipeline
 
 
 def move_trellis_text_conditioner(pipeline, device):
@@ -486,8 +490,10 @@ def run(args, cfg=None, generation_pipeline=None):
     else:
         pipeline = generation_pipeline
         log.info(f"Reusing preloaded TRELLIS pipeline from: {trellis_pipeline_path_from_args(args, cfg)}")
+    cuda_start = time.perf_counter()
     pipeline.cuda()
     move_trellis_text_conditioner(pipeline, 'cuda')
+    log.info(f"Moved TRELLIS pipeline to CUDA in {time.perf_counter() - cuda_start:.2f}s")
 
     text_prompt = args.text_prompt
 

@@ -26,5 +26,6 @@ sim_guidance:
   steps: 100
   learning_rate: 5e-4
   loss_weight: 1.0
+  local_condition_dilation: 0
 
 log_every: 100

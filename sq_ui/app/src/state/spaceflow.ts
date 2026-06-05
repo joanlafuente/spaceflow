@@ -63,6 +63,7 @@ export interface SpaceflowRunConfig {
   lowControlBBoxMargin: number;
   dryRun?: boolean;
   experimentMode?: boolean;
+  experimentType?: 'geometry' | 'texture';
 }
 
 export interface SpaceflowOutputFile {

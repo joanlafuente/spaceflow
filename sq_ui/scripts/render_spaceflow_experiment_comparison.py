@@ -55,6 +55,30 @@ VARIANTS = [
     ),
 ]
 
+TEXTURE_VARIANTS = [
+    (
+        "TRELLIS raw\nflat prompt",
+        [
+            "output/02_trellis_raw_flat_prompt/out_sim.glb",
+            "output/02_trellis_raw_flat_prompt/out_sim_geometry.glb",
+        ],
+    ),
+    (
+        "SpaceFlow structure\nTRELLIS appearance FM",
+        [
+            "output/03_fixed_structure_appearance_fm/out_sim.glb",
+            "output/03_fixed_structure_appearance_fm/out_sim_geometry.glb",
+        ],
+    ),
+    (
+        "SpaceFlow\nlocal texture routing",
+        [
+            "output/01_spaceflow_local_texture_routing/out_sim.glb",
+            "output/01_spaceflow_local_texture_routing/out_sim_geometry.glb",
+        ],
+    ),
+]
+
 SINGLE_RESULT_PATHS = [
     "output/out_sim.glb",
     "output/out_sim_geometry.glb",
@@ -62,6 +86,7 @@ SINGLE_RESULT_PATHS = [
 
 SQ_RENDER_PATHS = [
     "output/spatial_control_mesh.ply",
+    "output/01_spaceflow_local_texture_routing/spatial_control_mesh.ply",
     "output/01_local_tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/02_global_tau3_polyak0/spatial_control_mesh.ply",
@@ -88,6 +113,28 @@ def read_json(path: Path) -> dict[str, object]:
 
 def run_meta(run_dir: Path) -> dict[str, object]:
     return read_json(run_dir / "run_meta.json")
+
+
+def experiment_type_from_meta(meta: dict[str, object]) -> str:
+    raw = str(meta.get("experiment_type") or "").strip().lower()
+    if raw in {"geometry", "texture"}:
+        return raw
+    run_config = meta.get("run_config")
+    if isinstance(run_config, dict):
+        raw = str(run_config.get("experimentType") or "").strip().lower()
+        if raw in {"geometry", "texture"}:
+            return raw
+    return "geometry"
+
+
+def experiment_type_for_run(run_dir: Path, meta: dict[str, object] | None = None) -> str:
+    meta = meta if meta is not None else run_meta(run_dir)
+    kind = experiment_type_from_meta(meta)
+    if kind != "geometry":
+        return kind
+    runner_config = read_json(run_dir / "experiment_runner_config.json")
+    raw = str(runner_config.get("experiment_type") or "").strip().lower()
+    return raw if raw in {"geometry", "texture"} else kind
 
 
 def asset_manifest(meta: dict[str, object]) -> dict[str, object]:
@@ -307,8 +354,16 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
     primitives = primitive_rows(manifest)
     mode, local_conditions, global_condition = texture_conditions(meta, len(primitives))
     global_line = f"Global {mode} condition: {global_condition}"
+    flat_prompt = ""
+    texture = meta.get("texture_guidance")
+    if isinstance(texture, dict):
+        flat_prompt = str(texture.get("flattened_text_prompt") or "").strip()
+    run_config = meta.get("run_config")
+    if not flat_prompt and isinstance(run_config, dict):
+        flat_prompt = str(run_config.get("flattenedTextPrompt") or "").strip()
+    flat_line = f"\nFlattened TRELLIS prompt: {flat_prompt}" if experiment_type_from_meta(meta) == "texture" and flat_prompt else ""
     if not primitives:
-        return global_line
+        return global_line + flat_line
 
     pieces = []
     for row in primitives:
@@ -316,21 +371,26 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
         local = local_conditions[index] if index < len(local_conditions) else ""
         condition = local or f"global ({global_condition})"
         pieces.append(f"{index + 1}. {row['name']} [{row['controlLevel']}]: {condition}")
-    return global_line + "\nSQ conditions: " + "; ".join(pieces)
+    return global_line + "\nSQ conditions: " + "; ".join(pieces) + flat_line
 
 
 def sq_mesh_path(run_dir: Path) -> Path | None:
     return first_existing(run_dir, SQ_RENDER_PATHS)
 
 
-def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
+def _complete_paths_for_specs(run_dir: Path, specs: list[tuple[str, list[str]]]) -> list[tuple[str, Path]] | None:
     paths: list[tuple[str, Path]] = []
-    for label, rel_paths in VARIANTS:
+    for label, rel_paths in specs:
         path = first_existing(run_dir, rel_paths)
         if path is None:
             return None
         paths.append((label, path))
     return paths
+
+
+def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
+    specs = TEXTURE_VARIANTS if experiment_type_for_run(run_dir) == "texture" else VARIANTS
+    return _complete_paths_for_specs(run_dir, specs)
 
 
 def single_result_path(run_dir: Path) -> Path | None:
@@ -343,19 +403,20 @@ def discover_experiments(root: Path) -> list[Path]:
 
 
 def title_for(run_dir: Path) -> str:
+    meta = run_meta(run_dir)
+    prefix = "Texture experiment" if experiment_type_for_run(run_dir, meta) == "texture" else "Textured comparison"
     meta_path = run_dir / "run_meta.json"
     if meta_path.is_file():
         try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             prompt = str(meta.get("run_config", {}).get("textPrompt") or "").strip()
             if prompt:
-                return f"Textured comparison: {prompt}"
+                return f"{prefix}: {prompt}"
         except json.JSONDecodeError:
             pass
     name = run_dir.name
     if "_" in name:
         name = name.split("_", 1)[1]
-    return "Textured comparison: " + name.replace("_experiment", "").replace("_", " ")
+    return prefix + ": " + name.replace("_experiment", "").replace("_", " ")
 
 
 def _fmt_number(value: object) -> str:

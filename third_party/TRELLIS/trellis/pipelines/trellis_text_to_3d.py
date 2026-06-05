@@ -12,6 +12,7 @@ import open3d_pycg as o3d
 import os
 import time
 import imageio
+import logging
 from .base import Pipeline
 from . import samplers
 from ..modules import sparse as sp
@@ -20,6 +21,8 @@ from ..utils import render_utils
 # from gui import utils (Directly copied the functions here because of coliding dependencies)
 from pathlib import Path
 from sklearn.decomposition import PCA
+
+log = logging.getLogger(__name__)
 
 
 def merge_meshes(mesh_list):
@@ -552,28 +555,45 @@ class TrellisTextTo3DPipeline(Pipeline):
             sparse_structure_sampler_params (dict): Additional parameters for the sparse structure sampler.
             slat_sampler_params (dict): Additional parameters for the structured latent sampler.
         """
+        conditioning_start = time.perf_counter()
+        text_start = time.perf_counter()
         cond_text = self.get_cond_text([prompt])
+        log.info(f"Encoded TRELLIS text condition in {time.perf_counter() - text_start:.2f}s")
+
         torch.manual_seed(seed)
+        spatial_start = time.perf_counter()
         spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
+        log.info(f"Encoded spatial control latent in {time.perf_counter() - spatial_start:.2f}s")
 
         high_control_spatial_control = None
         low_control_spatial_control = None
         lantent_high_control = None
         if (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'guidance'):
+            high_start = time.perf_counter()
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_start:.2f}s")
         elif (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'masking'):
+            high_mask_start = time.perf_counter()
             high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Prepared high-control mask in {time.perf_counter() - high_mask_start:.2f}s")
             # low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
             print("High control sum:", high_control_spatial_control.sum().item())
             # print("Low control sum:", low_control_spatial_control.sum().item())            
             # low_control_spatial_control = low_control_spatial_control - high_control_spatial_control
             # print("Low control after subtracting high control sum:", low_control_spatial_control.sum().item())
+            high_latent_start = time.perf_counter()
             lantent_high_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_latent_start:.2f}s")
         elif (sparse_structure_sampler_params.get('low_control_superquadric_mask_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'low_control_mask'):
+            low_mask_start = time.perf_counter()
             low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['low_control_superquadric_mask_path'])
+            log.info(f"Prepared low-control mask in {time.perf_counter() - low_mask_start:.2f}s")
+            high_start = time.perf_counter()
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_start:.2f}s")
 
         cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control}
+        log.info(f"Prepared TRELLIS structure conditioning in {time.perf_counter() - conditioning_start:.2f}s")
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
         return coords

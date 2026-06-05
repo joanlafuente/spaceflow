@@ -3,6 +3,7 @@ import os.path as osp
 from PIL import Image
 import numpy as np
 import torch
+import torch.nn.functional as F
 import utils3d
 import logging
 import open3d_pycg as o3d
@@ -188,6 +189,18 @@ def _choose_local_routing(struct_coords, individual_sq_meshes, struct_labels, ac
         )
     return clustered, "partfield", clustered_counts
 
+def _dilate_condition_indices(coords_dense_indices, n_conditions, radius=1):
+    if radius <= 0 or n_conditions <= 1:
+        return coords_dense_indices
+
+    dilated_indices = coords_dense_indices.clone()
+    kernel_size = 2 * radius + 1
+    for cond_idx in range(1, n_conditions):
+        mask = (coords_dense_indices == cond_idx).float()
+        dilated = F.max_pool3d(mask, kernel_size=kernel_size, stride=1, padding=radius) > 0
+        dilated_indices[(dilated_indices == 0) & dilated] = cond_idx
+    return dilated_indices
+
 def attn_cosine_sim(x, eps=1e-08):
     x = x[0]  # TEMP: getting rid of redundant dimension, TBF
     norm1 = x.norm(dim=2, keepdim=True)
@@ -306,10 +319,17 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         )
         if local_prompt_type == 'text':
             local_embs = []
-            for prompt in local_prompts:
+            for sq_idx, prompt in enumerate(local_prompts):
+                prompt = str(prompt or "").strip()
+                if prompt:
+                    log.info(
+                        "Local text condition for SQ %d: %r",
+                        sq_idx,
+                        prompt,
+                    )
                 local_embs.append(
                     generation_pipeline.encode_text([prompt])
-                    if prompt and prompt.strip()
+                    if prompt
                     else global_emb
                 )
         else:  # 'image'
@@ -340,6 +360,10 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         coords_dense_indices, routing_source, sq_route_counts = _choose_local_routing(
             struct_coords, individual_sq_meshes, struct_labels, active_indices, 'cuda')
         coords_dense_indices = remap[coords_dense_indices.long()]
+        condition_counts_before_dilation = _dense_condition_counts(coords_dense_indices, len(cond_list))
+        local_condition_dilation = int(getattr(cfg.sim_guidance, 'local_condition_dilation', 0))
+        coords_dense_indices = _dilate_condition_indices(
+            coords_dense_indices, len(cond_list), radius=local_condition_dilation)
         condition_counts = _dense_condition_counts(coords_dense_indices, len(cond_list))
         active_sq_counts = {idx: sq_route_counts.get(idx, 0) for idx in active_indices}
         log.info(
@@ -347,6 +371,8 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         )
         log.info(
             f"coords_dense_indices: shape={coords_dense_indices.shape}, "
+            f"condition_counts_before_dilation={condition_counts_before_dilation}, "
+            f"dilation_radius={local_condition_dilation}, "
             f"condition_counts={condition_counts}, non-zero={int((coords_dense_indices > 0).sum())}"
         )
 

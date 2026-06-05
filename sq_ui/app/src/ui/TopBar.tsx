@@ -21,6 +21,7 @@ import { useTextureUploadStore } from '../state/textureUploads';
 import { captureSuperquadricRenderBlob } from '../state/viewportCapture';
 
 type ThemeMode = 'dark' | 'light';
+type SpaceflowExperimentType = 'geometry' | 'texture';
 
 interface DownloadableGlbMesh {
   url: string;
@@ -298,8 +299,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     }
   }, [loadPreset, projectName, showToast]);
 
-  const handleStartSpaceflowRun = useCallback(async (experimentMode = false) => {
+  const handleStartSpaceflowRun = useCallback(async (experimentType?: SpaceflowExperimentType) => {
     if (spaceflowRunning || primitives.length === 0) return;
+    const experimentMode = Boolean(experimentType);
     const lowTau = experimentMode ? 3 : Number.parseFloat(spaceflowLowTau);
     const highTau = experimentMode ? 10 : Number.parseFloat(spaceflowHighTau);
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
@@ -315,6 +317,10 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     }
     if (!spaceflowTextPrompt.trim()) {
       showToast('Enter a SpaceFlow text prompt.', 5000);
+      return;
+    }
+    if (experimentType === 'texture' && spaceflowTextureMode !== 'text') {
+      showToast('Texture experiment supports text texture guidance only.', 6000);
       return;
     }
     if (
@@ -334,9 +340,15 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       const localTextureImagePaths = primitives.map(p => (p.localTextureImagePath ?? '').trim());
       const localTextureImageFiles = primitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
       const outputName = spaceflowOutputName.trim() || outputNameFromPrompt(spaceflowTextPrompt);
-      const runOutputName = experimentMode && !outputName.endsWith('_experiment')
-        ? `${outputName}_experiment`
+      const experimentSuffix = experimentType === 'texture' ? '_texture_experiment' : '_experiment';
+      const runOutputName = experimentMode && !outputName.endsWith(experimentSuffix)
+        ? `${outputName}${experimentSuffix}`
         : outputName;
+      const runLabel = experimentType === 'texture'
+        ? 'SpaceFlow texture experiment'
+        : experimentMode
+          ? 'SpaceFlow experiment'
+          : 'SpaceFlow';
       const { run, bundle } = await startSpaceflowRun({
         projectName,
         primitives,
@@ -361,6 +373,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           lowControlBBoxMargin,
           dryRun: spaceflowDryRun,
           experimentMode,
+          experimentType,
         },
       });
       setSpaceflowRun(run);
@@ -368,7 +381,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         inspectSpaceflowRunMesh(run, true);
       }
       showToast(
-        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${experimentMode ? 'SpaceFlow experiment' : 'SpaceFlow'} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
+        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${runLabel} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
         8000,
       );
       if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
@@ -987,7 +1000,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   <button
                     className="btn-generate-go"
                     type="button"
-                    onClick={() => void handleStartSpaceflowRun(false)}
+                    onClick={() => void handleStartSpaceflowRun()}
                     disabled={spaceflowRunning || primitives.length === 0}
                   >
                     {spaceflowRunning ? 'Running' : spaceflowDryRun ? 'Dry Run' : 'Run'}
@@ -995,11 +1008,20 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   <button
                     className="btn-generate-go btn-spaceflow-experiment"
                     type="button"
-                    onClick={() => void handleStartSpaceflowRun(true)}
+                    onClick={() => void handleStartSpaceflowRun('geometry')}
                     disabled={spaceflowRunning || primitives.length === 0}
                     title="Run the preset SpaceFlow comparison variants"
                   >
                     Experiment
+                  </button>
+                  <button
+                    className="btn-generate-go btn-spaceflow-texture-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('texture')}
+                    disabled={spaceflowRunning || primitives.length === 0}
+                    title="Run texture-focused TRELLIS and SpaceFlow comparison variants"
+                  >
+                    Texture exp
                   </button>
                   {spaceflowRunActive && (
                     <button
