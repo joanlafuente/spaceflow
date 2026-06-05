@@ -210,6 +210,28 @@ def _nonnegative_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
+def _select_compact_candidate_cells(mask, candidates, needed):
+    if needed <= 0:
+        return candidates[:0]
+    candidate_coords = candidates.nonzero(as_tuple=False)
+    if candidate_coords.shape[0] <= needed:
+        return candidate_coords
+
+    kernel = torch.ones((1, 1, 3, 3, 3), dtype=mask.dtype, device=mask.device)
+    support = F.conv3d(mask, kernel, stride=1, padding=1)[candidates]
+    source_coords = mask.nonzero(as_tuple=False)[:, 2:].float()
+    centroid = source_coords.mean(dim=0, keepdim=True)
+    spatial = candidate_coords[:, 2:].float()
+    dist2 = ((spatial - centroid) ** 2).sum(dim=1)
+    linear = (
+        candidate_coords[:, 2] * mask.shape[-2] * mask.shape[-1]
+        + candidate_coords[:, 3] * mask.shape[-1]
+        + candidate_coords[:, 4]
+    ).float()
+    priority = support.float() * 1_000_000.0 - dist2 - linear / 1_000_000.0
+    selected = torch.topk(priority, k=needed, largest=True, sorted=False).indices
+    return candidate_coords[selected]
+
 def _expand_small_condition_indices(coords_dense_indices, n_conditions, min_cells=0, max_dilation=0):
     """Grow under-covered local conditions into global cells.
 
@@ -230,6 +252,7 @@ def _expand_small_condition_indices(coords_dense_indices, n_conditions, min_cell
             "initial": initial_count,
             "final": initial_count,
             "dilation": 0,
+            "added": 0,
         }
         if initial_count <= 0 or initial_count >= min_cells:
             continue
@@ -241,10 +264,19 @@ def _expand_small_condition_indices(coords_dense_indices, n_conditions, min_cell
             candidates = grown & (expanded_indices == 0)
             if not candidates.any():
                 break
-            expanded_indices[candidates] = cond_idx
+            needed = min_cells - count
+            selected = _select_compact_candidate_cells(mask, candidates, needed)
+            expanded_indices[
+                selected[:, 0],
+                selected[:, 1],
+                selected[:, 2],
+                selected[:, 3],
+                selected[:, 4],
+            ] = cond_idx
             count = int((expanded_indices == cond_idx).sum().item())
             stats[cond_idx]["final"] = count
             stats[cond_idx]["dilation"] = radius
+            stats[cond_idx]["added"] = count - initial_count
             if count >= min_cells:
                 break
 

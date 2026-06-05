@@ -39,6 +39,9 @@ log.basicConfig(level=log.INFO,
 
 STEPS_SHAPE_GEN = 12
 CFG_SHAPE_GEN = 7.5
+INPUT_SQ_COLORED_GLB = "input_superquadrics_colored.glb"
+INPUT_SQ_HIGH_COLOR = np.array([0xf5, 0x9e, 0x0b, 0xff], dtype=np.uint8)
+INPUT_SQ_LOW_COLOR = np.array([0xf8, 0xfa, 0xfc, 0xff], dtype=np.uint8)
 
 def reset_run_state(seed=0):
     random.seed(seed)
@@ -123,6 +126,8 @@ def init_args(argv=None):
                         help='Continue past structure generation into PartField and similarity optimization. Default keeps the legacy structure-only behavior.')
     parser.add_argument('--n_repaint_steps', type=int, default=10,
                         help='Number of repaint resampling steps to perform during structure generation to improve blending (default: 10). Set to 0 to disable.')                        
+    parser.add_argument('--texture_optim_steps', type=int, default=None,
+                        help='Override config/default.yaml sim_guidance.steps for texture similarity optimization.')
     parser.add_argument('--trellis_pipeline_path', type=str, default=None,
                         help='TRELLIS pipeline config/model path. Defaults to SPACEFLOW_TRELLIS_PIPELINE_PATH or config/default.yaml trellis_text_model_name.')
     parser.add_argument('--geometry_only_decode', action='store_true',
@@ -259,6 +264,7 @@ def load_superquadric_from_file(file_path: str) -> list:
     num_el = scale.shape[0]           # number of superquadrics
     tapering = par_dict['tapering'] if 'tapering' in par_dict else np.zeros((num_el, 2))
     bending = par_dict['bending'] if 'bending' in par_dict else np.zeros((num_el, 6))
+    control_levels = par_dict['control_levels'] if 'control_levels' in par_dict else np.ones((num_el,))
 
     superquadrics = {}
     for k in range(num_el):
@@ -269,9 +275,60 @@ def load_superquadric_from_file(file_path: str) -> list:
         superquadric_dict['translation'] = trans[k, :]
         superquadric_dict['tapering'] = tapering[k, :]
         superquadric_dict['bending'] = bending[k, :]
+        superquadric_dict['control_level'] = 'low' if float(control_levels[k]) < 0.5 else 'high'
         superquadric_dict['color'] = [90, 200, 255]
         superquadrics[k] = superquadric_dict
     return superquadrics
+
+def export_colored_superquadrics_glb(npz_path, output_path, aabb=None, center=None, scale=None):
+    start = time.perf_counter()
+    superquadrics = load_superquadric_from_file(npz_path)
+    meshes = []
+    raw_meshes = []
+    for sq_id in superquadrics:
+        sq = superquadrics[sq_id]
+        vertices, triangles = add_superquadric_compact_rot_mat(
+            sq['scale'],
+            sq['shape'],
+            sq['translation'],
+            sq['rotation'],
+            sq['tapering'],
+            sq['bending'],
+            resolution=100,
+        )
+        raw_mesh = trimesh.Trimesh(vertices=vertices, faces=np.asarray(triangles), process=False)
+        raw_meshes.append(raw_mesh)
+
+    if not raw_meshes:
+        raise ValueError(f"No superquadrics found in {npz_path}")
+
+    if aabb is None or center is None or scale is None:
+        all_vertices = np.concatenate([mesh.vertices for mesh in raw_meshes], axis=0)
+        aabb = np.stack([all_vertices.min(0), all_vertices.max(0)])
+        center = (aabb[0] + aabb[1]) / 2
+        scale = 1.0 / ((aabb[1] - aabb[0]).max())
+
+    for raw_mesh, sq_id in zip(raw_meshes, superquadrics):
+        sq = superquadrics[sq_id]
+        mesh = raw_mesh.copy()
+        mesh.vertices = (mesh.vertices - center) * scale
+        color = INPUT_SQ_LOW_COLOR if sq.get('control_level') == 'low' else INPUT_SQ_HIGH_COLOR
+        mesh.visual = trimesh.visual.ColorVisuals(
+            mesh,
+            vertex_colors=np.tile(color, (mesh.vertices.shape[0], 1)),
+        )
+        meshes.append(mesh)
+
+    scene = trimesh.Scene()
+    for sq_id, mesh in zip(superquadrics, meshes):
+        scene.add_geometry(mesh, node_name=f"superquadric_{sq_id}", geom_name=f"superquadric_{sq_id}")
+    scene.export(output_path)
+    log.info(
+        "Colored input superquadrics GLB exported in %.2fs: %s (%d SQs)",
+        time.perf_counter() - start,
+        output_path,
+        len(meshes),
+    )
 
 def load_superquadrics(path, spatial_control_mesh_path, aabb=None, center=None, scale=None):
     start = time.perf_counter()
@@ -463,6 +520,12 @@ def run(args, cfg=None, generation_pipeline=None):
     run_start = time.perf_counter()
     reset_run_state()
     cfg = cfg or OmegaConf.load('config/default.yaml')
+    if args.texture_optim_steps is not None:
+        if args.texture_optim_steps < 0:
+            raise ValueError("--texture_optim_steps must be a non-negative integer")
+        cfg = copy.deepcopy(cfg)
+        cfg.sim_guidance.steps = int(args.texture_optim_steps)
+        log.info("Overriding texture optimization steps: %d", int(cfg.sim_guidance.steps))
 
     common.ensure_dir(args.output_dir)
 
@@ -481,6 +544,13 @@ def run(args, cfg=None, generation_pipeline=None):
     spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
     control_mesh_start = time.perf_counter()
     aabb, center, scale = load_superquadrics(args.shape_superquadric_path, spatial_control_mesh_path)
+    export_colored_superquadrics_glb(
+        args.shape_superquadric_path,
+        osp.join(args.output_dir, INPUT_SQ_COLORED_GLB),
+        aabb=aabb,
+        center=center,
+        scale=scale,
+    )
 
 
     low_control_superquadric_mask_path = None

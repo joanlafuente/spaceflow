@@ -88,6 +88,7 @@ KNOWN_OUTPUTS = [
     "input_superquadrics_all.npz",
     "input_superquadrics_high_control.npz",
     "input_superquadrics_low_control_bbox.npz",
+    "input_superquadrics_colored.glb",
     "variant_comparison_lower_camera.png",
     "out_sim.glb",
     "out_sim_geometry.glb",
@@ -331,6 +332,7 @@ def _spaceflow_cmd(
     high_tau: float | None,
     polyak_tau: float,
     n_repaint_steps: int,
+    texture_optim_steps: int,
     convert_yup_to_zup: bool,
 ) -> list[str]:
     cmd = [
@@ -348,6 +350,8 @@ def _spaceflow_cmd(
         str(polyak_tau),
         "--n_repaint_steps",
         str(n_repaint_steps),
+        "--texture_optim_steps",
+        str(texture_optim_steps),
         "--text_prompt",
         text_prompt,
     ]
@@ -464,6 +468,7 @@ def _write_experiment_runner_config(
     *,
     experiment_type: str | None = None,
     texture_flattened_prompt: str | None = None,
+    texture_optim_steps: int | None = None,
 ) -> None:
     runner_variants = []
     for variant in variants:
@@ -487,6 +492,8 @@ def _write_experiment_runner_config(
         payload["experiment_type"] = experiment_type
     if texture_flattened_prompt:
         payload["texture_flattened_prompt"] = texture_flattened_prompt
+    if texture_optim_steps is not None:
+        payload["texture_optim_steps"] = texture_optim_steps
     config_path.write_text(
         json.dumps(payload, indent=2),
         encoding="utf-8",
@@ -1131,6 +1138,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 10,
                 "Repaint steps",
             )
+            texture_optim_steps = _parse_nonnegative_int(
+                run_config.get(
+                    "textureOptimSteps",
+                    run_config.get("texture_optim_steps", 300),
+                ),
+                300,
+                "Texture optimization steps",
+            )
             texture_mode = str(run_config.get("textureMode") or run_config.get("appearanceMode", "text")).strip().lower()
             if texture_mode not in {"text", "image"}:
                 raise ValueError(f"Unknown texture mode: {texture_mode}")
@@ -1256,6 +1271,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             high_tau=None if spec["high_tau"] is None else float(spec["high_tau"]),
                             polyak_tau=float(spec["polyak_tau"]),
                             n_repaint_steps=n_repaint_steps,
+                            texture_optim_steps=texture_optim_steps,
                             convert_yup_to_zup=convert_yup_to_zup,
                         )
                         variant_argv = [str(part) for part in variant_cmd[2:]]
@@ -1269,6 +1285,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "high_tau": spec["high_tau"],
                             "polyak_tau": spec["polyak_tau"],
                             "n_repaint_steps": n_repaint_steps,
+                            "texture_optim_steps": texture_optim_steps,
                         })
                 else:
                     primitive_display_names = _primitive_display_names(asset_entry, primitive_count)
@@ -1297,6 +1314,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         high_tau=10.0,
                         polyak_tau=polyak,
                         n_repaint_steps=n_repaint_steps,
+                        texture_optim_steps=texture_optim_steps,
                         convert_yup_to_zup=convert_yup_to_zup,
                     )
                     experiment_variants.append({
@@ -1309,6 +1327,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "high_tau": 10.0,
                         "polyak_tau": polyak,
                         "n_repaint_steps": n_repaint_steps,
+                        "texture_optim_steps": texture_optim_steps,
                     })
                     experiment_variants.append({
                         "name": "02_trellis_raw_flat_prompt",
@@ -1322,6 +1341,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "high_tau": None,
                         "polyak_tau": None,
                         "n_repaint_steps": n_repaint_steps,
+                        "texture_optim_steps": texture_optim_steps,
+                        "input_superquadrics_glb_path": str(local_variant_output_dir / "input_superquadrics_colored.glb"),
                     })
                     experiment_variants.append({
                         "name": "03_fixed_structure_appearance_fm",
@@ -1337,6 +1358,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "high_tau": None,
                         "polyak_tau": None,
                         "n_repaint_steps": n_repaint_steps,
+                        "texture_optim_steps": texture_optim_steps,
+                        "input_superquadrics_glb_path": str(local_variant_output_dir / "input_superquadrics_colored.glb"),
                     })
                     experiment_variants.append({
                         "name": "04_fixed_structure_guideflow_appearance_fm",
@@ -1352,6 +1375,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "high_tau": None,
                         "polyak_tau": None,
                         "n_repaint_steps": n_repaint_steps,
+                        "texture_optim_steps": texture_optim_steps,
+                        "input_superquadrics_glb_path": str(local_variant_output_dir / "input_superquadrics_colored.glb"),
                     })
                 _assert_experiment_variant_layout(experiment_type, experiment_variants)
                 _write_experiment_manifest(output_dir, experiment_variants)
@@ -1361,6 +1386,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     experiment_variants,
                     experiment_type=experiment_type if experiment_type == "texture" else None,
                     texture_flattened_prompt=texture_flattened_prompt,
+                    texture_optim_steps=texture_optim_steps,
                 )
                 experiment_script = run_dir / "run_experiment.sh"
                 experiment_cmd = [
@@ -1382,6 +1408,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     high_tau=high_tau,
                     polyak_tau=polyak,
                     n_repaint_steps=n_repaint_steps,
+                    texture_optim_steps=texture_optim_steps,
                     convert_yup_to_zup=convert_yup_to_zup,
                 )
                 run_script = run_dir / "run_spaceflow.sh"

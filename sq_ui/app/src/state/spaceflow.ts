@@ -59,6 +59,7 @@ export interface SpaceflowRunConfig {
   highTau: number;
   polyakTau: number;
   repaintSteps: number;
+  textureOptimSteps: number;
   outputName: string;
   convertYupToZup: boolean;
   lowControlBBoxMargin: number;
@@ -95,6 +96,7 @@ export interface SpaceflowRunStatus {
     high_tau?: number | null;
     polyak_tau?: number;
     n_repaint_steps?: number;
+    texture_optim_steps?: number;
   }>;
   output_files?: SpaceflowOutputFile[];
 }

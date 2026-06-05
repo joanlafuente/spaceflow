@@ -13,6 +13,7 @@ import gc
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 import sys
 import time
@@ -118,6 +119,22 @@ def _variant_output_dir(variant: dict[str, object], variant_args=None) -> Path:
     return Path(str(output_dir))
 
 
+def _copy_input_superquadrics_glb(variant: dict[str, object], output_dir: Path) -> None:
+    source_raw = str(variant.get("input_superquadrics_glb_path") or "").strip()
+    if not source_raw:
+        return
+    source = Path(source_raw)
+    if not source.is_file():
+        _experiment_log(f"input superquadrics GLB not available for copy yet: {source}")
+        return
+    target = output_dir / "input_superquadrics_colored.glb"
+    if source.resolve() == target.resolve():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    _experiment_log(f"copied input superquadrics GLB: {source} -> {target}")
+
+
 def _load_pipeline_for_experiment(pipeline, cfg, variant_args=None):
     if pipeline is not None:
         _experiment_log("reusing shared TRELLIS pipeline")
@@ -149,6 +166,7 @@ def run_variant(
 
     pipeline = _load_pipeline_for_experiment(pipeline, cfg)
     output_dir = _variant_output_dir(variant, variant_args)
+    _copy_input_superquadrics_glb(variant, output_dir)
     prompt = str(variant.get("prompt") or variant.get("flattened_prompt") or "").strip()
     if not prompt:
         raise ValueError(f"Variant {variant.get('name') or runner} is missing prompt")
@@ -223,6 +241,13 @@ def main(argv=None):
 
     cfg_path = str(config.get("spaceflow_config") or "config/default.yaml")
     cfg = OmegaConf.load(cfg_path)
+    texture_optim_steps = config.get("texture_optim_steps")
+    if texture_optim_steps is not None:
+        texture_optim_steps = int(texture_optim_steps)
+        if texture_optim_steps < 0:
+            raise ValueError("texture_optim_steps must be a non-negative integer")
+        cfg.sim_guidance.steps = texture_optim_steps
+        _experiment_log(f"overriding texture optimization steps: {texture_optim_steps}")
     parsed_variants = _parse_variants(variants)
 
     experiment_start = time.perf_counter()

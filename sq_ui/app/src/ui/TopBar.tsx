@@ -95,6 +95,12 @@ function textureExperimentPromptTemplate(
 }
 
 function outputFileLabel(file: SpaceflowOutputFile) {
+  if (
+    file.relative_path === 'input_superquadrics_colored.glb' ||
+    file.relative_path.endsWith('/input_superquadrics_colored.glb')
+  ) {
+    return 'Colored input superquadrics';
+  }
   switch (file.relative_path) {
     case 'out_sim.glb':
       return 'Textured refined mesh';
@@ -199,6 +205,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowHighTau, setSpaceflowHighTau] = useState('10.0');
   const [spaceflowPolyakTau, setSpaceflowPolyakTau] = useState('0.18');
   const [spaceflowRepaintSteps, setSpaceflowRepaintSteps] = useState('10');
+  const [spaceflowTextureOptimSteps, setSpaceflowTextureOptimSteps] = useState('300');
   const [spaceflowOutputName, setSpaceflowOutputName] = useState('');
   const [spaceflowConvertYupToZup, setSpaceflowConvertYupToZup] = useState(true);
   const [spaceflowDryRun, setSpaceflowDryRun] = useState(false);
@@ -348,12 +355,18 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
     const repaintStepsRaw = spaceflowRepaintSteps.trim();
     const repaintSteps = Number.parseInt(repaintStepsRaw, 10);
+    const textureOptimStepsRaw = spaceflowTextureOptimSteps.trim();
+    const textureOptimSteps = Number.parseInt(textureOptimStepsRaw, 10);
     if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
       showToast('High tau must be greater than low tau.', 5000);
       return;
     }
     if (!/^\d+$/.test(repaintStepsRaw) || !Number.isInteger(repaintSteps)) {
       showToast('Repaint steps must be a non-negative whole number.', 5000);
+      return;
+    }
+    if (!/^\d+$/.test(textureOptimStepsRaw) || !Number.isInteger(textureOptimSteps)) {
+      showToast('Texture optimization steps must be a non-negative whole number.', 5000);
       return;
     }
     if (!spaceflowTextPrompt.trim()) {
@@ -417,6 +430,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
           repaintSteps,
+          textureOptimSteps,
           outputName: runOutputName,
           convertYupToZup: spaceflowConvertYupToZup,
           lowControlBBoxMargin,
@@ -460,6 +474,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     spaceflowRepaintSteps,
     spaceflowRunning,
     spaceflowTextPrompt,
+    spaceflowTextureOptimSteps,
     spaceflowTextureMode,
     textureExperimentPromptValue,
   ]);
@@ -1035,6 +1050,10 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     <label className="spaceflow-number-field">
                       <span>Repaint steps</span>
                       <input className="num-input" type="number" min="0" step="1" value={spaceflowRepaintSteps} onChange={(e) => setSpaceflowRepaintSteps(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="spaceflow-number-field">
+                      <span>Texture optim steps</span>
+                      <input className="num-input" type="number" min="0" step="1" value={spaceflowTextureOptimSteps} onChange={(e) => setSpaceflowTextureOptimSteps(e.target.value)} disabled={spaceflowRunning} />
                     </label>
                     <label className="spaceflow-number-field">
                       <span>Output name</span>
