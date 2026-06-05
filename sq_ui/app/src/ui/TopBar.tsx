@@ -1096,7 +1096,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     disabled={spaceflowRunning || primitives.length === 0}
                     title="Run the preset SpaceFlow comparison variants"
                   >
-                    Experiment
+                    Structure exp
                   </button>
                   <button
                     className="btn-generate-go btn-spaceflow-texture-experiment"
