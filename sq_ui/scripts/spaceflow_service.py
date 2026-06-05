@@ -128,6 +128,10 @@ def _utc_timestamp() -> str:
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
 
+def _local_log_timestamp() -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+
 def _split_args(s: str) -> list[str]:
     return [tok for tok in s.split() if tok]
 
@@ -204,61 +208,63 @@ def _srun_bash_wrapper(safe_cmd: str, python_bin: str) -> str:
     if mode == "skip":
         preflight = """
     HOSTNAME=$(hostname -f 2>/dev/null || hostname)
-    echo "[sq-spaceflow] Compute host: $HOSTNAME"
-    echo "[sq-spaceflow] GPU preflight: skipped"
+    sf_log "Compute host: $HOSTNAME"
+    sf_log "GPU preflight: skipped"
     export SPCONV_ALGO="${SPCONV_ALGO:-native}"
-    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    sf_log "SPCONV_ALGO: $SPCONV_ALGO"
 """
     elif mode == "full":
         preflight = f"""
     HOSTNAME=$(hostname -f 2>/dev/null || hostname)
-    echo "[sq-spaceflow] Compute host: $HOSTNAME"
+    sf_log "Compute host: $HOSTNAME"
     REQ_CUDA=$({python_bin} -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "Unknown")
     if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi 2>&1); then
         echo "$NVIDIA_SMI_OUTPUT"
-        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
-        echo "[sq-spaceflow] Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
+        sf_log "ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        sf_log "Hint: restart the service with SQ_SPACEFLOW_SLURM_EXCLUDE=$HOSTNAME, or ask cluster support to fix the node."
         exit 88
     fi
     NODE_CUDA=$(printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n -E 's/.*CUDA Version: ([0-9]+\\.[0-9]+).*/\\1/p' | head -n 1)
     if [ -z "$NODE_CUDA" ]; then
         NODE_CUDA="Unknown"
     fi
-    echo "[sq-spaceflow] PyTorch requires CUDA: $REQ_CUDA"
-    echo "[sq-spaceflow] Node supports max CUDA: $NODE_CUDA"
+    sf_log "PyTorch requires CUDA: $REQ_CUDA"
+    sf_log "Node supports max CUDA: $NODE_CUDA"
     source /etc/profile.d/modules.sh 2>/dev/null || true
     if command -v module &> /dev/null; then
-        echo "[sq-spaceflow] Attempting to load module: cuda/$REQ_CUDA..."
-        module load cuda/$REQ_CUDA 2>/dev/null || echo "[sq-spaceflow] Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
+        sf_log "Attempting to load module: cuda/$REQ_CUDA..."
+        module load cuda/$REQ_CUDA 2>/dev/null || sf_log "Warning: module load cuda/$REQ_CUDA failed. Proceeding anyway..."
     fi
     export SPCONV_ALGO="${{SPCONV_ALGO:-native}}"
-    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    sf_log "SPCONV_ALGO: $SPCONV_ALGO"
     if ! {python_bin} -c "import sys, torch; available = torch.cuda.is_available(); print('[sq-spaceflow] PyTorch CUDA available:', available); print('[sq-spaceflow] PyTorch CUDA devices:', torch.cuda.device_count()); sys.exit(0 if available else 88)"; then
-        echo "[sq-spaceflow] ERROR: PyTorch cannot use CUDA on $HOSTNAME."
+        sf_log "ERROR: PyTorch cannot use CUDA on $HOSTNAME."
         exit 88
     fi
 """
     else:
         preflight = """
     HOSTNAME=$(hostname -f 2>/dev/null || hostname)
-    echo "[sq-spaceflow] Compute host: $HOSTNAME"
-    echo "[sq-spaceflow] GPU preflight: fast"
+    sf_log "Compute host: $HOSTNAME"
+    sf_log "GPU preflight: fast"
     if ! NVIDIA_SMI_OUTPUT=$(nvidia-smi -L 2>&1); then
         echo "$NVIDIA_SMI_OUTPUT"
-        echo "[sq-spaceflow] ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
-        echo "[sq-spaceflow] Hint: set SQ_SPACEFLOW_GPU_PREFLIGHT=full for deeper diagnostics or exclude this node."
+        sf_log "ERROR: nvidia-smi failed on $HOSTNAME; the GPU driver on this node is unhealthy."
+        sf_log "Hint: set SQ_SPACEFLOW_GPU_PREFLIGHT=full for deeper diagnostics or exclude this node."
         exit 88
     fi
     printf "%s\\n" "$NVIDIA_SMI_OUTPUT" | sed -n '1,4p'
     export SPCONV_ALGO="${SPCONV_ALGO:-native}"
-    echo "[sq-spaceflow] SPCONV_ALGO: $SPCONV_ALGO"
+    sf_log "SPCONV_ALGO: $SPCONV_ALGO"
 """
 
     return f"""
     set -o pipefail
+    sf_log() {{ printf '%s [sq-spaceflow] %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }}
     echo "========================================"
 {preflight.rstrip()}
     echo "========================================"
+    sf_log "Starting run command."
     exec {safe_cmd}
     """
 
@@ -371,8 +377,10 @@ def _write_experiment_script(script_path: Path, variants: list[dict[str, object]
     lines = [
         "#!/usr/bin/env bash",
         "set -uo pipefail",
+        "sf_log() { printf '%s [experiment] %s\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\"; }",
         "experiment_status=0",
-        'echo "[experiment] starting SpaceFlow experiment"',
+        "experiment_start=$SECONDS",
+        'sf_log "starting SpaceFlow experiment"',
     ]
     for index, variant in enumerate(variants, start=1):
         name = str(variant["name"])
@@ -381,20 +389,23 @@ def _write_experiment_script(script_path: Path, variants: list[dict[str, object]
         log_path = output_dir / "spaceflow.log"
         assert isinstance(cmd, list)
         lines.extend([
-            f'echo "[experiment] variant {index}/{len(variants)}: {name}"',
+            "variant_start=$SECONDS",
+            f'sf_log "variant {index}/{len(variants)} started: {name}"',
             f"mkdir -p {shlex.quote(str(output_dir))}",
             f"if {shlex.join([str(part) for part in cmd])} 2>&1 | tee {shlex.quote(str(log_path))}; then",
             f"  echo succeeded > {shlex.quote(str(output_dir / 'status.txt'))}",
-            f'  echo "[experiment] variant {index}/{len(variants)} succeeded: {name}"',
+            "  variant_elapsed=$((SECONDS - variant_start))",
+            f'  sf_log "variant {index}/{len(variants)} succeeded: {name} in ${{variant_elapsed}}s"',
             "else",
             "  code=$?",
             f"  echo failed:$code > {shlex.quote(str(output_dir / 'status.txt'))}",
-            f'  echo "[experiment] variant {index}/{len(variants)} failed with code $code: {name}"',
+            "  variant_elapsed=$((SECONDS - variant_start))",
+            f'  sf_log "variant {index}/{len(variants)} failed with code $code: {name} after ${{variant_elapsed}}s"',
             "  if [ \"$experiment_status\" -eq 0 ]; then experiment_status=$code; fi",
             "fi",
         ])
     lines.extend([
-        'echo "[experiment] completed SpaceFlow experiment"',
+        'sf_log "completed SpaceFlow experiment in $((SECONDS - experiment_start))s"',
         "exit \"$experiment_status\"",
     ])
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -427,14 +438,18 @@ def _write_single_run_script(script_path: Path, cmd: list[str], run_dir: Path) -
     lines = [
         "#!/usr/bin/env bash",
         "set -uo pipefail",
+        "sf_log() { printf '%s [sq-spaceflow] %s\\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$*\"; }",
+        "spaceflow_start=$SECONDS",
         shlex.join([str(part) for part in cmd]),
         "spaceflow_status=$?",
+        'sf_log "SpaceFlow command exited with status $spaceflow_status in $((SECONDS - spaceflow_start))s"',
         'if [ "$spaceflow_status" -eq 0 ]; then',
-        '  echo "[sq-spaceflow] Rendering tau-by-parts summary figure..."',
+        "  render_start=$SECONDS",
+        '  sf_log "Rendering tau-by-parts summary figure..."',
         f"  if {shlex.join([str(part) for part in render_cmd])}; then",
-        '    echo "[sq-spaceflow] Rendered tau-by-parts summary figure."',
+        '    sf_log "Rendered tau-by-parts summary figure in $((SECONDS - render_start))s."',
         "  else",
-        '    echo "[sq-spaceflow] Warning: tau-by-parts summary render failed."',
+        '    sf_log "Warning: tau-by-parts summary render failed after $((SECONDS - render_start))s."',
         "  fi",
         "fi",
         'exit "$spaceflow_status"',
@@ -484,6 +499,7 @@ def _assert_experiment_variant_layout(experiment_type: str, variants: list[dict[
             "01_spaceflow_local_texture_routing",
             "02_trellis_raw_flat_prompt",
             "03_fixed_structure_appearance_fm",
+            "04_fixed_structure_guideflow_appearance_fm",
         ]
     else:
         expected = [
@@ -1256,13 +1272,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         })
                 else:
                     primitive_display_names = _primitive_display_names(asset_entry, primitive_count)
-                    texture_flattened_prompt = _flatten_texture_prompt(
+                    auto_texture_flattened_prompt = _flatten_texture_prompt(
                         text_prompt=text_prompt,
                         global_texture_text=appearance_text,
                         local_text_prompts=local_text_prompts,
                         primitive_names=primitive_display_names,
                     )
+                    ui_texture_prompt = str(run_config.get("textureExperimentPrompt") or "").strip()
+                    texture_flattened_prompt = ui_texture_prompt or auto_texture_flattened_prompt
                     texture_meta["flattened_text_prompt"] = texture_flattened_prompt
+                    texture_meta["auto_flattened_text_prompt"] = auto_texture_flattened_prompt
+                    texture_meta["trellis_experiment_prompt"] = texture_flattened_prompt
+                    texture_meta["trellis_experiment_prompt_source"] = "ui" if ui_texture_prompt else "auto"
 
                     local_variant_name = "01_spaceflow_local_texture_routing"
                     local_variant_output_dir = output_dir / local_variant_name
@@ -1307,6 +1328,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "output_dir": str(output_dir / "03_fixed_structure_appearance_fm"),
                         "runner": "fixed_structure_appearance_fm",
                         "mode": "fixed_structure_appearance_fm",
+                        "prompt": texture_flattened_prompt,
+                        "flattened_prompt": texture_flattened_prompt,
+                        "structure_voxels_path": str(local_variant_output_dir / "voxels" / "struct_voxels.ply"),
+                        "source_variant": local_variant_name,
+                        "seed": 1,
+                        "low_tau": None,
+                        "high_tau": None,
+                        "polyak_tau": None,
+                        "n_repaint_steps": n_repaint_steps,
+                    })
+                    experiment_variants.append({
+                        "name": "04_fixed_structure_guideflow_appearance_fm",
+                        "output_dir": str(output_dir / "04_fixed_structure_guideflow_appearance_fm"),
+                        "runner": "fixed_structure_guideflow_appearance_fm",
+                        "mode": "fixed_structure_guideflow_appearance_fm",
                         "prompt": texture_flattened_prompt,
                         "flattened_prompt": texture_flattened_prompt,
                         "structure_voxels_path": str(local_variant_output_dir / "voxels" / "struct_voxels.ply"),
@@ -1388,6 +1424,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 log_file = log_path.open("wb")
                 try:
+                    log_file.write(
+                        (
+                            f"{_local_log_timestamp()} [sq-spaceflow] Launching run command "
+                            f"via {meta['launch_mode']}.\n"
+                        ).encode("utf-8")
+                    )
+                    log_file.flush()
                     proc = subprocess.Popen(
                         final_cmd,
                         cwd=REPO_ROOT,
@@ -1471,7 +1514,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if log_path_raw:
             log_path = Path(log_path_raw)
             with log_path.open("a", encoding="utf-8") as fh:
-                fh.write("\n[sq-spaceflow] Stop requested by UI.\n")
+                fh.write(f"\n{_local_log_timestamp()} [sq-spaceflow] Stop requested by UI.\n")
         _signal_run_process(proc, signal.SIGTERM)
         self._send_json(200, {"status": "ok", "run": _run_with_outputs(meta)})
 

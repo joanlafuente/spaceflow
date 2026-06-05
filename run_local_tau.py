@@ -274,6 +274,7 @@ def load_superquadric_from_file(file_path: str) -> list:
     return superquadrics
 
 def load_superquadrics(path, spatial_control_mesh_path, aabb=None, center=None, scale=None):
+    start = time.perf_counter()
     # Generate spatial control mesh from superquadric primitives and write to spatial_control_mesh_path
     superquadrics = load_superquadric_from_file(path)
 
@@ -299,7 +300,12 @@ def load_superquadrics(path, spatial_control_mesh_path, aabb=None, center=None, 
     merged_mesh.translate(-center)
     merged_mesh.scale(scale, (0,0,0))
     o3d.io.write_triangle_mesh(spatial_control_mesh_path, merged_mesh)
-    log.info(f"Spatial control mesh generated from superquadrics: {spatial_control_mesh_path}")
+    log.info(
+        "Spatial control mesh generated from superquadrics in %.2fs: %s (%d SQs)",
+        time.perf_counter() - start,
+        spatial_control_mesh_path,
+        len(superquadrics),
+    )
 
     if aabb is not None and center is not None and scale is not None:
         return aabb, center, scale
@@ -373,7 +379,8 @@ def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.gl
     :param output_filename: The name of the output GLB file.
     """
 
-    print(f"Creating {grid_size}x{grid_size}x{grid_size} grid...")
+    start = time.perf_counter()
+    log.info("Creating %dx%dx%d sparse voxel grid...", grid_size, grid_size, grid_size)
     # Init grid
     voxel_grid = np.zeros((grid_size, grid_size, grid_size), dtype=bool)
 
@@ -387,14 +394,14 @@ def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.gl
     # Padding the grid (Needed for marching cubes)
     padded_grid = np.pad(voxel_grid, pad_width=1, mode='constant', constant_values=False)
 
-    print("Running Marching Cubes algorithm...")
+    log.info("Running Marching Cubes algorithm...")
     # Marching Cubes (Level set at 0.5 to extract the surface between occupied and empty voxels)
     verts, faces, normals, values = measure.marching_cubes(padded_grid, level=0.5)
 
     # Shift vertices back by 1 to account for the padding we added
     verts = verts - 1.0
 
-    print("Generating mesh and exporting to GLB...")
+    log.info("Generating mesh and exporting to GLB...")
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=normals)
 
     # # Smoothing of the mesh
@@ -402,9 +409,14 @@ def sparse_voxels_to_glb(sparse_points, grid_size=64, output_filename="output.gl
 
     # Export to GLB format
     mesh.export(output_filename)
-    print(f"Successfully exported mesh to {output_filename}")
+    log.info(
+        "Successfully exported sparse voxel mesh in %.2fs: %s",
+        time.perf_counter() - start,
+        output_filename,
+    )
 
 def predict_part(obj_path, output_dir):
+    start = time.perf_counter()
     log.info("Extracting PartField feature planes...")
     partfield_config = 'third_party/PartField/config.yaml'
     partfield_cfg = OmegaConf.load(partfield_config)
@@ -445,8 +457,10 @@ def predict_part(obj_path, output_dir):
 
     del partfield_model
     gc.collect() # Free up memory
+    log.info("Extracted PartField feature planes in %.2fs", time.perf_counter() - start)
 
 def run(args, cfg=None, generation_pipeline=None):
+    run_start = time.perf_counter()
     reset_run_state()
     cfg = cfg or OmegaConf.load('config/default.yaml')
 
@@ -465,6 +479,7 @@ def run(args, cfg=None, generation_pipeline=None):
 
     # Generate spatial control mesh from superquadrics
     spatial_control_mesh_path = osp.join(args.output_dir, 'spatial_control_mesh.ply')
+    control_mesh_start = time.perf_counter()
     aabb, center, scale = load_superquadrics(args.shape_superquadric_path, spatial_control_mesh_path)
 
 
@@ -479,6 +494,7 @@ def run(args, cfg=None, generation_pipeline=None):
         if args.local_tau_mode == 'low_control_mask':
             low_control_superquadric_mask_path = osp.join(args.output_dir, 'low_control_superquadric_mask.ply')
             load_superquadrics(args.low_control_superquadric_mask_path, low_control_superquadric_mask_path, aabb=aabb, center=center, scale=scale)
+    log.info("Prepared all superquadric control meshes in %.2fs", time.perf_counter() - control_mesh_start)
 
 
     # Load structure mesh
@@ -498,6 +514,7 @@ def run(args, cfg=None, generation_pipeline=None):
     text_prompt = args.text_prompt
 
     # Sparse voxels
+    structure_start = time.perf_counter()
     coords = pipeline.gen_structure_v2(text_prompt, seed=1, vis_output_dir=None, sparse_structure_sampler_params={
         "steps": STEPS_SHAPE_GEN,
         "cfg_strength": CFG_SHAPE_GEN,
@@ -510,6 +527,11 @@ def run(args, cfg=None, generation_pipeline=None):
         "local_tau_mode": args.local_tau_mode,
         "n_repaint_steps": args.n_repaint_steps,
     })
+    log.info(
+        "Generated TRELLIS sparse structure in %.2fs (%d voxels)",
+        time.perf_counter() - structure_start,
+        coords.shape[0],
+    )
 
     # Convert sparse voxels to mesh
     log.info("Converting sparse voxels to mesh...")
@@ -526,9 +548,11 @@ def run(args, cfg=None, generation_pipeline=None):
 
     # log.info("Loading generated mesh...")
 
+    mesh_export_start = time.perf_counter()
     struct_mesh = trimesh.load(osp.join(args.output_dir, "sample.glb"), force='mesh')
     # Generator / marching-cubes output in Y-up; keep a copy for debugging.
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh.glb'))
+    log.info("Loaded and exported raw structure mesh in %.2fs", time.perf_counter() - mesh_export_start)
 
     if args.full_pipeline and args.guidance_mode == 'similarity':
         log.info("Keeping TRELLIS pipeline loaded for similarity guidance; offloading it until refinement.")
@@ -541,19 +565,25 @@ def run(args, cfg=None, generation_pipeline=None):
             offload_trellis_pipeline(pipeline)
 
     # Canonical mesh for renders, voxels, and PartField must share one frame (Z-up if converting).
+    normalize_start = time.perf_counter()
     if args.convert_yup_to_zup:
         struct_mesh = pointcloud.convert_mesh_yup_to_zup(struct_mesh)
     struct_mesh.export(osp.join(args.output_dir, 'struct_mesh_zup.glb'))
+    log.info("Prepared canonical structure mesh in %.2fs", time.perf_counter() - normalize_start)
     struct_mesh_for_pipeline = osp.join(args.output_dir, 'struct_mesh_zup.glb')
 
     struct_render_dir = osp.join(args.output_dir, 'struct_renders')
     common.ensure_dir(struct_render_dir)
     if args.full_pipeline and args.guidance_mode == 'similarity':
+        render_start = time.perf_counter()
         log.info("Exporting Blender-normalized structure mesh without PNG renders...")
         out_renderviews = render.export_normalized_mesh(struct_mesh_for_pipeline, struct_render_dir)
+        log.info("Exported Blender-normalized structure mesh in %.2fs", time.perf_counter() - render_start)
     else:
+        render_start = time.perf_counter()
         log.info(f"Rendering structure mesh for {cfg.num_views // 10} views...")
         out_renderviews = render.render_all_views(struct_mesh_for_pipeline, struct_render_dir, num_views=cfg.num_views // 10)
+        log.info("Rendered structure mesh views in %.2fs", time.perf_counter() - render_start)
 
     # struct_renders/mesh.ply is the Blender-normalized mesh; use it as the single source of truth
     # for both voxelization and PartField feature extraction so that both operate in the same
@@ -562,8 +592,10 @@ def run(args, cfg=None, generation_pipeline=None):
 
     voxel_dir = osp.join(args.output_dir, 'voxels')
     common.ensure_dir(voxel_dir)
+    voxel_start = time.perf_counter()
     log.info("Voxelizing structure mesh...")
     pointcloud.voxelize_mesh(struct_blender_ply, save_path=osp.join(voxel_dir, 'struct_voxels.ply'))
+    log.info("Voxelized structure mesh in %.2fs", time.perf_counter() - voxel_start)
 
     if not args.full_pipeline:
         log.info("Structure-only mode complete. Pass --full_pipeline to continue into PartField and refinement.")
@@ -574,7 +606,9 @@ def run(args, cfg=None, generation_pipeline=None):
     common.ensure_dir(partfield_dir)
     # Use the same Blender-normalized PLY so the PartField triplane canonical space
     # matches the coordinate system of struct_voxels.ply.
+    partfield_start = time.perf_counter()
     predict_part(struct_blender_ply, partfield_dir)
+    log.info("Completed Structure Mesh PartField extraction in %.2fs", time.perf_counter() - partfield_start)
 
     # log.info("Visualizing PartField clusters on structure mesh...")
     # from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
@@ -634,6 +668,7 @@ def run(args, cfg=None, generation_pipeline=None):
     individual_sq_meshes = build_individual_sq_meshes_normalized(args.shape_superquadric_path) if local_prompts else None
 
     # Self-Similarity Optimization
+    sim_start = time.perf_counter()
     self_similarity.optimize_self_similarity(
         cfg, app, app_type, args.output_dir,
         local_prompts=local_prompts,
@@ -642,6 +677,9 @@ def run(args, cfg=None, generation_pipeline=None):
         generation_pipeline=pipeline,
         decode_texture=not args.geometry_only_decode,
     )
+    log.info("Completed SpaceFlow run in %.2fs (similarity optimization %.2fs)",
+             time.perf_counter() - run_start,
+             time.perf_counter() - sim_start)
 
 
 def main(argv=None):

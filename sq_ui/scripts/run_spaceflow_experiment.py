@@ -15,6 +15,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+import time
 import traceback
 from types import SimpleNamespace
 
@@ -30,8 +31,19 @@ if str(REPO_ROOT) not in sys.path:
 import run_local_tau  # noqa: E402
 from trellis_texture_variants import (  # noqa: E402
     run_fixed_structure_appearance_fm_variant,
+    run_fixed_structure_guideflow_appearance_fm_variant,
     run_trellis_raw_text_variant,
 )
+
+LOGGER = logging.getLogger("spaceflow_experiment")
+
+
+def _elapsed(start: float) -> str:
+    return f"{time.perf_counter() - start:.2f}s"
+
+
+def _experiment_log(message: str) -> None:
+    LOGGER.info("[experiment] %s", message)
 
 
 class TeeStream:
@@ -108,6 +120,7 @@ def _variant_output_dir(variant: dict[str, object], variant_args=None) -> Path:
 
 def _load_pipeline_for_experiment(pipeline, cfg, variant_args=None):
     if pipeline is not None:
+        _experiment_log("reusing shared TRELLIS pipeline")
         return pipeline
     args = variant_args or SimpleNamespace(trellis_pipeline_path=None)
     return run_local_tau.load_trellis_pipeline(args, cfg)
@@ -159,12 +172,28 @@ def run_variant(
         )
         return pipeline
 
+    if runner == "fixed_structure_guideflow_appearance_fm":
+        structure_voxels_raw = str(variant.get("structure_voxels_path") or "").strip()
+        if not structure_voxels_raw:
+            raise ValueError("fixed_structure_guideflow_appearance_fm variant is missing structure_voxels_path")
+        structure_voxels_path = Path(structure_voxels_raw)
+        run_fixed_structure_guideflow_appearance_fm_variant(
+            pipeline,
+            cfg,
+            output_dir,
+            prompt,
+            structure_voxels_path,
+            seed=seed,
+        )
+        return pipeline
+
     raise ValueError(f"Unknown experiment variant runner: {runner}")
 
 
 def render_experiment_comparison(config: dict[str, object], config_path: Path) -> None:
     comparison = config.get("comparison")
     if isinstance(comparison, dict) and comparison.get("enabled") is False:
+        _experiment_log("comparison render disabled")
         return
 
     run_dir = Path(str(config.get("run_dir") or config_path.parent))
@@ -176,11 +205,12 @@ def render_experiment_comparison(config: dict[str, object], config_path: Path) -
         azim = float(comparison.get("azim", azim))
         elev = float(comparison.get("elev", elev))
 
-    print("[experiment] rendering variant comparison")
+    render_start = time.perf_counter()
+    _experiment_log("rendering variant comparison")
     from render_spaceflow_experiment_comparison import render_comparison
 
     output_path = render_comparison(run_dir, output_name, azim, elev)
-    print(f"[experiment] rendered variant comparison: {output_path}")
+    _experiment_log(f"rendered variant comparison in {_elapsed(render_start)}: {output_path}")
 
 
 def main(argv=None):
@@ -195,7 +225,8 @@ def main(argv=None):
     cfg = OmegaConf.load(cfg_path)
     parsed_variants = _parse_variants(variants)
 
-    print("[experiment] starting SpaceFlow experiment")
+    experiment_start = time.perf_counter()
+    _experiment_log(f"starting SpaceFlow experiment with {len(parsed_variants)} variants")
     experiment_status = 0
     pipeline = None
 
@@ -206,16 +237,21 @@ def main(argv=None):
             log_path = output_dir / "spaceflow.log"
             status_path = output_dir / "status.txt"
             output_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[experiment] variant {index}/{len(parsed_variants)}: {name} ({runner})")
 
             code = 0
+            variant_start = time.perf_counter()
             with tee_variant_log(log_path):
+                _experiment_log(
+                    f"variant {index}/{len(parsed_variants)} started: "
+                    f"{name} ({runner}); output_dir={output_dir}"
+                )
                 try:
                     pipeline = run_variant(variant, runner, variant_args, cfg, pipeline)
                 except Exception:  # noqa: BLE001 - mirror shell wrapper behavior
                     code = 1
                     traceback.print_exc()
                 finally:
+                    cleanup_start = time.perf_counter()
                     if pipeline is not None:
                         run_local_tau.offload_trellis_pipeline(pipeline)
                     gc.collect()
@@ -223,15 +259,25 @@ def main(argv=None):
                         run_local_tau.torch.cuda.empty_cache()
                     except Exception:
                         pass
+                    _experiment_log(
+                        f"variant {index}/{len(parsed_variants)} cleanup completed "
+                        f"in {_elapsed(cleanup_start)}"
+                    )
 
-            if code == 0:
-                status_path.write_text("succeeded\n", encoding="utf-8")
-                print(f"[experiment] variant {index}/{len(parsed_variants)} succeeded: {name}")
-            else:
-                status_path.write_text(f"failed:{code}\n", encoding="utf-8")
-                print(f"[experiment] variant {index}/{len(parsed_variants)} failed with code {code}: {name}")
-                if experiment_status == 0:
-                    experiment_status = code
+                if code == 0:
+                    status_path.write_text("succeeded\n", encoding="utf-8")
+                    _experiment_log(
+                        f"variant {index}/{len(parsed_variants)} succeeded: "
+                        f"{name} in {_elapsed(variant_start)}"
+                    )
+                else:
+                    status_path.write_text(f"failed:{code}\n", encoding="utf-8")
+                    _experiment_log(
+                        f"variant {index}/{len(parsed_variants)} failed with code {code}: "
+                        f"{name} after {_elapsed(variant_start)}"
+                    )
+                    if experiment_status == 0:
+                        experiment_status = code
     finally:
         if pipeline is not None:
             del pipeline
@@ -246,7 +292,7 @@ def main(argv=None):
     except Exception as exc:  # noqa: BLE001
         print(f"[experiment] comparison failed: {exc}")
 
-    print("[experiment] completed SpaceFlow experiment")
+    _experiment_log(f"completed SpaceFlow experiment in {_elapsed(experiment_start)}")
     return experiment_status
 
 

@@ -62,12 +62,20 @@ TEXTURE_VARIANTS = [
             "output/02_trellis_raw_flat_prompt/out_sim.glb",
             "output/02_trellis_raw_flat_prompt/out_sim_geometry.glb",
         ],
+        180.0,
     ),
     (
         "SpaceFlow structure\nTRELLIS appearance FM",
         [
             "output/03_fixed_structure_appearance_fm/out_sim.glb",
             "output/03_fixed_structure_appearance_fm/out_sim_geometry.glb",
+        ],
+    ),
+    (
+        "SpaceFlow structure\nGuideFlow appearance FM",
+        [
+            "output/04_fixed_structure_guideflow_appearance_fm/out_sim.glb",
+            "output/04_fixed_structure_guideflow_appearance_fm/out_sim_geometry.glb",
         ],
     ),
     (
@@ -378,17 +386,20 @@ def sq_mesh_path(run_dir: Path) -> Path | None:
     return first_existing(run_dir, SQ_RENDER_PATHS)
 
 
-def _complete_paths_for_specs(run_dir: Path, specs: list[tuple[str, list[str]]]) -> list[tuple[str, Path]] | None:
-    paths: list[tuple[str, Path]] = []
-    for label, rel_paths in specs:
+def _complete_paths_for_specs(run_dir: Path, specs: list[tuple]) -> list[tuple[str, Path, float]] | None:
+    paths: list[tuple[str, Path, float]] = []
+    for spec in specs:
+        label = str(spec[0])
+        rel_paths = spec[1]
+        render_yaw_deg = float(spec[2]) if len(spec) > 2 else 0.0
         path = first_existing(run_dir, rel_paths)
         if path is None:
             return None
-        paths.append((label, path))
+        paths.append((label, path, render_yaw_deg))
     return paths
 
 
-def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
+def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path, float]] | None:
     specs = TEXTURE_VARIANTS if experiment_type_for_run(run_dir) == "texture" else VARIANTS
     return _complete_paths_for_specs(run_dir, specs)
 
@@ -742,13 +753,15 @@ def _render_labeled_meshes(
     projected = []
     max_abs = np.array([0.0, 0.0])
     for mesh_info in meshes:
-        vertices_camera = (np.asarray(mesh_info["vertices"]) * scale) @ rotation.T
+        render_yaw_deg = float(mesh_info.get("render_yaw_deg") or 0.0)
+        mesh_rotation = camera_rotation(render_yaw_deg, 0.0) if render_yaw_deg else np.eye(3)
+        vertices_camera = ((np.asarray(mesh_info["vertices"]) * scale) @ mesh_rotation.T) @ rotation.T
         vertices = vertices_camera.copy()
         vertices[:, 1] *= -1.0
-        vertex_normals = np.asarray(mesh_info["vertex_normals"], dtype=np.float64) @ rotation.T
+        vertex_normals = (np.asarray(mesh_info["vertex_normals"], dtype=np.float64) @ mesh_rotation.T) @ rotation.T
         annotations = []
         for label, position in mesh_info["annotations"]:
-            position_camera = (position * scale) @ rotation.T
+            position_camera = ((position * scale) @ mesh_rotation.T) @ rotation.T
             annotations.append((
                 label,
                 np.array([position_camera[0], -position_camera[1], position_camera[2]], dtype=np.float64),
@@ -828,12 +841,13 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
             "label": "SQ controls\nteal high / orange low",
         })
 
-    for label, path in variant_paths:
+    for label, path, render_yaw_deg in variant_paths:
         mesh_info = load_mesh(path)
         meshes.append({
             **mesh_info,
             "label": label,
             "annotations": [],
+            "render_yaw_deg": render_yaw_deg,
         })
 
     return _render_labeled_meshes(

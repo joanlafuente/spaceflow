@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import utils3d
 import logging
 import open3d_pycg as o3d
+import time
 
 import third_party.TRELLIS.trellis.modules.sparse as sp
 from third_party.TRELLIS.trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline
@@ -257,8 +258,10 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
                              individual_sq_meshes=None,
                              generation_pipeline=None,
                              decode_texture=True):
+    overall_start = time.perf_counter()
     log.info("Starting self-similarity optimization...")
 
+    pipeline_start = time.perf_counter()
     if generation_pipeline is None:
         if app_type == 'image':
             generation_pipeline = TrellisImageTo3DPipeline.from_pretrained(cfg.trellis_img_model_name)
@@ -268,11 +271,13 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         log.info("Reusing preloaded TRELLIS pipeline for self-similarity guidance.")
     generation_pipeline.cuda()
     _text_conditioner_to(generation_pipeline, 'cuda')
+    log.info("Prepared TRELLIS pipeline for self-similarity in %.2fs", time.perf_counter() - pipeline_start)
 
     if app_type == 'image':
         app = _preprocess_condition_image(generation_pipeline, osp.join(output_dir, 'app_image.png'))
     
     # Load Structure Data
+    structure_start = time.perf_counter()
     struct_coords = utils3d.io.read_ply(osp.join(output_dir, 'voxels', 'struct_voxels.ply'))[0]
     struct_coords = torch.from_numpy(struct_coords).float().cuda()
     struct_coords = ((struct_coords + 0.5) * 64).long()
@@ -289,6 +294,11 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
     # Optimization Starts...
     struct_labels = torch.from_numpy(struct_labels.flatten()).cuda()
     struct_feats_params = torch.nn.Parameter(torch.randn((struct_coords.shape[0], cfg.flow_model_in_channels)), requires_grad=True)
+    log.info(
+        "Loaded structure voxels, PartField planes, and labels in %.2fs (%d voxels)",
+        time.perf_counter() - structure_start,
+        struct_coords.shape[0],
+    )
     
     param_list = [struct_feats_params]
     optimizer = torch.optim.AdamW(param_list, lr=cfg.sim_guidance.learning_rate)
@@ -297,15 +307,18 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
     best_loss = float('inf')
     feats = None
     
+    cond_start = time.perf_counter()
     if app_type == "image":
         cond = generation_pipeline.get_cond([app]) if hasattr(generation_pipeline, 'get_cond') else generation_pipeline.get_cond_image([app])
     else:
         cond = generation_pipeline.get_cond_text([app])
+    log.info("Encoded global %s guidance condition in %.2fs", app_type, time.perf_counter() - cond_start)
 
     # Build per-SQ local conditioning if local prompts were provided.
     cond_list = None
     coords_dense_indices = None
     if local_prompts and individual_sq_meshes:
+        local_start = time.perf_counter()
         global_emb = cond['cond']  # (1, seq_len, dim)
         n_sq = len(local_prompts)
         active_indices = [
@@ -378,6 +391,7 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
 
         log.info("Skipping condition routing visualization; routing indices are still used for local conditioning.")
         torch.cuda.empty_cache()
+        log.info("Prepared local condition routing in %.2fs", time.perf_counter() - local_start)
     else:
         log.info("No local SQ texture overrides provided; all voxels use the global condition.")
 
@@ -412,6 +426,7 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
     std = torch.tensor(generation_pipeline.slat_normalization['std'])[None].cuda()
     mean = torch.tensor(generation_pipeline.slat_normalization['mean'])[None].cuda()
 
+    loop_start = time.perf_counter()
     log.info(f"Beginning self-similarity guidance + flow sampling loop for {len(t_pairs)} steps...")
     for iteration, (t, t_prev) in enumerate(t_pairs):
         optimizer.zero_grad()
@@ -450,8 +465,13 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             if total_loss < best_loss:
                 best_loss = total_loss.item()
                 feats = struct_feats_params.detach() * std + mean
+    log.info(
+        "Completed self-similarity guidance + flow sampling loop in %.2fs",
+        time.perf_counter() - loop_start,
+    )
     
     # Move SLAT decoders back to GPU for decoding.
+    decoder_load_start = time.perf_counter()
     decoder_keys = ['slat_decoder_mesh']
     if decode_texture:
         decoder_keys.append('slat_decoder_gs')
@@ -460,8 +480,12 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             generation_pipeline.models[k].cuda()
         elif decode_texture:
             raise KeyError(f"Texture decode requested but required decoder is missing: {k}")
+    log.info("Moved SLAT decoder(s) to CUDA in %.2fs: %s", time.perf_counter() - decoder_load_start, decoder_keys)
 
     # Decode SLAT
     log.info("Decoding output SLAT...")
+    decode_start = time.perf_counter()
     out_meshpath = osp.join(output_dir,  'out_sim.glb')
     generation.decode_slat(generation_pipeline, feats, struct_coords, out_meshpath, None, texture=decode_texture)
+    log.info("Decoded output SLAT in %.2fs: %s", time.perf_counter() - decode_start, out_meshpath)
+    log.info("Completed self-similarity optimization in %.2fs", time.perf_counter() - overall_start)

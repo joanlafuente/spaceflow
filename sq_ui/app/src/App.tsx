@@ -22,6 +22,15 @@ function readInitialTheme(): ThemeMode {
   return 'dark';
 }
 
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+    return true;
+  }
+  if (target.isContentEditable) return true;
+  return Boolean(target.closest('[contenteditable="true"], [contenteditable="plaintext-only"]'));
+}
+
 export default function App() {
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
@@ -45,7 +54,7 @@ export default function App() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+      if (isTextEditingTarget(e.target)) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();

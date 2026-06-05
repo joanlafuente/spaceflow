@@ -23,7 +23,7 @@ text_model:
 # self-similarity guidance
 sim_guidance:
   num_part_clusters: 10
-  steps: 100
+  steps: 300
   learning_rate: 5e-4
   loss_weight: 1.0
   local_condition_dilation: 0

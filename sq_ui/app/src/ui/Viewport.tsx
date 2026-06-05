@@ -27,10 +27,10 @@ function deformForPrimitive(p: Primitive) {
   };
 }
 
-const RENDER_EXPORT_BG = '#ffffff';
 const RENDER_EXPORT_HIGH_COLOR = '#f59e0b';
 const RENDER_EXPORT_LOW_COLOR = '#f8fafc';
 const RENDER_EXPORT_FRAME_FILL = 0.82;
+const RENDER_EXPORT_ALPHA_CUTOFF = 3;
 
 type ThemeMode = 'dark' | 'light';
 
@@ -175,6 +175,79 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise(resolve => canvas.toBlob(blob => resolve(blob), 'image/png'));
 }
 
+function clampByte(value: number) {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function readCanvasImageData(canvas: HTMLCanvasElement): ImageData | null {
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const ctx = copy.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(canvas, 0, 0);
+  return ctx.getImageData(0, 0, copy.width, copy.height);
+}
+
+function imageDataToPngBlob(imageData: ImageData): Promise<Blob | null> {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return Promise.resolve(null);
+  ctx.putImageData(imageData, 0, 0);
+  return canvasToPngBlob(canvas);
+}
+
+async function renderTransparentPngBlob(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+): Promise<Blob | null> {
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear(true, true, true);
+  renderer.render(scene, camera);
+  const black = readCanvasImageData(renderer.domElement);
+
+  renderer.setClearColor(0xffffff, 1);
+  renderer.clear(true, true, true);
+  renderer.render(scene, camera);
+  const white = readCanvasImageData(renderer.domElement);
+
+  if (!black || !white || black.width !== white.width || black.height !== white.height) return null;
+
+  const output = new ImageData(black.width, black.height);
+  const blackData = black.data;
+  const whiteData = white.data;
+  const outputData = output.data;
+  for (let i = 0; i < outputData.length; i += 4) {
+    const br = blackData[i];
+    const bg = blackData[i + 1];
+    const bb = blackData[i + 2];
+    const wr = whiteData[i];
+    const wg = whiteData[i + 1];
+    const wb = whiteData[i + 2];
+    const backgroundContribution = Math.max(wr - br, wg - bg, wb - bb, 0);
+    const alpha = 255 - backgroundContribution;
+
+    if (alpha <= RENDER_EXPORT_ALPHA_CUTOFF) {
+      outputData[i] = 0;
+      outputData[i + 1] = 0;
+      outputData[i + 2] = 0;
+      outputData[i + 3] = 0;
+      continue;
+    }
+
+    const unpremultiply = 255 / alpha;
+    outputData[i] = clampByte(br * unpremultiply);
+    outputData[i + 1] = clampByte(bg * unpremultiply);
+    outputData[i + 2] = clampByte(bb * unpremultiply);
+    outputData[i + 3] = clampByte(alpha);
+  }
+
+  return imageDataToPngBlob(output);
+}
+
 function cloneExportableSuperquadrics(sourceScene: THREE.Scene, targetScene: THREE.Scene): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
   sourceScene.traverse(object => {
@@ -214,7 +287,7 @@ function ViewportCaptureRegister() {
       const width = Math.max(1, gl.domElement.width);
       const height = Math.max(1, gl.domElement.height);
       const exportScene = new THREE.Scene();
-      exportScene.background = new THREE.Color(RENDER_EXPORT_BG);
+      exportScene.background = null;
       exportScene.add(new THREE.AmbientLight(0xffffff, 0.7));
       const key = new THREE.DirectionalLight(0xffffff, 1.15);
       key.position.set(5, 8, 5);
@@ -235,8 +308,7 @@ function ViewportCaptureRegister() {
       renderer.setSize(width, height, false);
 
       const exportCamera = fitExportCameraToMeshes(camera, width, height, meshes);
-      renderer.render(exportScene, exportCamera);
-      const blob = await canvasToPngBlob(renderer.domElement);
+      const blob = await renderTransparentPngBlob(renderer, exportScene, exportCamera);
 
       meshes.forEach(mesh => {
         mesh.geometry.dispose();

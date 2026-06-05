@@ -54,6 +54,7 @@ export interface SpaceflowRunConfig {
   globalTextureImagePath?: string;
   localTextureTexts?: string[];
   localTextureImagePaths?: string[];
+  textureExperimentPrompt?: string;
   lowTau: number;
   highTau: number;
   polyakTau: number;

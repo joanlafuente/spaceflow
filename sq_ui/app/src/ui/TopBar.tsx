@@ -66,6 +66,34 @@ function outputNameFromPrompt(prompt: string) {
     .replace(/^_+|_+$/g, '') || 'spaceflow_run';
 }
 
+function textureExperimentPromptTemplate(
+  shapePrompt: string,
+  globalTextureText: string,
+  primitives: Primitive[],
+) {
+  const shape = shapePrompt.trim() || 'a 3D asset';
+  const globalTexture = globalTextureText.trim() || shape;
+  const parts = [
+    `Create a 3D asset of: ${shape}.`,
+    `Overall appearance and texture: ${globalTexture}.`,
+  ];
+  const localParts = primitives
+    .map((primitive, index) => {
+      const prompt = (primitive.localTextureText ?? '').trim();
+      if (!prompt) return null;
+      const name = primitive.name.trim() || `spaceflow_${index}`;
+      return `part ${index + 1} (${name}): ${prompt}`;
+    })
+    .filter((value): value is string => Boolean(value));
+  if (localParts.length > 0) {
+    parts.push(`Local texture overrides: ${localParts.join('; ')}.`);
+    parts.push('All unspecified parts should use the overall appearance and texture.');
+  } else {
+    parts.push('Apply the overall appearance and texture consistently to every part.');
+  }
+  return parts.join(' ');
+}
+
 function outputFileLabel(file: SpaceflowOutputFile) {
   switch (file.relative_path) {
     case 'out_sim.glb':
@@ -163,6 +191,8 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
   const [spaceflowTextureMode, setSpaceflowTextureMode] = useState<'text' | 'image'>('text');
   const [spaceflowGlobalTextureText, setSpaceflowGlobalTextureText] = useState('');
+  const [spaceflowTextureExperimentPrompt, setSpaceflowTextureExperimentPrompt] = useState('');
+  const [spaceflowTextureExperimentPromptEdited, setSpaceflowTextureExperimentPromptEdited] = useState(false);
   const [spaceflowGlobalTextureImagePath, setSpaceflowGlobalTextureImagePath] = useState('');
   const [spaceflowGlobalTextureImageFile, setSpaceflowGlobalTextureImageFile] = useState<File | null>(null);
   const [spaceflowLowTau, setSpaceflowLowTau] = useState('3.0');
@@ -205,6 +235,17 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   }, [showSpaceflow]);
 
   const spaceflowRunActive = spaceflowRun?.status === 'running' || spaceflowRun?.status === 'cancelling';
+  const generatedTextureExperimentPrompt = useMemo(
+    () => textureExperimentPromptTemplate(
+      spaceflowTextPrompt,
+      spaceflowGlobalTextureText,
+      primitives,
+    ),
+    [primitives, spaceflowGlobalTextureText, spaceflowTextPrompt],
+  );
+  const textureExperimentPromptValue = spaceflowTextureExperimentPromptEdited
+    ? spaceflowTextureExperimentPrompt
+    : generatedTextureExperimentPrompt;
 
   useEffect(() => {
     if (!spaceflowRun?.run_id || !spaceflowRunActive) return;
@@ -323,6 +364,13 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       showToast('Texture experiment supports text texture guidance only.', 6000);
       return;
     }
+    const textureExperimentPrompt = experimentType === 'texture'
+      ? textureExperimentPromptValue.trim()
+      : '';
+    if (experimentType === 'texture' && !textureExperimentPrompt) {
+      showToast('Enter a TRELLIS texture experiment prompt.', 6000);
+      return;
+    }
     if (
       spaceflowTextureMode === 'image' &&
       !spaceflowGlobalTextureImagePath.trim() &&
@@ -364,6 +412,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           globalTextureImagePath,
           localTextureTexts,
           localTextureImagePaths,
+          textureExperimentPrompt: experimentType === 'texture' ? textureExperimentPrompt : undefined,
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
@@ -412,6 +461,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     spaceflowRunning,
     spaceflowTextPrompt,
     spaceflowTextureMode,
+    textureExperimentPromptValue,
   ]);
 
   const handleStopSpaceflowRun = useCallback(async () => {
@@ -919,14 +969,29 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     </div>
                   </div>
                   {spaceflowTextureMode === 'text' ? (
-                    <input
-                      type="text"
-                      className="generate-input generate-input-popover"
-                      value={spaceflowGlobalTextureText}
-                      onChange={(e) => setSpaceflowGlobalTextureText(e.target.value)}
-                      disabled={spaceflowRunning}
-                      placeholder="Global texture text; defaults to the shape prompt"
-                    />
+                    <>
+                      <input
+                        type="text"
+                        className="generate-input generate-input-popover"
+                        value={spaceflowGlobalTextureText}
+                        onChange={(e) => setSpaceflowGlobalTextureText(e.target.value)}
+                        disabled={spaceflowRunning}
+                        placeholder="Global texture text; defaults to the shape prompt"
+                      />
+                      <label className="spaceflow-experiment-prompt-field">
+                        <span>TRELLIS experiment prompt</span>
+                        <textarea
+                          className="generate-input generate-input-popover spaceflow-experiment-prompt-input"
+                          value={textureExperimentPromptValue}
+                          onChange={(e) => {
+                            setSpaceflowTextureExperimentPromptEdited(true);
+                            setSpaceflowTextureExperimentPrompt(e.target.value);
+                          }}
+                          disabled={spaceflowRunning}
+                          placeholder={generatedTextureExperimentPrompt}
+                        />
+                      </label>
+                    </>
                   ) : (
                     <div className="spaceflow-image-inputs">
                       <input

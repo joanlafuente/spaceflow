@@ -381,6 +381,13 @@ class TrellisTextTo3DPipeline(Pipeline):
         noise = torch.randn(num_samples, flow_model.in_channels, reso, reso, reso).to(self.device)
         sampler_params = {**self.sparse_structure_sampler_params, **sampler_params}
 
+        sample_start = time.perf_counter()
+        log.info(
+            "Sampling TRELLIS sparse structure: samples=%d, resolution=%d, steps=%s",
+            num_samples,
+            reso,
+            sampler_params.get("steps", "default"),
+        )
         ret = self.sparse_structure_sampler.sample(
             flow_model,
             noise,
@@ -389,14 +396,22 @@ class TrellisTextTo3DPipeline(Pipeline):
             verbose=True
         )
         z_s = ret.samples
+        log.info("Sampled TRELLIS sparse structure latent in %.2fs", time.perf_counter() - sample_start)
 
         # Decode occupancy latent
+        decode_start = time.perf_counter()
         decoder = self.models['sparse_structure_decoder']
-        coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
+        occupancy = decoder(z_s)
+        coords = torch.argwhere(occupancy > 0)[:, [0, 2, 3, 4]].int()
+        log.info(
+            "Decoded TRELLIS sparse structure occupancy in %.2fs (%d voxels)",
+            time.perf_counter() - decode_start,
+            coords.shape[0],
+        )
 
         # Save intermediate voxel structure for visualization
         save_voxelgrid_as_ply(
-            decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
+            occupancy[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
         )
 
         if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
@@ -423,11 +438,17 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         ret = {}
         if 'mesh' in formats:
+            mesh_start = time.perf_counter()
             ret['mesh'] = self.models['slat_decoder_mesh'](slat)
+            log.info("Decoded TRELLIS mesh SLAT in %.2fs", time.perf_counter() - mesh_start)
         if 'gaussian' in formats:
+            gaussian_start = time.perf_counter()
             ret['gaussian'] = self.models['slat_decoder_gs'](slat)
+            log.info("Decoded TRELLIS gaussian SLAT in %.2fs", time.perf_counter() - gaussian_start)
         if 'radiance_field' in formats:
+            rf_start = time.perf_counter()
             ret['radiance_field'] = self.models['slat_decoder_rf'](slat)
+            log.info("Decoded TRELLIS radiance-field SLAT in %.2fs", time.perf_counter() - rf_start)
         return ret
     
     def sample_slat(
@@ -446,14 +467,23 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         # Sample structured latent
         if cond['cond'].shape[-1] == 768:
-          flow_model = self.models['slat_flow_model_text']
+          flow_model_key = 'slat_flow_model_text'
+          flow_model = self.models[flow_model_key]
         else:
-          flow_model = self.models['slat_flow_model_image']
+          flow_model_key = 'slat_flow_model_image'
+          flow_model = self.models[flow_model_key]
         noise = sp.SparseTensor(
             feats=torch.randn(coords.shape[0], flow_model.in_channels).to(self.device),
             coords=coords,
         )
         sampler_params = {**self.slat_sampler_params, **sampler_params}
+        sample_start = time.perf_counter()
+        log.info(
+            "Sampling TRELLIS SLAT with %s: coords=%d, steps=%s",
+            flow_model_key,
+            coords.shape[0],
+            sampler_params.get("steps", "default"),
+        )
         slat = self.slat_sampler.sample(
             flow_model,
             noise,
@@ -461,10 +491,13 @@ class TrellisTextTo3DPipeline(Pipeline):
             **sampler_params,
             verbose=True
         ).samples
+        log.info("Sampled TRELLIS SLAT in %.2fs", time.perf_counter() - sample_start)
 
+        norm_start = time.perf_counter()
         std = torch.tensor(self.slat_normalization['std'])[None].to(slat.device)
         mean = torch.tensor(self.slat_normalization['mean'])[None].to(slat.device)
         slat = slat * std + mean
+        log.info("Applied TRELLIS SLAT normalization in %.2fs", time.perf_counter() - norm_start)
         return slat
 
     @torch.no_grad()
