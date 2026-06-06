@@ -12,7 +12,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/1_chair_small_backrest.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.png",
+    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.glb",
     "prompt": "A chair"
   },
   {
@@ -28,7 +28,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/8_elephant.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/8_elephant.png",
+    "ref": "static/data/tau/sq_priors_glbs/8_elephant.glb",
     "prompt": "A low-poly elephant"
   },
   {
@@ -44,7 +44,7 @@
     "outputs_b": [
       "static/data/tau/tau_3/2_bar_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.glb",
     "prompt": "A bar chair"
   },
   {
@@ -60,7 +60,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/5_chese_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.glb",
     "prompt": "A chair"
   },
   {
@@ -76,7 +76,7 @@
     "outputs_b": [
       "static/data/tau/tau_3/4_toy.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/4_toy.png",
+    "ref": "static/data/tau/sq_priors_glbs/4_toy.glb",
     "prompt": "A wooden toy of a person"
   },
   {
@@ -92,7 +92,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/4_toy.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/4_toy.png",
+    "ref": "static/data/tau/sq_priors_glbs/4_toy.glb",
     "prompt": "A wooden toy of a person"
   },
   {
@@ -108,7 +108,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/1_chair_small_backrest.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.png",
+    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.glb",
     "prompt": "A chair"
   },
   {
@@ -124,7 +124,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/7_stool.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/7_stool.png",
+    "ref": "static/data/tau/sq_priors_glbs/7_stool.glb",
     "prompt": "A stool with a pillow on top"
   },
   {
@@ -140,7 +140,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/3_sofa.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/3_sofa.png",
+    "ref": "static/data/tau/sq_priors_glbs/3_sofa.glb",
     "prompt": "A minimalist sofa"
   },
   {
@@ -156,7 +156,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/6_working_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.glb",
     "prompt": "A chair"
   },
   {
@@ -172,7 +172,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/7_stool.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/7_stool.png",
+    "ref": "static/data/tau/sq_priors_glbs/7_stool.glb",
     "prompt": "A stool with a pillow on top"
   },
   {
@@ -188,7 +188,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/2_bar_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.glb",
     "prompt": "A bar chair"
   },
   {
@@ -204,7 +204,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/9_plane.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/9_plane.png",
+    "ref": "static/data/tau/sq_priors_glbs/9_plane.glb",
     "prompt": "A plane"
   },
   {
@@ -220,7 +220,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/10_classic_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.glb",
     "prompt": "A classic chair"
   },
   {
@@ -236,7 +236,7 @@
     "outputs_b": [
       "static/data/tau/tau_10/8_elephant.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/8_elephant.png",
+    "ref": "static/data/tau/sq_priors_glbs/8_elephant.glb",
     "prompt": "A low-poly elephant"
   },
   {
@@ -252,7 +252,7 @@
     "outputs_b": [
       "static/data/tau/tau_3/3_sofa.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/3_sofa.png",
+    "ref": "static/data/tau/sq_priors_glbs/3_sofa.glb",
     "prompt": "A minimalist sofa"
   },
   {
@@ -268,7 +268,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/5_chese_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.glb",
     "prompt": "A chair"
   },
   {
@@ -284,7 +284,7 @@
     "outputs_b": [
       "static/data/tau/tau_3/10_classic_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.glb",
     "prompt": "A classic chair"
   },
   {
@@ -300,7 +300,7 @@
     "outputs_b": [
       "static/data/tau/tau_3/9_plane.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/9_plane.png",
+    "ref": "static/data/tau/sq_priors_glbs/9_plane.glb",
     "prompt": "A plane"
   },
   {
@@ -316,7 +316,7 @@
     "outputs_b": [
       "static/data/tau/local_tau/6_working_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.png",
+    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.glb",
     "prompt": "A chair"
   }
 ]
