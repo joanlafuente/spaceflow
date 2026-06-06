@@ -111,7 +111,9 @@ function loadNextTrial() {
 
 function populateTrial(trial) {
   document.getElementById('prompt-box').textContent = trial.prompt || '—';
-  document.getElementById('ref-img').src            = trial.ref;
+  const refContainer = document.getElementById('ref-container');
+  refContainer.innerHTML = '';
+  refContainer.appendChild(createMediaElement(trial.ref, 'Input shape'));
 
   fillOutputs('imgs-a', trial.outputs_a);
   fillOutputs('imgs-b', trial.outputs_b);
