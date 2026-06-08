@@ -80,22 +80,6 @@
     "prompt": "Clock with button on top"
   },
   {
-    "scene_id": "scene_01",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/01_a_chair.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/01_a_chair.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
-    "prompt": "A chair"
-  },
-  {
     "scene_id": "scene_13",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
@@ -398,22 +382,6 @@
     ],
     "ref": "static/data/tau/sq_priors_glbs/14_clock_with_button_on_top_sq.glb",
     "prompt": "Clock with button on top"
-  },
-  {
-    "scene_id": "scene_01",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/01_a_chair.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/01_a_chair.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
-    "prompt": "A chair"
   },
   {
     "scene_id": "scene_02",
