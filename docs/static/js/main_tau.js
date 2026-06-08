@@ -53,7 +53,7 @@ function seededShuffle(arr, seed) {
   for (let i = s.length - 1; i > 0; i--) {
     h = Math.imul(h ^ h >>> 16, 0x45d9f3b);
     const j = Math.abs(h) % (i + 1);
-    [s[i], s[j]] = [s[j], s[s]];
+    [s[i], s[j]] = [s[j], s[i]];
   }
   return s;
 }
@@ -150,7 +150,7 @@ function createMediaElement(url, altText) {
     mv.setAttribute('camera-controls', '');
     mv.setAttribute('alt', altText);
     mv.setAttribute('shadow-intensity', '1');
-    mv.setAttribute('orientation', '0deg -90deg 0deg');
+    mv.setAttribute('orientation', '-90deg 0deg 0deg');
     mv.style.width  = '100%';
     mv.style.height = '350px';
     return mv;
@@ -248,13 +248,10 @@ function showCompletion() {
   document.querySelector('.page').insertAdjacentHTML('beforeend', `
     <div class="completion-card">
       <div class="completion-emoji">🎉</div>
-      <div class="completion-title">Study 2 complete!</div>
+      <div class="completion-title">Study complete!</div>
       <div class="completion-text">
-        Thank you, <strong>${currentUsername}</strong>!
-        Your responses have been saved.<br><br>
-        <a href="./index.html" style="color:var(--accent);font-weight:500;">
-          ← Back to study selection
-        </a>
+        Thank you, <strong>${currentUsername}</strong>!<br>
+        Your responses have been saved.
       </div>
     </div>
   `);

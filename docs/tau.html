@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./static/css/style.css">
+  <link rel="stylesheet" href="./static/css/style.css?v=2">
   <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
 </head>
 <body>
@@ -66,14 +66,15 @@
 
     <header class="study-header">
       <div class="study-header-left">
-        <a href="./index.html" class="back-link">← All Studies</a>
-        <span class="study-name">SpaceFlow — Local Geometric Control</span>
+        <img src="./static/img/spaceflow_logo.png"
+             alt="SpaceFlow"
+             class="header-logo">
+        <span class="study-name">Local Geometric Control</span>
       </div>
       <div class="study-header-right">
         <span class="participant-label">Participant: <strong id="display-username"></strong></span>
       </div>
     </header>
-
     <div class="progress-wrap">
       <div class="progress-text" id="progress-text">Loading…</div>
       <div class="progress-track">
@@ -83,15 +84,9 @@
 
     <!-- Task description -->
     <div class="task-card">
-      <div class="task-instruction">
-        In this task, a model generates a 3D asset from a text prompt and an
-        input geometric shape, shown below. The input shape is divided into two
-        control regions. <strong style="color:#d2a32a;">Orange regions</strong>
-        are strongly controlled, so the generated object should stay close to their
-        shape and placement, while still allowing small adjustments. <strong>Grey regions</strong> are weakly controlled, 
-        so the model may modify them freely to match the prompt and produce natural
-        geometry. A good result should both match the prompt and preserve the
-        intended structure in the orange regions.
+      <div style="font-size:14px; color:var(--text-muted); margin-bottom:14px">
+        <strong style="color:#d2a32a">● Orange</strong> — follow input shape closely &nbsp;·&nbsp;
+        <strong style="color:var(--text)">○ Grey/white</strong> — generated freely to match the prompt
       </div>
       <div class="prompt-row">
         <span class="prompt-label">Prompt</span>
@@ -107,7 +102,6 @@
           <div id="ref-container" class="tau-reference-img"></div>
         </div>
         <div class="reference-tag">
-          Input shape —
           <span style="color:#d2a32a; font-weight:600;">orange = high geometric control</span>
         </div>
       </div>

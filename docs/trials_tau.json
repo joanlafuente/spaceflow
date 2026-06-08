@@ -1,35 +1,35 @@
 [
   {
-    "scene_id": "scene_01",
-    "pair": "tau_3_vs_local_tau",
+    "scene_id": "scene_09",
+    "pair": "tau_10_vs_local_tau",
     "mapping": {
-      "A": "tau_3",
+      "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/1_chair_small_backrest.glb"
+      "static/data/tau/tau_10/09_a_plane.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/1_chair_small_backrest.glb"
+      "static/data/tau/local_tau/09_a_plane.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.glb",
-    "prompt": "A chair"
+    "ref": "static/data/tau/sq_priors_glbs/09_a_plane_sq.glb",
+    "prompt": "A plane"
   },
   {
-    "scene_id": "scene_08",
-    "pair": "tau_3_vs_local_tau",
+    "scene_id": "scene_25",
+    "pair": "tau_10_vs_local_tau",
     "mapping": {
-      "A": "tau_3",
+      "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/8_elephant.glb"
+      "static/data/tau/tau_10/25_toy_elephant.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/8_elephant.glb"
+      "static/data/tau/local_tau/25_toy_elephant.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/8_elephant.glb",
-    "prompt": "A low-poly elephant"
+    "ref": "static/data/tau/sq_priors_glbs/25_toy_elephant_sq.glb",
+    "prompt": "toy elephant"
   },
   {
     "scene_id": "scene_02",
@@ -39,61 +39,45 @@
       "B": "tau_3"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/2_bar_chair.glb"
+      "static/data/tau/local_tau/02_a_bar_chair.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/2_bar_chair.glb"
+      "static/data/tau/tau_3/02_a_bar_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.glb",
+    "ref": "static/data/tau/sq_priors_glbs/02_a_bar_chair_sq.glb",
     "prompt": "A bar chair"
   },
   {
-    "scene_id": "scene_05",
-    "pair": "local_tau_vs_tau_10",
+    "scene_id": "scene_21",
+    "pair": "tau_3_vs_local_tau",
     "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/5_chese_chair.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/5_chese_chair.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.glb",
-    "prompt": "A chair"
-  },
-  {
-    "scene_id": "scene_04",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/4_toy.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/4_toy.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/4_toy.glb",
-    "prompt": "A wooden toy of a person"
-  },
-  {
-    "scene_id": "scene_04",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
+      "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/4_toy.glb"
+      "static/data/tau/tau_3/21_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/4_toy.glb"
+      "static/data/tau/local_tau/21_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/4_toy.glb",
-    "prompt": "A wooden toy of a person"
+    "ref": "static/data/tau/sq_priors_glbs/21_wood_chair_with_straight_legs_and_a_cushioned_seat_sq.glb",
+    "prompt": "wood chair with straight legs and a cushioned seat"
+  },
+  {
+    "scene_id": "scene_14",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/14_clock_with_button_on_top.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/14_clock_with_button_on_top.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/14_clock_with_button_on_top_sq.glb",
+    "prompt": "Clock with button on top"
   },
   {
     "scene_id": "scene_01",
@@ -103,77 +87,333 @@
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/1_chair_small_backrest.glb"
+      "static/data/tau/local_tau/01_a_chair.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/1_chair_small_backrest.glb"
+      "static/data/tau/tau_10/01_a_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/1_chair_small_backrest.glb",
+    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
     "prompt": "A chair"
   },
   {
-    "scene_id": "scene_07",
+    "scene_id": "scene_13",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/7_stool.glb"
+      "static/data/tau/tau_3/13_sailboat.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/7_stool.glb"
+      "static/data/tau/local_tau/13_sailboat.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/7_stool.glb",
-    "prompt": "A stool with a pillow on top"
+    "ref": "static/data/tau/sq_priors_glbs/13_sailboat_sq.glb",
+    "prompt": "Sailboat"
   },
   {
-    "scene_id": "scene_03",
+    "scene_id": "scene_27",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/3_sofa.glb"
+      "static/data/tau/local_tau/27_A_comfy_chair_with_cushions.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/3_sofa.glb"
+      "static/data/tau/tau_10/27_A_comfy_chair_with_cushions.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/3_sofa.glb",
-    "prompt": "A minimalist sofa"
+    "ref": "static/data/tau/sq_priors_glbs/27_A_comfy_chair_with_cushions_sq.glb",
+    "prompt": "A comfy chair with cushions"
   },
   {
-    "scene_id": "scene_06",
+    "scene_id": "scene_11",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/11_pickup_truck.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/11_pickup_truck.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/11_pickup_truck_sq.glb",
+    "prompt": "pickup truck"
+  },
+  {
+    "scene_id": "scene_19",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/19_monitor_with_an_attached_keyboard_sq.glb",
+    "prompt": "Monitor with an attached keyboard"
+  },
+  {
+    "scene_id": "scene_12",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/12_pool_table.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/12_pool_table.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/12_pool_table_sq.glb",
+    "prompt": "Pool Table"
+  },
+  {
+    "scene_id": "scene_11",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/11_pickup_truck.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/11_pickup_truck.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/11_pickup_truck_sq.glb",
+    "prompt": "pickup truck"
+  },
+  {
+    "scene_id": "scene_22",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/22_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/22_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/22_chair_sq.glb",
+    "prompt": "chair"
+  },
+  {
+    "scene_id": "scene_16",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/16_lamp_with_rectangular_base.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/16_lamp_with_rectangular_base.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/16_lamp_with_rectangular_base_sq.glb",
+    "prompt": "Lamp with Rectangular base"
+  },
+  {
+    "scene_id": "scene_04",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/04_a_wooden_toy_of_a_person_sq.glb",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_23",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/23_office_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/23_office_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/23_office_chair_sq.glb",
+    "prompt": "office chair"
+  },
+  {
+    "scene_id": "scene_24",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/24_stool_with_a_pillow.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/24_stool_with_a_pillow.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/24_stool_with_a_pillow_sq.glb",
+    "prompt": "stool with a pillow"
+  },
+  {
+    "scene_id": "scene_16",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/16_lamp_with_rectangular_base.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/16_lamp_with_rectangular_base.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/16_lamp_with_rectangular_base_sq.glb",
+    "prompt": "Lamp with Rectangular base"
+  },
+  {
+    "scene_id": "scene_18",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/18_elegant_legged_bench.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/18_elegant_legged_bench.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/18_elegant_legged_bench_sq.glb",
+    "prompt": "Elegant legged bench"
+  },
+  {
+    "scene_id": "scene_27",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/27_A_comfy_chair_with_cushions.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/27_A_comfy_chair_with_cushions.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/27_A_comfy_chair_with_cushions_sq.glb",
+    "prompt": "A comfy chair with cushions"
+  },
+  {
+    "scene_id": "scene_19",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/19_monitor_with_an_attached_keyboard_sq.glb",
+    "prompt": "Monitor with an attached keyboard"
+  },
+  {
+    "scene_id": "scene_09",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/09_a_plane.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/09_a_plane.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/09_a_plane_sq.glb",
+    "prompt": "A plane"
+  },
+  {
+    "scene_id": "scene_20",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/20_circular_headed_guy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/20_circular_headed_guy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/20_circular_headed_guy_sq.glb",
+    "prompt": "Circular headed guy"
+  },
+  {
+    "scene_id": "scene_04",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/6_working_chair.glb"
+      "static/data/tau/tau_10/04_a_wooden_toy_of_a_person.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/6_working_chair.glb"
+      "static/data/tau/local_tau/04_a_wooden_toy_of_a_person.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.glb",
+    "ref": "static/data/tau/sq_priors_glbs/04_a_wooden_toy_of_a_person_sq.glb",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_14",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/14_clock_with_button_on_top.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/14_clock_with_button_on_top.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/14_clock_with_button_on_top_sq.glb",
+    "prompt": "Clock with button on top"
+  },
+  {
+    "scene_id": "scene_01",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/01_a_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/01_a_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
     "prompt": "A chair"
-  },
-  {
-    "scene_id": "scene_07",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/7_stool.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/7_stool.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/7_stool.glb",
-    "prompt": "A stool with a pillow on top"
   },
   {
     "scene_id": "scene_02",
@@ -183,140 +423,220 @@
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/2_bar_chair.glb"
+      "static/data/tau/tau_10/02_a_bar_chair.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/2_bar_chair.glb"
+      "static/data/tau/local_tau/02_a_bar_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/2_bar_chair.glb",
+    "ref": "static/data/tau/sq_priors_glbs/02_a_bar_chair_sq.glb",
     "prompt": "A bar chair"
   },
   {
-    "scene_id": "scene_09",
+    "scene_id": "scene_20",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/9_plane.glb"
+      "static/data/tau/local_tau/20_circular_headed_guy.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/9_plane.glb"
+      "static/data/tau/tau_10/20_circular_headed_guy.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/9_plane.glb",
-    "prompt": "A plane"
+    "ref": "static/data/tau/sq_priors_glbs/20_circular_headed_guy_sq.glb",
+    "prompt": "Circular headed guy"
   },
   {
-    "scene_id": "scene_10",
+    "scene_id": "scene_21",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/10_classic_chair.glb"
+      "static/data/tau/local_tau/21_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/10_classic_chair.glb"
+      "static/data/tau/tau_10/21_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.glb",
-    "prompt": "A classic chair"
+    "ref": "static/data/tau/sq_priors_glbs/21_wood_chair_with_straight_legs_and_a_cushioned_seat_sq.glb",
+    "prompt": "wood chair with straight legs and a cushioned seat"
   },
   {
-    "scene_id": "scene_08",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/8_elephant.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/8_elephant.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/8_elephant.glb",
-    "prompt": "A low-poly elephant"
-  },
-  {
-    "scene_id": "scene_03",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/3_sofa.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/3_sofa.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/3_sofa.glb",
-    "prompt": "A minimalist sofa"
-  },
-  {
-    "scene_id": "scene_05",
+    "scene_id": "scene_12",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/5_chese_chair.glb"
+      "static/data/tau/tau_3/12_pool_table.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/5_chese_chair.glb"
+      "static/data/tau/local_tau/12_pool_table.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/5_cheese_chair.glb",
-    "prompt": "A chair"
+    "ref": "static/data/tau/sq_priors_glbs/12_pool_table_sq.glb",
+    "prompt": "Pool Table"
   },
   {
-    "scene_id": "scene_10",
-    "pair": "local_tau_vs_tau_3",
+    "scene_id": "scene_18",
+    "pair": "tau_10_vs_local_tau",
     "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
+      "A": "tau_10",
+      "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/10_classic_chair.glb"
+      "static/data/tau/tau_10/18_elegant_legged_bench.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/10_classic_chair.glb"
+      "static/data/tau/local_tau/18_elegant_legged_bench.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/10_classic_chair.glb",
-    "prompt": "A classic chair"
+    "ref": "static/data/tau/sq_priors_glbs/18_elegant_legged_bench_sq.glb",
+    "prompt": "Elegant legged bench"
   },
   {
-    "scene_id": "scene_09",
-    "pair": "local_tau_vs_tau_3",
+    "scene_id": "scene_24",
+    "pair": "tau_10_vs_local_tau",
     "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
+      "A": "tau_10",
+      "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/9_plane.glb"
+      "static/data/tau/tau_10/24_stool_with_a_pillow.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/9_plane.glb"
+      "static/data/tau/local_tau/24_stool_with_a_pillow.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/9_plane.glb",
-    "prompt": "A plane"
+    "ref": "static/data/tau/sq_priors_glbs/24_stool_with_a_pillow_sq.glb",
+    "prompt": "stool with a pillow"
   },
   {
-    "scene_id": "scene_06",
+    "scene_id": "scene_26",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/6_working_chair.glb"
+      "static/data/tau/tau_3/26_classic_chair_with_a_slat_back.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/6_working_chair.glb"
+      "static/data/tau/local_tau/26_classic_chair_with_a_slat_back.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/6_working_chair.glb",
-    "prompt": "A chair"
+    "ref": "static/data/tau/sq_priors_glbs/26_classic_chair_with_a_slat_back_sq.glb",
+    "prompt": "classic chair with a slat back"
+  },
+  {
+    "scene_id": "scene_22",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/22_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/22_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/22_chair_sq.glb",
+    "prompt": "chair"
+  },
+  {
+    "scene_id": "scene_17",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/17_f1_car.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/17_f1_car.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/17_f1_car_sq.glb",
+    "prompt": "F1 Car"
+  },
+  {
+    "scene_id": "scene_25",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/25_toy_elephant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/25_toy_elephant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/25_toy_elephant_sq.glb",
+    "prompt": "toy elephant"
+  },
+  {
+    "scene_id": "scene_26",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/26_classic_chair_with_a_slat_back.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/26_classic_chair_with_a_slat_back.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/26_classic_chair_with_a_slat_back_sq.glb",
+    "prompt": "classic chair with a slat back"
+  },
+  {
+    "scene_id": "scene_13",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/13_sailboat.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/13_sailboat.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/13_sailboat_sq.glb",
+    "prompt": "Sailboat"
+  },
+  {
+    "scene_id": "scene_17",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/17_f1_car.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/17_f1_car.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/17_f1_car_sq.glb",
+    "prompt": "F1 Car"
+  },
+  {
+    "scene_id": "scene_23",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/23_office_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/23_office_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/23_office_chair_sq.glb",
+    "prompt": "office chair"
   }
 ]

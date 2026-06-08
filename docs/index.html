@@ -9,283 +9,204 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./static/css/style.css">
   <style>
-    /* Landing-page specific styles */
-    .landing-wrap {
+    body {
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 40px 24px;
     }
 
-    .landing-logo {
-      font-family: 'Syne', sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 10px;
+    .landing-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.10);
+      padding: 48px 44px 40px;
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       text-align: center;
     }
 
+    /* Logo */
+    .landing-logo {
+      width: 260px;
+      height: auto;
+      mix-blend-mode: multiply; /* makes white background transparent */
+      margin-bottom: 8px;
+    }
+
+    /* Title & subtitle */
     .landing-title {
       font-family: 'Syne', sans-serif;
-      font-size: 32px;
+      font-size: 22px;
       font-weight: 700;
-      text-align: center;
-      margin-bottom: 10px;
       color: var(--text);
+      margin-bottom: 6px;
     }
 
     .landing-subtitle {
-      font-size: 15px;
+      font-size: 14px;
       color: var(--text-muted);
-      text-align: center;
-      max-width: 520px;
-      line-height: 1.65;
-      margin-bottom: 36px;
-    }
-
-    /* Username block */
-    .username-block {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px 28px;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: var(--shadow);
       margin-bottom: 32px;
     }
 
-    .username-block-label {
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 10px;
-      color: var(--text);
-    }
-
-    .username-row {
-      display: flex;
-      gap: 10px;
-    }
-
-    .username-row input {
-      flex: 1;
-      padding: 11px 14px;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .username-row input:focus { border-color: var(--accent); }
-
-    .username-confirm-btn {
-      padding: 11px 18px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.15s;
-    }
-    .username-confirm-btn:hover { background: #1e4acb; }
-
-    .username-set-msg {
-      font-size: 13px;
-      color: var(--green);
-      margin-top: 8px;
-    }
-
-    /* Study cards */
-    .study-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
+    /* Divider */
+    .landing-divider {
       width: 100%;
-      max-width: 760px;
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 28px;
     }
 
-    .study-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 28px 24px;
-      box-shadow: var(--shadow);
+    /* Form */
+    .landing-form {
+      width: 100%;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      text-decoration: none;
-      color: inherit;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      cursor: pointer;
-    }
-    .study-card:hover {
-      border-color: var(--accent);
-      box-shadow: 0 4px 20px rgba(43,91,232,0.10);
-    }
-    .study-card.disabled {
-      opacity: 0.5;
-      pointer-events: none;
+      gap: 12px;
     }
 
-    .card-tag {
-      font-size: 11px;
+    .landing-label {
+      font-size: 13px;
       font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-
-    .card-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 17px;
-      font-weight: 700;
       color: var(--text);
-      line-height: 1.3;
+      text-align: left;
+      margin-bottom: 2px;
     }
 
-    .card-desc {
+    .landing-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.15s;
+      color: var(--text);
+    }
+    .landing-input:focus { border-color: var(--accent); }
+
+    .landing-error {
+      font-size: 13px;
+      color: var(--red);
+      text-align: left;
+      min-height: 18px;
+    }
+
+    /* Study info pill */
+    .study-info {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 4px 0;
+    }
+
+    .study-info-pill {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px;
       font-size: 13px;
       color: var(--text-muted);
-      line-height: 1.6;
-      flex: 1;
     }
 
-    .card-meta {
-      font-size: 12px;
-      color: var(--text-muted);
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-      margin-top: 4px;
-    }
-
-    .card-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 9px 18px;
+    /* Start button */
+    .landing-btn {
+      width: 100%;
+      padding: 14px;
       background: var(--text);
       color: #fff;
-      border-radius: 8px;
-      font-size: 13px;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 16px;
       font-weight: 500;
-      align-self: flex-start;
-      margin-top: 4px;
+      cursor: pointer;
       transition: background 0.15s;
+      margin-top: 4px;
     }
-    .study-card:hover .card-btn { background: var(--accent); }
+    .landing-btn:hover { background: #333; }
 
-    .landing-note {
+    /* Disclaimer */
+    .landing-disclaimer {
       font-size: 12px;
       color: var(--text-muted);
+      line-height: 1.6;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      width: 100%;
       text-align: center;
-      margin-top: 24px;
-      max-width: 520px;
     }
 
-    @media (max-width: 600px) {
-      .study-cards { grid-template-columns: 1fr; }
-      .landing-title { font-size: 24px; }
+    @media (max-width: 520px) {
+      .landing-card { padding: 36px 24px 32px; }
+      .landing-logo { width: 200px; }
+      .landing-title { font-size: 19px; }
     }
   </style>
 </head>
 <body>
-  <div class="landing-wrap">
 
-    <div class="landing-logo">SpaceFlow</div>
+  <div class="landing-card">
+
+    <img src="./static/img/spaceflow_logo.png"
+         alt="SpaceFlow"
+         class="landing-logo">
+
     <h1 class="landing-title">3D Generation User Study</h1>
-    <p class="landing-subtitle">
-      We are evaluating methods for locally controlled 3D asset generation.
-      This study has two parts. Please complete both if you have time.
-    </p>
+    <p class="landing-subtitle">Evaluating Local Geometric Control</p>
 
-    <!-- Username -->
-    <div class="username-block">
-      <div class="username-block-label">Your name or username</div>
-      <div class="username-row">
-        <input type="text" id="username-input"
-               placeholder="Choose a nickname" autocomplete="off">
-        <button class="username-confirm-btn" id="username-confirm">Set →</button>
+    <div class="landing-divider"></div>
+
+    <div class="landing-form">
+      <div class="landing-label">Your name or nickname</div>
+      <input type="text" id="username-input" class="landing-input"
+             placeholder="Enter any name" autocomplete="off">
+      <div class="landing-error" id="username-error"></div>
+
+      <div class="study-info">
+        <span class="study-info-pill">10 pairwise comparisons</span>
+        <span class="study-info-pill">~15 minutes</span>
       </div>
-      <div class="username-set-msg" id="username-set-msg" style="display:none"></div>
+
+      <button class="landing-btn" id="start-btn">Start Study →</button>
     </div>
 
-    <!-- Study cards -->
-    <div class="study-cards" id="study-cards">
-
-      <a class="study-card disabled" id="card-appearance" href="./appearance.html">
-        <div class="card-tag">Study 1</div>
-        <div class="card-title">Local Appearance Control</div>
-        <div class="card-desc">
-          We apply different material references to different parts of a 3D object
-          (e.g. velvet seat + oak legs). Compare two generated results and judge
-          how well each part matches its reference.
-        </div>
-        <div class="card-meta">~8 comparisons · pairwise A vs B</div>
-        <div class="card-btn">Start Study 1 →</div>
-      </a>
-
-      <a class="study-card disabled" id="card-tau" href="./tau.html">
-        <div class="card-tag">Study 2</div>
-        <div class="card-title">Local Geometric Control</div>
-        <div class="card-desc">
-          We generate 3D objects from a text prompt and an input geometric shape.
-          The shape has two regions: orange parts should be followed closely by the
-          generated object, while grey parts can be generated freely. Compare pairs
-          of outputs from different generation methods.
-        </div>
-        <div class="card-meta">~10 comparisons · pairwise A vs B</div>
-        <div class="card-btn">Start Study 2 →</div>
-      </a>
-
-    </div>
-
-    <p class="landing-note">
-      Responses are saved anonymously and used only for academic research.
+    <p class="landing-disclaimer">
+      Your responses are anonymous and used solely for academic
+      research at ETH Zurich. You may stop at any time.
     </p>
 
   </div>
 
   <script>
     const USERNAME_KEY = 'spaceflow_username';
-    const input = document.getElementById('username-input');
-    const confirmBtn = document.getElementById('username-confirm');
-    const msg = document.getElementById('username-set-msg');
-    const cards = document.getElementById('study-cards');
 
-    // Restore saved username
-    const saved = localStorage.getItem(USERNAME_KEY);
-    if (saved) {
-      input.value = saved;
-      enableCards(saved);
-    }
-
-    confirmBtn.addEventListener('click', confirmUsername);
-    input.addEventListener('keypress', e => {
-      if (e.key === 'Enter') confirmUsername();
+    document.getElementById('start-btn').addEventListener('click', startStudy);
+    document.getElementById('username-input').addEventListener('keypress', e => {
+      if (e.key === 'Enter') startStudy();
     });
 
-    function confirmUsername() {
-      const name = input.value.trim();
-      if (!name) { input.focus(); return; }
+    function startStudy() {
+      const input = document.getElementById('username-input');
+      const error = document.getElementById('username-error');
+      const name  = input.value.trim();
+      if (!name) {
+        error.textContent = 'Please enter a name to continue.';
+        input.focus();
+        return;
+      }
       localStorage.setItem(USERNAME_KEY, name);
-      enableCards(name);
-    }
-
-    function enableCards(name) {
-      msg.textContent = `Logged in as "${name}" — choose a study below.`;
-      msg.style.display = 'block';
-      document.querySelectorAll('.study-card').forEach(c => c.classList.remove('disabled'));
+      window.location.href = './tau.html';
     }
   </script>
+
 </body>
 </html>

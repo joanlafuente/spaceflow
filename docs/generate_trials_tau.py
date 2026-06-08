@@ -41,7 +41,7 @@ METHOD_DIRS  = {
     "tau_3":     DATA_ROOT / "tau_3",      # uniform low τ
     "tau_10":    DATA_ROOT / "tau_10",     # uniform high τ
 }
-SQ_DIR       = DATA_ROOT / "sq_priors_images"
+SQ_DIR       = DATA_ROOT / "sq_priors_glbs"
 
 # The three pairwise comparisons to generate per scene
 PAIRS = [

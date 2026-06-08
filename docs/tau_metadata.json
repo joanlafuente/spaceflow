@@ -1,12 +1,22 @@
 {
     "1":  { "prompt": "A chair" },
     "2":  { "prompt": "A bar chair" },
-    "3":  { "prompt": "A minimalist sofa" },
     "4":  { "prompt": "A wooden toy of a person" },
-    "5":  { "prompt": "A chair" },
-    "6":  { "prompt": "A chair" },
-    "7":  { "prompt": "A stool with a pillow on top" },
-    "8":  { "prompt": "A low-poly elephant" },
     "9":  { "prompt": "A plane" },
-    "10": { "prompt": "A classic chair" }
+    "11": { "prompt": "pickup truck" },
+    "12": { "prompt": "Pool Table" },
+    "13": { "prompt": "Sailboat" },
+    "14": { "prompt": "Clock with button on top" },
+    "16": { "prompt": "Lamp with Rectangular base" },
+    "17": { "prompt": "F1 Car" },
+    "18": { "prompt": "Elegant legged bench" },
+    "19": { "prompt": "Monitor with an attached keyboard" },
+    "20": { "prompt": "Circular headed guy" },
+    "21": { "prompt": "wood chair with straight legs and a cushioned seat" },
+    "22": { "prompt": "chair" },
+    "23": { "prompt": "office chair" },
+    "24": { "prompt": "stool with a pillow" },
+    "25": { "prompt": "toy elephant" },
+    "26": { "prompt": "classic chair with a slat back" },
+    "27": { "prompt": "A comfy chair with cushions" }
 }
