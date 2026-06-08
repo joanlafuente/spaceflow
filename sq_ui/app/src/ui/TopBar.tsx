@@ -153,6 +153,7 @@ function downloadableGlbFromOutput(file: SpaceflowOutputFile, runId?: string): D
 
 const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
   'out_sim.glb',
+  'out_sim_geometry.glb',
   'struct_mesh_zup.glb',
   'sample.glb',
   'struct_mesh.glb',
@@ -164,7 +165,16 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
     const file = byPath.get(relativePath);
     if (file) return file;
   }
-  return files.find(file => file.kind === 'mesh' && /\.(glb|gltf)$/i.test(file.relative_path));
+  for (const filename of SPACEFLOW_INSPECTION_MESH_PRIORITY) {
+    const file = files.find(candidate => candidate.relative_path.toLowerCase().split('/').pop() === filename);
+    if (file) return file;
+  }
+  const generatedMesh = files.find(file => (
+    file.kind === 'mesh' &&
+    /\.(glb|gltf)$/i.test(file.relative_path) &&
+    file.relative_path.toLowerCase().split('/').pop() !== 'input_superquadrics_colored.glb'
+  ));
+  return generatedMesh ?? files.find(file => file.kind === 'mesh' && /\.(glb|gltf)$/i.test(file.relative_path));
 }
 
 let nextPresetId = 0;

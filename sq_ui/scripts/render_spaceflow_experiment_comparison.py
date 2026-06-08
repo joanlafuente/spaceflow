@@ -25,12 +25,12 @@ SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
 PANEL_RENDER_SIZE = 900
 CONDITION_THUMB_SIZE = 256
 
-VARIANTS = [
+STRUCTURE_VARIANTS = [
     (
         "tau-by-parts\nlow 3 / high 10",
         [
-            "output/tau3_tau10_polyak0p18/out_sim.glb",
-            "output/01_local_tau3_tau10_polyak0p18/out_sim.glb",
+            "output/tau3_tau10_polyak0p18/out_sim_geometry.glb",
+            "output/01_local_tau3_tau10_polyak0p18/out_sim_geometry.glb",
             "output/tau3_tau10_polyak0p18/out_sim_geometry.glb",
             "output/01_local_tau3_tau10_polyak0p18/out_sim_geometry.glb",
         ],
@@ -38,8 +38,8 @@ VARIANTS = [
     (
         "global low tau\n3",
         [
-            "output/tau3_polyak0/out_sim.glb",
-            "output/02_global_tau3_polyak0/out_sim.glb",
+            "output/tau3_polyak0/out_sim_geometry.glb",
+            "output/02_global_tau3_polyak0/out_sim_geometry.glb",
             "output/tau3_polyak0/out_sim_geometry.glb",
             "output/02_global_tau3_polyak0/out_sim_geometry.glb",
         ],
@@ -47,8 +47,8 @@ VARIANTS = [
     (
         "global high tau\n10",
         [
-            "output/tau10_polyak0/out_sim.glb",
-            "output/03_global_tau10_polyak0/out_sim.glb",
+            "output/tau10_polyak0/out_sim_geometry.glb",
+            "output/03_global_tau10_polyak0/out_sim_geometry.glb",
             "output/tau10_polyak0/out_sim_geometry.glb",
             "output/03_global_tau10_polyak0/out_sim_geometry.glb",
         ],
@@ -400,7 +400,7 @@ def _complete_paths_for_specs(run_dir: Path, specs: list[tuple]) -> list[tuple[s
 
 
 def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path, float]] | None:
-    specs = TEXTURE_VARIANTS if experiment_type_for_run(run_dir) == "texture" else VARIANTS
+    specs = TEXTURE_VARIANTS if experiment_type_for_run(run_dir) == "texture" else STRUCTURE_VARIANTS
     return _complete_paths_for_specs(run_dir, specs)
 
 
