@@ -150,7 +150,7 @@ function createMediaElement(url, altText) {
     mv.setAttribute('camera-controls', '');
     mv.setAttribute('alt', altText);
     mv.setAttribute('shadow-intensity', '1');
-    mv.setAttribute('orientation', '-90deg 0deg 0deg');
+    mv.setAttribute('orientation', '0deg 0deg 0deg');
     mv.style.width  = '100%';
     mv.style.height = '350px';
     return mv;
