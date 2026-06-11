@@ -918,13 +918,13 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                       >
                         {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
                       </button>
-                        <button
-                          type="button"
-                          className="spaceflow-panel-action"
-                          onClick={handleSaveSpaceflowInputs}
-                          disabled={spaceflowSaving || visiblePrimitives.length === 0}
-                          title="Save SpaceFlow input files"
-                        >
+                      <button
+                        type="button"
+                        className="spaceflow-panel-action"
+                        onClick={handleSaveSpaceflowInputs}
+                        disabled={spaceflowSaving || visiblePrimitives.length === 0}
+                        title="Save SpaceFlow input files"
+                      >
                         {spaceflowSaving ? 'Saving...' : 'Save inputs'}
                       </button>
                     </div>
@@ -1125,34 +1125,34 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   </label>
                 </div>
 
-                  <div className="generate-popover-footer">
-                    <button
-                      className="btn-generate-go"
-                      type="button"
-                      onClick={() => void handleStartSpaceflowRun()}
-                      disabled={!canStartSpaceflow}
-                      title="Requires at least one visible high-control and one visible low-control primitive"
-                    >
+                <div className="generate-popover-footer">
+                  <button
+                    className="btn-generate-go"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun()}
+                    disabled={!canStartSpaceflow}
+                    title="Requires at least one visible high-control and one visible low-control primitive"
+                  >
                     {spaceflowRunning ? 'Running' : spaceflowDryRun ? 'Dry Run' : 'Run'}
                   </button>
-                    <button
-                      className="btn-generate-go btn-spaceflow-experiment"
-                      type="button"
-                      onClick={() => void handleStartSpaceflowRun('geometry')}
-                      disabled={!canStartSpaceflow}
-                      title="Run the preset SpaceFlow comparison variants"
-                    >
+                  <button
+                    className="btn-generate-go btn-spaceflow-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('geometry')}
+                    disabled={!canStartSpaceflow}
+                    title="Run the preset SpaceFlow comparison variants"
+                  >
                     Structure exp
                   </button>
-                    <button
-                      className="btn-generate-go btn-spaceflow-texture-experiment"
-                      type="button"
-                      onClick={() => void handleStartSpaceflowRun('texture')}
-                      disabled={!canStartTextureExperiment}
-                      title={spaceflowTextureMode === 'text'
-                        ? 'Run texture-focused TRELLIS and SpaceFlow comparison variants'
-                        : 'Texture experiment requires text texture guidance'}
-                    >
+                  <button
+                    className="btn-generate-go btn-spaceflow-texture-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('texture')}
+                    disabled={!canStartTextureExperiment}
+                    title={spaceflowTextureMode === 'text'
+                      ? 'Run texture-focused TRELLIS and SpaceFlow comparison variants'
+                      : 'Texture experiment requires text texture guidance'}
+                  >
                     Texture exp
                   </button>
                   {spaceflowRunActive && (
@@ -1301,9 +1301,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
               <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
                 Open .npz path...
               </button>
-                <button type="button" className="dropdown-item" onClick={handleImportNpz}>
-                  Import NPZ
-                </button>
+              <button type="button" className="dropdown-item" onClick={handleImportNpz}>
+                Import NPZ
+              </button>
             </div>
           )}
         </div>
