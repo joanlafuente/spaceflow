@@ -1083,7 +1083,7 @@ textarea.spaceflow-experiment-prompt-input {
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(460px, calc(100% - 28px));
+  max-width: min(720px, calc(100% - 28px));
   padding: 8px 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1108,6 +1108,71 @@ textarea.spaceflow-experiment-prompt-input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.viewport-light-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 210px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.viewport-light-control input[type="range"] {
+  width: 96px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  outline: none;
+}
+
+.viewport-light-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-panel);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.viewport-light-control input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-panel);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.viewport-light-control output {
+  min-width: 36px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.viewport-light-reset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  padding: 4px 7px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.viewport-light-reset:hover {
+  border-color: rgba(56, 189, 248, 0.46);
+  color: var(--text-primary);
 }
 
 .viewport-back-btn {
@@ -1208,6 +1273,18 @@ textarea.spaceflow-experiment-prompt-input {
     top: 10px;
     left: 10px;
     max-width: calc(100% - 20px);
+    flex-wrap: wrap;
+  }
+
+  .viewport-light-control {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .viewport-light-control input[type="range"] {
+    flex: 1;
+    width: auto;
   }
 }
 

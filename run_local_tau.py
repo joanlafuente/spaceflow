@@ -555,7 +555,7 @@ def run(args, cfg=None, generation_pipeline=None):
 
     low_control_superquadric_mask_path = None
     if args.shape_tau_high_control is not None:
-        assert args.shape_tau_high_control > args.shape_tau, "shape_tau_high_control must be greater than shape_tau"
+        assert args.shape_tau_high_control >= args.shape_tau, "shape_tau_high_control must be greater than or equal to shape_tau"
         
         print(f"Using high control tau: {args.shape_tau_high_control} and low control tau: {args.shape_tau}, with local tau mode: {args.local_tau_mode}")
         high_control_spatial_control_mesh_path = osp.join(args.output_dir, 'high_control_spatial_control_mesh.ply')

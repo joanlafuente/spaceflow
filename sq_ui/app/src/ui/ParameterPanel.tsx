@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useStore } from '../state/store';
 import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
 import { useTextureUploadStore } from '../state/textureUploads';
+import { useSpaceflowUiStore } from '../state/spaceflowUi';
 
 /** Half-axis minimum; must match scale slider min for normalized fits. */
 const SCALE_MIN = 0.0001;
@@ -84,6 +85,7 @@ export default function ParameterPanel() {
   const setShowNormalized = useStore(s => s.setShowNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
   const setShowControlPreview = useStore(s => s.setShowControlPreview);
+  const spaceflowTextureMode = useSpaceflowUiStore(s => s.textureMode);
   const localTextureImageFile = useTextureUploadStore(s =>
     selectedId ? (s.localTextureImageFiles[selectedId] ?? null) : null
   );
@@ -276,55 +278,75 @@ export default function ParameterPanel() {
           Local texture
           <span
             className="help-badge"
-            title="Overrides the global SpaceFlow texture condition for this selected superquadric. Empty fields use the global texture."
+            title={spaceflowTextureMode === 'image'
+              ? 'Overrides the global SpaceFlow image texture condition for this selected superquadric. Empty fields use the global image.'
+              : 'Overrides the global SpaceFlow text texture condition for this selected superquadric. Empty fields use the global text.'}
           >
             ?
           </span>
         </div>
-        <label className="local-texture-field">
-          <span>Text override</span>
-          <input
-            type="text"
-            className="name-input local-texture-input"
-            value={prim.localTextureText ?? ''}
-            onChange={(e) => updateLocalTextureText(e.target.value)}
-            placeholder="Empty uses global text"
-          />
-        </label>
-        <label className="local-texture-field">
-          <span>Image path override</span>
-          <input
-            type="text"
-            className="name-input local-texture-input"
-            value={prim.localTextureImagePath ?? ''}
-            onChange={(e) => updateLocalTextureImagePath(e.target.value)}
-            placeholder="Empty uses global image"
-          />
-        </label>
-        <div className="local-texture-actions">
-          <label className="local-texture-file-picker">
-            <input
-              type="file"
-              accept="image/*"
-              onClick={(e) => {
-                e.currentTarget.value = '';
-              }}
-              onChange={(e) => setLocalTextureImageFile(prim.id, e.target.files?.[0] ?? null)}
-            />
-            <span title={localTextureImageFile?.name ?? undefined}>
-              {localTextureImageFile?.name ?? 'Choose image override'}
-            </span>
-          </label>
-          {(prim.localTextureText || prim.localTextureImagePath || localTextureImageFile) && (
-            <button
-              type="button"
-              className="local-texture-clear-btn"
-              onClick={clearLocalTextureOverride}
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        {spaceflowTextureMode === 'image' ? (
+          <>
+            <label className="local-texture-field">
+              <span>Image path override</span>
+              <input
+                type="text"
+                className="name-input local-texture-input"
+                value={prim.localTextureImagePath ?? ''}
+                onChange={(e) => updateLocalTextureImagePath(e.target.value)}
+                placeholder="Empty uses global image"
+              />
+            </label>
+            <div className="local-texture-actions">
+              <label className="local-texture-file-picker">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onClick={(e) => {
+                    e.currentTarget.value = '';
+                  }}
+                  onChange={(e) => setLocalTextureImageFile(prim.id, e.target.files?.[0] ?? null)}
+                />
+                <span title={localTextureImageFile?.name ?? undefined}>
+                  {localTextureImageFile?.name ?? 'Choose image override'}
+                </span>
+              </label>
+              {(prim.localTextureImagePath || localTextureImageFile) && (
+                <button
+                  type="button"
+                  className="local-texture-clear-btn"
+                  onClick={clearLocalTextureOverride}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="local-texture-field">
+              <span>Text override</span>
+              <input
+                type="text"
+                className="name-input local-texture-input"
+                value={prim.localTextureText ?? ''}
+                onChange={(e) => updateLocalTextureText(e.target.value)}
+                placeholder="Empty uses global text"
+              />
+            </label>
+            {prim.localTextureText && (
+              <div className="local-texture-actions">
+                <button
+                  type="button"
+                  className="local-texture-clear-btn"
+                  onClick={clearLocalTextureOverride}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="section">

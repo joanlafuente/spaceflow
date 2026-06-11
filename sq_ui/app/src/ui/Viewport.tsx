@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/immutability, react-hooks/refs */
+/* eslint-disable react-hooks/immutability */
 import { useRef, useMemo, useCallback, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -6,7 +6,12 @@ import { OrbitControls, GizmoHelper, GizmoViewport, Grid, Html } from '@react-th
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as THREE from 'three';
-import { useStore } from '../state/store';
+import {
+  DEFAULT_MESH_ILLUMINATION,
+  MAX_MESH_ILLUMINATION,
+  MIN_MESH_ILLUMINATION,
+  useStore,
+} from '../state/store';
 import type { MeshInspectionSource, Primitive } from '../state/store';
 import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superquadric';
 import { buildLowControlBoundingBoxPrimitive } from '../mesh/spaceflowExport';
@@ -33,6 +38,7 @@ const RENDER_EXPORT_FRAME_FILL = 0.82;
 const RENDER_EXPORT_ALPHA_CUTOFF = 3;
 
 type ThemeMode = 'dark' | 'light';
+const MESH_ILLUMINATION_STEP = 0.05;
 
 const VIEWPORT_THEME = {
   dark: {
@@ -752,6 +758,7 @@ function LowControlBBoxPreview({
 function Scene({ themeMode }: { themeMode: ThemeMode }) {
   const primitives = useStore(s => s.primitives);
   const meshInspection = useStore(s => s.meshInspection);
+  const meshIllumination = useStore(s => s.meshIllumination);
   const selectedId = useStore(s => s.selectedId);
   const resolution = useStore(s => s.previewResolution);
   const showNormalized = useStore(s => s.showNormalized);
@@ -799,24 +806,46 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
   // Match `gui/` conventions: Z-up world.
   const camera = useThree(s => s.camera);
+  const gl = useThree(s => s.gl);
   useEffect(() => {
     camera.up.set(0, 0, 1);
     camera.updateProjectionMatrix();
   }, [camera]);
 
+  useEffect(() => {
+    const previousToneMapping = gl.toneMapping;
+    const previousExposure = gl.toneMappingExposure;
+
+    if (meshInspection) {
+      gl.toneMapping = THREE.ACESFilmicToneMapping;
+      gl.toneMappingExposure = 0.9 + meshIllumination * 0.36;
+    } else {
+      gl.toneMapping = THREE.NoToneMapping;
+      gl.toneMappingExposure = 1;
+    }
+
+    return () => {
+      gl.toneMapping = previousToneMapping;
+      gl.toneMappingExposure = previousExposure;
+    };
+  }, [gl, meshIllumination, meshInspection]);
+
   const handleMiss = useCallback(() => {
     selectPrimitive(null);
   }, [selectPrimitive]);
 
+  const inspectionLight = meshInspection ? meshIllumination : 1;
+
   return (
     <>
-      <ambientLight intensity={meshInspection ? 0.82 : 0.5} />
-      <directionalLight position={[5, 8, 5]} intensity={meshInspection ? 1.35 : 1} />
-      <directionalLight position={[-3, -4, -2]} intensity={meshInspection ? 0.48 : 0.3} />
+      <ambientLight intensity={meshInspection ? 0.78 * inspectionLight : 0.5} />
+      <directionalLight position={[5, 8, 5]} intensity={meshInspection ? 1.1 * inspectionLight : 1} />
+      <directionalLight position={[-3, -4, -2]} intensity={meshInspection ? 0.5 * inspectionLight : 0.3} />
       {meshInspection && (
         <>
-          <hemisphereLight color="#ffffff" groundColor="#cbd5e1" intensity={0.28} />
-          <directionalLight position={[0, -6, 6]} intensity={0.32} />
+          <hemisphereLight color="#ffffff" groundColor="#dbeafe" intensity={0.36 * inspectionLight} />
+          <directionalLight position={[0, -6, 6]} intensity={0.45 * inspectionLight} />
+          <directionalLight position={[-4, 3, 5]} intensity={0.28 * inspectionLight} />
         </>
       )}
 
@@ -881,6 +910,8 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
 export default function Viewport({ themeMode }: { themeMode: ThemeMode }) {
   const meshInspection = useStore(s => s.meshInspection);
+  const meshIllumination = useStore(s => s.meshIllumination);
+  const setMeshIllumination = useStore(s => s.setMeshIllumination);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const theme = VIEWPORT_THEME[themeMode];
 
@@ -900,6 +931,28 @@ export default function Viewport({ themeMode }: { themeMode: ThemeMode }) {
           <div className="viewport-inspection-title" title={meshInspection.path ?? meshInspection.url}>
             <span>Inspecting</span>
             <strong>{meshInspection.name}</strong>
+          </div>
+          <div className="viewport-light-control" title="Illumination for inspected output meshes">
+            <span>Light</span>
+            <input
+              type="range"
+              aria-label="Mesh illumination"
+              min={MIN_MESH_ILLUMINATION}
+              max={MAX_MESH_ILLUMINATION}
+              step={MESH_ILLUMINATION_STEP}
+              value={meshIllumination}
+              onChange={(e) => setMeshIllumination(parseFloat(e.target.value))}
+            />
+            <output>{Math.round(meshIllumination * 100)}%</output>
+            <button
+              type="button"
+              className="viewport-light-reset"
+              title="Reset illumination"
+              aria-label="Reset illumination"
+              onClick={() => setMeshIllumination(DEFAULT_MESH_ILLUMINATION)}
+            >
+              Reset
+            </button>
           </div>
           <button
             type="button"

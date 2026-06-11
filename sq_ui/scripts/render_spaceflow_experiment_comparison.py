@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RUN_ROOT = REPO_ROOT / "spaceflow_runtime" / "sq_ui_runs"
-SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
-SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
+SQ_HIGH_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
+SQ_LOW_COLOR = np.array([0xf8, 0xfa, 0xfc], dtype=np.float64) / 255.0
 SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
 PANEL_RENDER_SIZE = 900
 CONDITION_THUMB_SIZE = 256
@@ -382,8 +382,80 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
     return global_line + "\nSQ conditions: " + "; ".join(pieces) + flat_line
 
 
-def sq_mesh_path(run_dir: Path) -> Path | None:
+def sq_mesh_path(run_dir: Path, meta: dict[str, object] | None = None) -> Path | None:
+    for variant in experiment_variants(run_dir, meta):
+        path = first_variant_file(run_dir, variant, ["spatial_control_mesh.ply"])
+        if path is not None:
+            return path
     return first_existing(run_dir, SQ_RENDER_PATHS)
+
+
+def experiment_variants(run_dir: Path, meta: dict[str, object] | None = None) -> list[dict[str, object]]:
+    meta = meta if meta is not None else run_meta(run_dir)
+    raw = meta.get("experiment_variants")
+    if not isinstance(raw, list):
+        manifest = read_json(run_dir / "output" / "experiment_manifest.json")
+        raw = manifest.get("variants")
+    if not isinstance(raw, list):
+        return []
+    return [variant for variant in raw if isinstance(variant, dict)]
+
+
+def variant_output_candidates(run_dir: Path, variant: dict[str, object]) -> list[Path]:
+    candidates: list[Path] = []
+    output_dir_raw = str(variant.get("output_dir") or "").strip()
+    if output_dir_raw:
+        output_dir = Path(output_dir_raw)
+        candidates.append(output_dir if output_dir.is_absolute() else run_dir / output_dir)
+
+    name = str(variant.get("name") or "").strip()
+    if name:
+        candidates.append(run_dir / "output" / name)
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            unique.append(candidate)
+            seen.add(key)
+    return unique
+
+
+def first_variant_file(run_dir: Path, variant: dict[str, object], filenames: list[str]) -> Path | None:
+    for output_dir in variant_output_candidates(run_dir, variant):
+        for filename in filenames:
+            path = output_dir / filename
+            if path.is_file():
+                return path
+    return None
+
+
+def _variant_number(variant: dict[str, object], fallback: int) -> int:
+    name = str(variant.get("name") or "")
+    prefix = name.split("_", 1)[0]
+    return int(prefix) if prefix.isdigit() else fallback
+
+
+def _geometry_variant_label(variant: dict[str, object], fallback_index: int) -> str:
+    mode = str(variant.get("mode") or "")
+    low_tau = variant.get("low_tau")
+    high_tau = variant.get("high_tau")
+    ordinal = _variant_number(variant, fallback_index)
+    if mode == "local_tau":
+        if high_tau is None:
+            return f"tau-by-parts\nlow {_fmt_number(low_tau)}"
+        try:
+            if float(low_tau) == float(high_tau):
+                return f"tau-by-parts\nall {_fmt_number(low_tau)}"
+        except (TypeError, ValueError):
+            pass
+        return f"tau-by-parts\nlow {_fmt_number(low_tau)} / high {_fmt_number(high_tau)}"
+    if ordinal == 2:
+        return f"global low tau\n{_fmt_number(low_tau)}"
+    if ordinal == 3:
+        return f"global high tau\n{_fmt_number(low_tau)}"
+    return f"global tau\n{_fmt_number(low_tau)}"
 
 
 def _complete_paths_for_specs(run_dir: Path, specs: list[tuple]) -> list[tuple[str, Path, float]] | None:
@@ -399,8 +471,35 @@ def _complete_paths_for_specs(run_dir: Path, specs: list[tuple]) -> list[tuple[s
     return paths
 
 
+def _complete_geometry_paths_from_meta(run_dir: Path, meta: dict[str, object]) -> list[tuple[str, Path, float]] | None:
+    variants = [
+        variant
+        for variant in experiment_variants(run_dir, meta)
+        if str(variant.get("mode") or "") in {"local_tau", "global_tau"}
+    ]
+    if len(variants) < 3:
+        return None
+    variants = variants[:3]
+    paths: list[tuple[str, Path, float]] = []
+    for index, variant in enumerate(variants, start=1):
+        path = first_variant_file(run_dir, variant, ["out_sim_geometry.glb", "out_sim.glb"])
+        if path is None:
+            return None
+        paths.append((_geometry_variant_label(variant, index), path, 0.0))
+    return paths
+
+
 def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path, float]] | None:
-    specs = TEXTURE_VARIANTS if experiment_type_for_run(run_dir) == "texture" else STRUCTURE_VARIANTS
+    meta = run_meta(run_dir)
+    if experiment_type_for_run(run_dir, meta) == "texture":
+        specs = TEXTURE_VARIANTS
+        return _complete_paths_for_specs(run_dir, specs)
+
+    dynamic_paths = _complete_geometry_paths_from_meta(run_dir, meta)
+    if dynamic_paths is not None:
+        return dynamic_paths
+
+    specs = STRUCTURE_VARIANTS
     return _complete_paths_for_specs(run_dir, specs)
 
 
@@ -833,12 +932,12 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     manifest = asset_manifest(meta)
 
     meshes: list[dict[str, object]] = []
-    control_mesh_path = sq_mesh_path(run_dir)
+    control_mesh_path = sq_mesh_path(run_dir, meta)
     if control_mesh_path is not None:
         mesh_info = load_sq_mesh(control_mesh_path, manifest)
         meshes.append({
             **mesh_info,
-            "label": "SQ controls\nteal high / orange low",
+            "label": "SQ controls\norange high / gray low",
         })
 
     for label, path, render_yaw_deg in variant_paths:
@@ -875,7 +974,7 @@ def render_single_result(run_dir: Path, output_name: str, azim: float, elev: flo
         mesh_info = load_sq_mesh(control_mesh_path, manifest)
         meshes.append({
             **mesh_info,
-            "label": "SQ controls\nteal high / orange low",
+            "label": "SQ controls\norange high / gray low",
         })
 
     meshes.append({

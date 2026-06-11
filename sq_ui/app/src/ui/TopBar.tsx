@@ -18,6 +18,7 @@ import {
 import { npzEditorUrl } from '../state/npzUrl';
 import { useStore, type Primitive } from '../state/store';
 import { useTextureUploadStore } from '../state/textureUploads';
+import { useSpaceflowUiStore } from '../state/spaceflowUi';
 import { captureSuperquadricRenderBlob } from '../state/viewportCapture';
 
 type ThemeMode = 'dark' | 'light';
@@ -205,7 +206,8 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowRun, setSpaceflowRun] = useState<SpaceflowRunStatus | null>(null);
   const [spaceflowLogTail, setSpaceflowLogTail] = useState('');
   const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
-  const [spaceflowTextureMode, setSpaceflowTextureMode] = useState<'text' | 'image'>('text');
+  const spaceflowTextureMode = useSpaceflowUiStore(s => s.textureMode);
+  const setSpaceflowTextureMode = useSpaceflowUiStore(s => s.setTextureMode);
   const [spaceflowGlobalTextureText, setSpaceflowGlobalTextureText] = useState('');
   const [spaceflowTextureExperimentPrompt, setSpaceflowTextureExperimentPrompt] = useState('');
   const [spaceflowTextureExperimentPromptEdited, setSpaceflowTextureExperimentPromptEdited] = useState(false);
@@ -360,15 +362,15 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const handleStartSpaceflowRun = useCallback(async (experimentType?: SpaceflowExperimentType) => {
     if (spaceflowRunning || primitives.length === 0) return;
     const experimentMode = Boolean(experimentType);
-    const lowTau = experimentMode ? 3 : Number.parseFloat(spaceflowLowTau);
-    const highTau = experimentMode ? 10 : Number.parseFloat(spaceflowHighTau);
+    const lowTau = Number.parseFloat(spaceflowLowTau);
+    const highTau = Number.parseFloat(spaceflowHighTau);
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
     const repaintStepsRaw = spaceflowRepaintSteps.trim();
     const repaintSteps = Number.parseInt(repaintStepsRaw, 10);
     const textureOptimStepsRaw = spaceflowTextureOptimSteps.trim();
     const textureOptimSteps = Number.parseInt(textureOptimStepsRaw, 10);
-    if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
-      showToast('High tau must be greater than low tau.', 5000);
+    if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau < lowTau) {
+      showToast('High tau must be greater than or equal to low tau.', 5000);
       return;
     }
     if (!/^\d+$/.test(repaintStepsRaw) || !Number.isInteger(repaintSteps)) {

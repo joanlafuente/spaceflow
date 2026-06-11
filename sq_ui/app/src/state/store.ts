@@ -33,6 +33,15 @@ export interface MeshInspectionSource {
   relativePath?: string;
 }
 
+export const DEFAULT_MESH_ILLUMINATION = 1.8;
+export const MIN_MESH_ILLUMINATION = 0.5;
+export const MAX_MESH_ILLUMINATION = 3;
+
+export function clampMeshIllumination(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MESH_ILLUMINATION;
+  return Math.min(MAX_MESH_ILLUMINATION, Math.max(MIN_MESH_ILLUMINATION, value));
+}
+
 interface HistoryEntry {
   primitives: Primitive[];
   selectedId: string | null;
@@ -45,6 +54,7 @@ export interface AppState {
   showNormalized: boolean;
   showControlPreview: boolean;
   lowControlBBoxMargin: number;
+  meshIllumination: number;
   meshInspection: MeshInspectionSource | null;
 
   undoStack: HistoryEntry[];
@@ -64,6 +74,7 @@ export interface AppState {
   setShowNormalized: (v: boolean) => void;
   setShowControlPreview: (v: boolean) => void;
   setLowControlBBoxMargin: (v: number) => void;
+  setMeshIllumination: (v: number) => void;
   setMeshInspection: (source: MeshInspectionSource | null) => void;
   undo: () => void;
   redo: () => void;
@@ -178,6 +189,7 @@ export const useStore = create<AppState>((set, get) => ({
   showNormalized: false,
   showControlPreview: true,
   lowControlBBoxMargin: DEFAULT_LOW_CONTROL_BBOX_MARGIN,
+  meshIllumination: DEFAULT_MESH_ILLUMINATION,
   meshInspection: null,
   undoStack: [],
   redoStack: [],
@@ -274,6 +286,7 @@ export const useStore = create<AppState>((set, get) => ({
   setShowNormalized: (v) => set({ showNormalized: v }),
   setShowControlPreview: (v) => set({ showControlPreview: v }),
   setLowControlBBoxMargin: (v) => set({ lowControlBBoxMargin: clampLowControlBBoxMargin(v) }),
+  setMeshIllumination: (v) => set({ meshIllumination: clampMeshIllumination(v) }),
   setMeshInspection: (source) => set({ meshInspection: source }),
 
   undo: () => {

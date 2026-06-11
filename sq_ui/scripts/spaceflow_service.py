@@ -89,6 +89,7 @@ KNOWN_OUTPUTS = [
     "input_superquadrics_high_control.npz",
     "input_superquadrics_low_control_bbox.npz",
     "input_superquadrics_colored.glb",
+    "routing_warnings.json",
     "variant_comparison_lower_camera.png",
     "out_sim.glb",
     "out_sim_geometry.glb",
@@ -321,6 +322,17 @@ def _num_tag(value: float) -> str:
     return f"{value:g}".replace("-", "m").replace(".", "p")
 
 
+def _local_tau_variant_name(index: int, low_tau: float, high_tau: float, polyak_tau: float) -> str:
+    return (
+        f"{index:02d}_local_tau{_num_tag(low_tau)}"
+        f"_tau{_num_tag(high_tau)}_polyak{_num_tag(polyak_tau)}"
+    )
+
+
+def _global_tau_variant_name(index: int, tau: float, polyak_tau: float = 0.0) -> str:
+    return f"{index:02d}_global_tau{_num_tag(tau)}_polyak{_num_tag(polyak_tau)}"
+
+
 def _spaceflow_cmd(
     asset_paths: dict[str, object],
     output_dir: Path,
@@ -356,8 +368,8 @@ def _spaceflow_cmd(
         text_prompt,
     ]
     if high_tau is not None:
-        if high_tau <= low_tau:
-            raise ValueError("High tau must be greater than low tau")
+        if high_tau < low_tau:
+            raise ValueError("High tau must be greater than or equal to low tau")
         cmd.extend([
             "--shape_superquadric_high_control_path",
             str(asset_paths["high_control"]),
@@ -501,6 +513,7 @@ def _write_experiment_runner_config(
 
 
 def _assert_experiment_variant_layout(experiment_type: str, variants: list[dict[str, object]]) -> None:
+    actual = [str(variant.get("name") or "") for variant in variants]
     if experiment_type == "texture":
         expected = [
             "01_spaceflow_local_texture_routing",
@@ -508,17 +521,26 @@ def _assert_experiment_variant_layout(experiment_type: str, variants: list[dict[
             "03_fixed_structure_appearance_fm",
             "04_fixed_structure_guideflow_appearance_fm",
         ]
-    else:
-        expected = [
-            "01_local_tau3_tau10_polyak0p18",
-            "02_global_tau3_polyak0",
-            "03_global_tau10_polyak0",
-        ]
-    actual = [str(variant.get("name") or "") for variant in variants]
-    if actual != expected:
+        if actual != expected:
+            raise ValueError(
+                f"{experiment_type} experiment variant layout mismatch: "
+                f"expected {expected}, got {actual}"
+            )
+        return
+
+    expected_modes = ["local_tau", "global_tau", "global_tau"]
+    actual_modes = [str(variant.get("mode") or "") for variant in variants]
+    expected_name_prefixes = ["01_local_tau", "02_global_tau", "03_global_tau"]
+    if (
+        actual_modes != expected_modes
+        or len(actual) != len(expected_name_prefixes)
+        or any(not name.startswith(prefix) for name, prefix in zip(actual, expected_name_prefixes))
+        or len(set(actual)) != len(actual)
+    ):
         raise ValueError(
             f"{experiment_type} experiment variant layout mismatch: "
-            f"expected {expected}, got {actual}"
+            f"expected modes {expected_modes} with prefixes {expected_name_prefixes}, "
+            f"got modes {actual_modes} and names {actual}"
         )
 
 
@@ -951,9 +973,126 @@ def _list_output_files(meta: dict[str, object]) -> list[dict[str, object]]:
     return files
 
 
+def _warning_key(warning: dict[str, object]) -> tuple[str, str]:
+    return (
+        str(warning.get("kind") or "warning"),
+        str(warning.get("message") or ""),
+    )
+
+
+def _normalize_warning(raw: object, *, source: str) -> dict[str, object] | None:
+    if isinstance(raw, str):
+        message = raw.strip()
+        if not message:
+            return None
+        return {
+            "kind": "warning",
+            "severity": "warning",
+            "message": message,
+            "source": source,
+        }
+    if not isinstance(raw, dict):
+        return None
+    message = str(raw.get("message") or "").strip()
+    if not message:
+        return None
+    warning = dict(raw)
+    warning.setdefault("kind", "warning")
+    warning.setdefault("severity", "warning")
+    warning.setdefault("source", source)
+    return warning
+
+
+def _warnings_from_file(path: Path, output_dir: Path) -> list[dict[str, object]]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    items = raw.get("warnings") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return []
+    try:
+        source = path.relative_to(output_dir).as_posix()
+    except ValueError:
+        source = str(path)
+    warnings = []
+    for item in items:
+        warning = _normalize_warning(item, source=source)
+        if warning is not None:
+            warnings.append(warning)
+    return warnings
+
+
+def _routing_warnings_from_log(log_path: str) -> list[dict[str, object]]:
+    if not log_path:
+        return []
+    try:
+        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    warnings = []
+    pattern = re.compile(
+        r"Local (?P<kind>text|image) condition\(s\) for SQ\(s\) "
+        r"\[(?P<indices>[^\]]+)\] have zero routed cells"
+    )
+    for match in pattern.finditer(text):
+        indices: list[int] = []
+        for token in match.group("indices").split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                indices.append(int(token))
+            except ValueError:
+                pass
+        if not indices:
+            continue
+        sq_numbers = [index + 1 for index in indices]
+        sq_label = ", ".join(str(number) for number in sq_numbers)
+        local_prompt_type = match.group("kind")
+        warnings.append({
+            "kind": "local_routing_zero_cells",
+            "severity": "warning",
+            "message": (
+                f"Local {local_prompt_type} prompt(s) for SQs {sq_label} "
+                "received zero routed cells; those local overrides had no effect."
+            ),
+            "local_prompt_type": local_prompt_type,
+            "sq_indices": indices,
+            "sq_numbers": sq_numbers,
+            "source": "spaceflow.log",
+        })
+    return warnings
+
+
+def _collect_run_warnings(meta: dict[str, object]) -> list[dict[str, object]]:
+    output_dir_raw = str(meta.get("output_dir") or "")
+    warnings: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+
+    if output_dir_raw:
+        output_dir = Path(output_dir_raw)
+        if output_dir.is_dir():
+            for warning_path in sorted(output_dir.rglob("routing_warnings.json")):
+                for warning in _warnings_from_file(warning_path, output_dir):
+                    key = _warning_key(warning)
+                    if key not in seen:
+                        warnings.append(warning)
+                        seen.add(key)
+
+    for warning in _routing_warnings_from_log(str(meta.get("log_path") or "")):
+        key = _warning_key(warning)
+        if key not in seen:
+            warnings.append(warning)
+            seen.add(key)
+
+    return warnings
+
+
 def _run_with_outputs(meta: dict[str, object]) -> dict[str, object]:
     run = dict(meta)
     run["output_files"] = _list_output_files(run)
+    run["warnings"] = _collect_run_warnings(run)
     return run
 
 
@@ -1239,23 +1378,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if experiment_type == "geometry":
                     experiment_specs = [
                         {
-                            "name": f"01_local_tau3_tau10_polyak{_num_tag(polyak)}",
+                            "name": _local_tau_variant_name(1, low_tau, high_tau, polyak),
                             "mode": "local_tau",
-                            "low_tau": 3.0,
-                            "high_tau": 10.0,
+                            "low_tau": low_tau,
+                            "high_tau": high_tau,
                             "polyak_tau": polyak,
                         },
                         {
-                            "name": "02_global_tau3_polyak0",
+                            "name": _global_tau_variant_name(2, low_tau),
                             "mode": "global_tau",
-                            "low_tau": 3.0,
+                            "low_tau": low_tau,
                             "high_tau": None,
                             "polyak_tau": 0.0,
                         },
                         {
-                            "name": "03_global_tau10_polyak0",
+                            "name": _global_tau_variant_name(3, high_tau),
                             "mode": "global_tau",
-                            "low_tau": 10.0,
+                            "low_tau": high_tau,
                             "high_tau": None,
                             "polyak_tau": 0.0,
                         },
@@ -1312,8 +1451,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         text_prompt=text_prompt,
                         appearance_args=appearance_args,
                         local_texture_args=local_texture_args,
-                        low_tau=3.0,
-                        high_tau=10.0,
+                        low_tau=low_tau,
+                        high_tau=high_tau,
                         polyak_tau=polyak,
                         n_repaint_steps=n_repaint_steps,
                         texture_optim_steps=texture_optim_steps,
@@ -1325,8 +1464,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "command": local_variant_cmd,
                         "argv": [str(part) for part in local_variant_cmd[2:]],
                         "mode": "spaceflow_local_texture_routing",
-                        "low_tau": 3.0,
-                        "high_tau": 10.0,
+                        "low_tau": low_tau,
+                        "high_tau": high_tau,
                         "polyak_tau": polyak,
                         "n_repaint_steps": n_repaint_steps,
                         "texture_optim_steps": texture_optim_steps,
