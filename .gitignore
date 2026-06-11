@@ -113,3 +113,9 @@ examples/**/*.npy
 *.txt
 
 *.tar.xz
+
+# Output files from experiments, including visualizations and glbs.
+*.png
+*.pdf
+*.mp4
+*.glb
