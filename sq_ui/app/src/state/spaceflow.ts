@@ -78,6 +78,15 @@ export interface SpaceflowOutputFile {
   url: string;
 }
 
+export interface SpaceflowRunWarning {
+  kind?: string;
+  severity?: 'warning' | 'error' | 'info' | string;
+  message: string;
+  source?: string;
+  sq_indices?: number[];
+  sq_numbers?: number[];
+}
+
 export interface SpaceflowRunStatus {
   run_id: string;
   status: 'running' | 'cancelling' | 'cancelled' | 'succeeded' | 'failed' | 'dry_run' | string;
@@ -99,6 +108,7 @@ export interface SpaceflowRunStatus {
     texture_optim_steps?: number;
   }>;
   output_files?: SpaceflowOutputFile[];
+  warnings?: SpaceflowRunWarning[];
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -144,14 +154,15 @@ async function buildBundleForm(
   primitives: Primitive[],
   options: { lowTau: number; highTau: number; lowControlBBoxMargin?: number },
 ): Promise<{ form: FormData; bundle: SpaceflowSqBundleData }> {
+  const visiblePrimitives = primitives.filter(p => p.visible);
   const lowControlBBoxMargin = clampLowControlBBoxMargin(
     options.lowControlBBoxMargin ?? DEFAULT_LOW_CONTROL_BBOX_MARGIN,
   );
-  const bundle = buildSpaceflowSqBundleData(primitives, { lowControlBBoxMargin });
+  const bundle = buildSpaceflowSqBundleData(visiblePrimitives, { lowControlBBoxMargin });
   const blobs = await buildSpaceflowSqBundleBlobs(bundle);
   const form = new FormData();
   form.append('projectName', projectName);
-  form.append('manifest', JSON.stringify(manifestFor(projectName, primitives, bundle, {
+  form.append('manifest', JSON.stringify(manifestFor(projectName, visiblePrimitives, bundle, {
     lowTau: options.lowTau,
     highTau: options.highTau,
     lowControlBBoxMargin,

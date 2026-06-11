@@ -79,8 +79,6 @@ export default function ParameterPanel() {
   const primitives = useStore(s => s.primitives);
   const selectedId = useStore(s => s.selectedId);
   const updatePrimitive = useStore(s => s.updatePrimitive);
-  const previewResolution = useStore(s => s.previewResolution);
-  const setPreviewResolution = useStore(s => s.setPreviewResolution);
   const showNormalized = useStore(s => s.showNormalized);
   const setShowNormalized = useStore(s => s.setShowNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
@@ -173,9 +171,13 @@ export default function ParameterPanel() {
 
   const clearLocalTextureOverride = useCallback(() => {
     if (!prim) return;
-    updatePrimitive(prim.id, { localTextureText: '', localTextureImagePath: '' });
-    clearLocalTextureImageFile(prim.id);
-  }, [clearLocalTextureImageFile, prim, updatePrimitive]);
+    if (spaceflowTextureMode === 'image') {
+      updatePrimitive(prim.id, { localTextureImagePath: '' });
+      clearLocalTextureImageFile(prim.id);
+    } else {
+      updatePrimitive(prim.id, { localTextureText: '' });
+    }
+  }, [clearLocalTextureImageFile, prim, spaceflowTextureMode, updatePrimitive]);
 
   const scaleSliderMax = useMemo(() => {
     const maxScale = Math.max(...primitives.flatMap(p => p.scales), 0.05);
@@ -194,13 +196,6 @@ export default function ParameterPanel() {
         </div>
         <div className="section" style={{ marginTop: 'auto' }}>
           <div className="section-title">Preview</div>
-          <SliderRow
-            label="Resolution"
-            value={previewResolution}
-            onChange={setPreviewResolution}
-            min={16} max={128} step={4}
-            tooltip="Mesh quality for preview only (does not affect export)"
-          />
           <div className="checkbox-row">
             <label>
               <input
@@ -592,13 +587,6 @@ export default function ParameterPanel() {
 
       <div className="section">
         <div className="section-title">Preview</div>
-        <SliderRow
-          label="Resolution"
-          value={previewResolution}
-          onChange={setPreviewResolution}
-          min={16} max={128} step={4}
-          tooltip="Mesh quality for preview only (does not affect export)"
-        />
         <div className="checkbox-row">
           <label>
             <input

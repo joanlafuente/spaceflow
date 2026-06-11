@@ -36,6 +36,7 @@ const RENDER_EXPORT_HIGH_COLOR = '#f59e0b';
 const RENDER_EXPORT_LOW_COLOR = '#f8fafc';
 const RENDER_EXPORT_FRAME_FILL = 0.82;
 const RENDER_EXPORT_ALPHA_CUTOFF = 3;
+const PREVIEW_RESOLUTION = 48;
 
 type ThemeMode = 'dark' | 'light';
 const MESH_ILLUMINATION_STEP = 0.05;
@@ -760,7 +761,7 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
   const meshInspection = useStore(s => s.meshInspection);
   const meshIllumination = useStore(s => s.meshIllumination);
   const selectedId = useStore(s => s.selectedId);
-  const resolution = useStore(s => s.previewResolution);
+  const resolution = PREVIEW_RESOLUTION;
   const showNormalized = useStore(s => s.showNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
   const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);

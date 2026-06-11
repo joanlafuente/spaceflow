@@ -663,6 +663,29 @@ body {
   font-size: 12px;
 }
 
+.spaceflow-file-clear-btn {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  padding: 4px 9px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.spaceflow-file-clear-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.spaceflow-file-clear-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .spaceflow-number-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -777,6 +800,32 @@ textarea.spaceflow-experiment-prompt-input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.spaceflow-run-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: var(--radius);
+  background: rgba(245, 158, 11, 0.10);
+  color: var(--text-primary);
+}
+
+.spaceflow-run-warnings span {
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.spaceflow-run-warnings p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .spaceflow-stage-pill {

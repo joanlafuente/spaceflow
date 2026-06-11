@@ -124,7 +124,7 @@ export function buildLowControlBoundingBoxPrimitive(
   bbox: SpaceflowBBox;
 } {
   const bbox = paddedBBoxFromLowPrimitives(
-    primitives.filter(p => p.controlLevel === 'low'),
+    primitives.filter(p => p.visible && p.controlLevel === 'low'),
     marginFraction,
   );
 
@@ -147,14 +147,15 @@ export function buildSpaceflowSqBundleData(
   primitives: Primitive[],
   options: { lowControlBBoxMargin?: number } = {},
 ): SpaceflowSqBundleData {
-  if (primitives.length === 0) throw new Error('No primitives to save.');
+  const visiblePrimitives = primitives.filter(p => p.visible);
+  if (visiblePrimitives.length === 0) throw new Error('No visible primitives to save.');
   const bboxMarginFraction = clampLowControlBBoxMargin(
     options.lowControlBBoxMargin ?? DEFAULT_LOW_CONTROL_BBOX_MARGIN,
   );
-  const all = primitives.map(primitiveToExport);
-  const highControl = primitives.filter(p => p.controlLevel === 'high').map(primitiveToExport);
+  const all = visiblePrimitives.map(primitiveToExport);
+  const highControl = visiblePrimitives.filter(p => p.controlLevel === 'high').map(primitiveToExport);
   const { primitive: lowControlBbox, bbox } = buildLowControlBoundingBoxPrimitive(
-    primitives,
+    visiblePrimitives,
     bboxMarginFraction,
   );
   return {
@@ -164,9 +165,9 @@ export function buildSpaceflowSqBundleData(
     bbox,
     bboxMarginFraction,
     counts: {
-      all: primitives.length,
+      all: visiblePrimitives.length,
       high: highControl.length,
-      low: primitives.filter(p => p.controlLevel === 'low').length,
+      low: visiblePrimitives.filter(p => p.controlLevel === 'low').length,
     },
   };
 }

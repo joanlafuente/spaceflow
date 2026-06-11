@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import textwrap
 from pathlib import Path
 
@@ -299,6 +300,67 @@ def condition_image_tiles(run_dir: Path, meta: dict[str, object]) -> list[dict[s
     return tiles
 
 
+def _warning_message(raw: object) -> str:
+    if isinstance(raw, str):
+        return raw.strip()
+    if isinstance(raw, dict):
+        return str(raw.get("message") or "").strip()
+    return ""
+
+
+def _routing_warnings_from_file(path: Path) -> list[str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    items = raw.get("warnings") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return []
+    return [message for message in (_warning_message(item) for item in items) if message]
+
+
+def _routing_warnings_from_log(log_path: Path) -> list[str]:
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    pattern = re.compile(
+        r"Local (?P<kind>text|image) condition\(s\) for SQ\(s\) "
+        r"\[(?P<indices>[^\]]+)\] have zero routed cells"
+    )
+    warnings = []
+    for match in pattern.finditer(text):
+        indices = []
+        for token in match.group("indices").split(","):
+            try:
+                indices.append(int(token.strip()))
+            except ValueError:
+                pass
+        if not indices:
+            continue
+        sq_label = ", ".join(str(index + 1) for index in indices)
+        warnings.append(
+            f"Local {match.group('kind')} prompt(s) for SQs {sq_label} "
+            "received zero routed cells; those local overrides had no effect."
+        )
+    return warnings
+
+
+def routing_warning_messages(run_dir: Path) -> list[str]:
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for warning_path in sorted((run_dir / "output").rglob("routing_warnings.json")):
+        for message in _routing_warnings_from_file(warning_path):
+            if message not in seen:
+                warnings.append(message)
+                seen.add(message)
+    for message in _routing_warnings_from_log(run_dir / "spaceflow.log"):
+        if message not in seen:
+            warnings.append(message)
+            seen.add(message)
+    return warnings
+
+
 def _ellipsize(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
@@ -358,7 +420,7 @@ def draw_condition_strip(fig: plt.Figure, tiles: list[dict[str, object]]) -> Non
         x += tile_width + gap
 
 
-def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
+def prompt_footer(run_dir: Path, meta: dict[str, object], manifest: dict[str, object]) -> str:
     primitives = primitive_rows(manifest)
     mode, local_conditions, global_condition = texture_conditions(meta, len(primitives))
     global_line = f"Global {mode} condition: {global_condition}"
@@ -371,7 +433,9 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
         flat_prompt = str(run_config.get("flattenedTextPrompt") or "").strip()
     flat_line = f"\nFlattened TRELLIS prompt: {flat_prompt}" if experiment_type_from_meta(meta) == "texture" and flat_prompt else ""
     if not primitives:
-        return global_line + flat_line
+        footer = global_line + flat_line
+        warning_lines = [f"Warning: {message}" for message in routing_warning_messages(run_dir)]
+        return footer + ("\n" + "\n".join(warning_lines) if warning_lines else "")
 
     pieces = []
     for row in primitives:
@@ -379,7 +443,9 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
         local = local_conditions[index] if index < len(local_conditions) else ""
         condition = local or f"global ({global_condition})"
         pieces.append(f"{index + 1}. {row['name']} [{row['controlLevel']}]: {condition}")
-    return global_line + "\nSQ conditions: " + "; ".join(pieces) + flat_line
+    footer = global_line + "\nSQ conditions: " + "; ".join(pieces) + flat_line
+    warning_lines = [f"Warning: {message}" for message in routing_warning_messages(run_dir)]
+    return footer + ("\n" + "\n".join(warning_lines) if warning_lines else "")
 
 
 def sq_mesh_path(run_dir: Path, meta: dict[str, object] | None = None) -> Path | None:
@@ -956,7 +1022,7 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         elev,
         meshes,
         title_for(run_dir),
-        prompt_footer(meta, manifest),
+        prompt_footer(run_dir, meta, manifest),
         condition_image_tiles(run_dir, meta),
     )
 
@@ -990,7 +1056,7 @@ def render_single_result(run_dir: Path, output_name: str, azim: float, elev: flo
         elev,
         meshes,
         single_title_for(run_dir),
-        prompt_footer(meta, manifest),
+        prompt_footer(run_dir, meta, manifest),
         condition_image_tiles(run_dir, meta),
     )
 

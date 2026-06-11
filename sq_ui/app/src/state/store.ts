@@ -50,7 +50,6 @@ interface HistoryEntry {
 export interface AppState {
   primitives: Primitive[];
   selectedId: string | null;
-  previewResolution: number;
   showNormalized: boolean;
   showControlPreview: boolean;
   lowControlBBoxMargin: number;
@@ -70,7 +69,6 @@ export interface AppState {
   /** Push current primitives/selection as one undo step (e.g. once at drag start). */
   pushUndoSnapshot: () => void;
   reorderPrimitives: (fromIndex: number, toIndex: number) => void;
-  setPreviewResolution: (res: number) => void;
   setShowNormalized: (v: boolean) => void;
   setShowControlPreview: (v: boolean) => void;
   setLowControlBBoxMargin: (v: number) => void;
@@ -185,7 +183,6 @@ export const PRESETS: Record<string, () => Partial<Primitive>> = {
 export const useStore = create<AppState>((set, get) => ({
   primitives: [],
   selectedId: null,
-  previewResolution: 48,
   showNormalized: false,
   showControlPreview: true,
   lowControlBBoxMargin: DEFAULT_LOW_CONTROL_BBOX_MARGIN,
@@ -282,7 +279,6 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  setPreviewResolution: (res) => set({ previewResolution: res }),
   setShowNormalized: (v) => set({ showNormalized: v }),
   setShowControlPreview: (v) => set({ showControlPreview: v }),
   setLowControlBBoxMargin: (v) => set({ lowControlBBoxMargin: clampLowControlBBoxMargin(v) }),
