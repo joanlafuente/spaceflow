@@ -219,7 +219,7 @@ const DEMO_PRESETS: DemoPreset[] = [
     texturePrompt: 'white comfy chair',
     outputName: 'chair',
     npzUrl: '/demo-presets/chair.npz',
-    imageUrl: '/demo-presets/chair.png',
+    imageUrl: '/demo-presets/chair.png?v=sq-render-2',
   },
   {
     id: 'car',
@@ -228,7 +228,7 @@ const DEMO_PRESETS: DemoPreset[] = [
     texturePrompt: 'A car',
     outputName: 'car',
     npzUrl: '/demo-presets/car.npz',
-    imageUrl: '/demo-presets/car.png',
+    imageUrl: '/demo-presets/car.png?v=sq-render-2',
   },
   {
     id: 'bench',
@@ -237,7 +237,7 @@ const DEMO_PRESETS: DemoPreset[] = [
     texturePrompt: 'An elegant legged bench',
     outputName: 'bench',
     npzUrl: '/demo-presets/bench.npz',
-    imageUrl: '/demo-presets/bench.png',
+    imageUrl: '/demo-presets/bench.png?v=sq-render-2',
   },
   {
     id: 'trophy',
@@ -246,7 +246,7 @@ const DEMO_PRESETS: DemoPreset[] = [
     texturePrompt: 'A gold trophy',
     outputName: 'trophy',
     npzUrl: '/demo-presets/trophy.npz',
-    imageUrl: '/demo-presets/trophy.png',
+    imageUrl: '/demo-presets/trophy.png?v=sq-render-2',
   },
 ];
 

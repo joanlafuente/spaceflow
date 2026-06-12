@@ -383,7 +383,7 @@ body {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: contain;
-  background: #fff;
+  background: var(--bg-base);
   border-radius: 4px;
 }
 
