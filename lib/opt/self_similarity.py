@@ -1,4 +1,5 @@
 import copy
+import json
 import os.path as osp
 from PIL import Image
 import numpy as np
@@ -151,6 +152,24 @@ def _active_route_coverage(sq_counts, active_indices):
 def _format_nonzero_counts(counts):
     nonzero = {idx: count for idx, count in counts.items() if count > 0}
     return nonzero if nonzero else {}
+
+def _write_routing_warning(output_dir, warning):
+    warning_path = osp.join(output_dir, "routing_warnings.json")
+    try:
+        if osp.isfile(warning_path):
+            with open(warning_path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        else:
+            payload = {"warnings": []}
+        warnings = payload.get("warnings")
+        if not isinstance(warnings, list):
+            warnings = []
+            payload["warnings"] = warnings
+        warnings.append(warning)
+        with open(warning_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Could not write routing warning metadata: %s", exc)
 
 def _choose_local_routing(struct_coords, individual_sq_meshes, struct_labels, active_indices, device='cuda'):
     clustered = compute_coords_dense_indices(
@@ -427,8 +446,14 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
                 )
         else:  # 'image'
             local_embs = []
-            for path in local_prompts:
+            for sq_idx, path in enumerate(local_prompts):
+                path = str(path or '').strip()
                 if path:
+                    log.info(
+                        "Local image condition for SQ %d: %s",
+                        sq_idx,
+                        path,
+                    )
                     local_image = _preprocess_condition_image(generation_pipeline, path)
                     local_embs.append(generation_pipeline.encode_image([local_image]))
                 else:
@@ -472,6 +497,51 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             max_dilation=local_condition_max_dilation,
         )
         condition_counts = _dense_condition_counts(coords_dense_indices, len(cond_list))
+        missing_condition_sqs = [
+            condition_to_sq.get(cond_idx, 'unknown')
+            for cond_idx in range(1, len(cond_list))
+            if condition_counts.get(cond_idx, 0) == 0
+        ]
+        if missing_condition_sqs:
+            missing_sq_numbers = [
+                sq_idx + 1 if isinstance(sq_idx, int) else sq_idx
+                for sq_idx in missing_condition_sqs
+            ]
+            sq_label = ", ".join(str(sq_num) for sq_num in missing_sq_numbers)
+            warning_message = (
+                f"Local {local_prompt_type} prompt(s) for SQs {sq_label} "
+                "received zero routed cells; those local overrides had no effect."
+            )
+            log.warning(
+                "Local %s condition(s) for SQ(s) %s have zero routed cells; "
+                "those local overrides will have no effect. Check condition_routing.mp4 "
+                "or enlarge/adjust the selected superquadric.",
+                local_prompt_type,
+                missing_condition_sqs,
+            )
+            _write_routing_warning(
+                output_dir,
+                {
+                    "kind": "local_routing_zero_cells",
+                    "severity": "warning",
+                    "message": warning_message,
+                    "local_prompt_type": local_prompt_type,
+                    "sq_indices": [
+                        sq_idx for sq_idx in missing_condition_sqs
+                        if isinstance(sq_idx, int)
+                    ],
+                    "sq_numbers": missing_sq_numbers,
+                    "routing_source": routing_source,
+                    "active_sq_counts": {
+                        str(idx + 1): int(sq_route_counts.get(idx, 0))
+                        for idx in active_indices
+                    },
+                    "condition_counts": {
+                        str(cond_idx): int(count)
+                        for cond_idx, count in condition_counts.items()
+                    },
+                },
+            )
         active_sq_counts = {idx: sq_route_counts.get(idx, 0) for idx in active_indices}
         log.info(
             f"Local routing source: {routing_source}; active SQ counts: {active_sq_counts}"
@@ -502,6 +572,22 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
         log.info("Skipping condition routing visualization; routing indices are still used for local conditioning.")
         torch.cuda.empty_cache()
         log.info("Prepared local condition routing in %.2fs", time.perf_counter() - local_start)
+
+        # condition routing visualization for routing
+        log.info("Visualizing condition routing on structure mesh...")
+        import trimesh
+        from lib.util.visualization import visualize_and_save, map_voxel_labels_to_vertices
+        _sv_norm = ((struct_coords[:, 1:].float() + 0.5) / 64 - 0.5).cpu().numpy()
+        _sq_labels = coords_dense_indices[0, 0,
+            struct_coords[:, 1] // 2,
+            struct_coords[:, 2] // 2,
+            struct_coords[:, 3] // 2].cpu().numpy()
+        _mesh_vis = trimesh.load(osp.join(output_dir, 'struct_renders', 'mesh.ply'), force='mesh')
+        _vtx_labels = map_voxel_labels_to_vertices(_mesh_vis.vertices, _sv_norm, _sq_labels)
+        visualize_and_save(_mesh_vis, _vtx_labels, output_dir, output_name='condition_routing.mp4')
+        del _sv_norm, _sq_labels, _mesh_vis, _vtx_labels
+        torch.cuda.empty_cache()
+
     else:
         log.info("No local SQ texture overrides provided; all voxels use the global condition.")
 
@@ -558,9 +644,13 @@ def optimize_self_similarity(cfg, app, app_type, output_dir,
             
         sample = out.pred_x_prev
         struct_feats_params.data = sample.feats
-        
+
+        # guideflow loss put to 0
+        if cfg.sim_guidance.loss_weight == 0:
+            feats = struct_feats_params.detach() * std + mean
+    
         # Optimization - Structure Loss
-        if iteration < len(t_pairs) - 1:
+        if cfg.sim_guidance.loss_weight > 0 and iteration < len(t_pairs) - 1:
             struct_loss = chunked_contrastive_loss(struct_feats_params[None, None, ...], struct_labels)
 
             total_loss = cfg.sim_guidance.loss_weight * struct_loss
