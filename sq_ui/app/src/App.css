@@ -349,6 +349,62 @@ body {
   overflow: hidden;
 }
 
+.demo-preset-menu {
+  min-width: 260px;
+}
+
+.demo-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.demo-preset-item {
+  display: block;
+  min-width: 0;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.demo-preset-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.demo-preset-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.demo-preset-label {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-separator {
+  height: 1px;
+  margin: 0;
+  background: var(--border);
+}
+
 .dropdown-item {
   display: block;
   width: 100%;

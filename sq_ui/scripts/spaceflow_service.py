@@ -14,6 +14,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import warnings
 from pathlib import Path
@@ -26,7 +27,10 @@ with warnings.catch_warnings():
 
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
+HOST = os.environ.get("SQ_SPACEFLOW_HOST", "0.0.0.0").strip() or "0.0.0.0"
 PORT = int(os.environ.get("SQ_SPACEFLOW_PORT", "11438"))
+CORS_ORIGIN = os.environ.get("SQ_SPACEFLOW_CORS_ORIGIN", "*").strip()
+PUBLIC_DEMO = os.environ.get("SQ_SPACEFLOW_PUBLIC_DEMO", "").strip().lower() in {"1", "true", "yes", "on"}
 USER = os.environ.get("USER", "user")
 DEFAULT_STORAGE_ROOT = REPO_ROOT / "spaceflow_runtime"
 TEAM_STORAGE_ROOT = Path(
@@ -38,6 +42,15 @@ SAVE_ROOT = Path(
 RUN_ROOT = Path(
     os.environ.get("SQ_SPACEFLOW_RUN_ROOT", str(TEAM_STORAGE_ROOT / "sq_ui_runs"))
 ).expanduser()
+MAX_ACTIVE_RUNS = max(0, int(os.environ.get("SQ_SPACEFLOW_MAX_ACTIVE_RUNS", "0") or "0"))
+RETENTION_HOURS = max(
+    0.0,
+    float(os.environ.get("SQ_SPACEFLOW_RETENTION_HOURS", "48" if PUBLIC_DEMO else "0") or "0"),
+)
+MAX_STORAGE_GB = max(
+    0.0,
+    float(os.environ.get("SQ_SPACEFLOW_MAX_STORAGE_GB", "40" if PUBLIC_DEMO else "0") or "0"),
+)
 RUN_TIMEOUT = int(os.environ.get("SQ_SPACEFLOW_TIMEOUT_SEC", "7200"))
 STOP_GRACE_SEC = float(os.environ.get("SQ_SPACEFLOW_STOP_GRACE_SEC", "8"))
 FORCE_LOCAL = os.environ.get("SQ_SPACEFLOW_FORCE_LOCAL", "").strip() == "1"
@@ -83,6 +96,9 @@ def _default_python_bin() -> str:
 
 PYTHON_BIN = _default_python_bin()
 RUNS: dict[str, subprocess.Popen[bytes]] = {}
+RUN_LOCK = threading.Lock()
+ACTIVE_RUN_STATUSES = {"running", "cancelling"}
+CLEANUP_RUN_STATUSES = {"succeeded", "failed", "cancelled", "dry_run"}
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 KNOWN_OUTPUTS = [
     "input_superquadrics_all.npz",
@@ -106,6 +122,7 @@ KNOWN_OUTPUTS = [
     "voxels/struct_voxels.ply",
     "app_image.png",
 ]
+PUBLIC_DEMO_FINAL_OUTPUT = os.environ.get("SQ_SPACEFLOW_PUBLIC_FINAL_OUTPUT", "out_sim.glb").strip() or "out_sim.glb"
 
 
 def _send_file(res: http.server.BaseHTTPRequestHandler, file_path: Path) -> None:
@@ -439,18 +456,6 @@ def _write_command_script(script_path: Path, cmd: list[str]) -> None:
 
 
 def _write_single_run_script(script_path: Path, cmd: list[str], run_dir: Path) -> None:
-    render_cmd = [
-        PYTHON_BIN,
-        str(REPO_ROOT / "sq_ui" / "scripts" / "render_spaceflow_experiment_comparison.py"),
-        "--single",
-        str(run_dir),
-        "--output-name",
-        "output/variant_comparison_lower_camera.png",
-        "--azim",
-        "0.0",
-        "--elev",
-        "55.0",
-    ]
     lines = [
         "#!/usr/bin/env bash",
         "set -uo pipefail",
@@ -459,17 +464,32 @@ def _write_single_run_script(script_path: Path, cmd: list[str], run_dir: Path) -
         shlex.join([str(part) for part in cmd]),
         "spaceflow_status=$?",
         'sf_log "SpaceFlow command exited with status $spaceflow_status in $((SECONDS - spaceflow_start))s"',
-        'if [ "$spaceflow_status" -eq 0 ]; then',
-        "  render_start=$SECONDS",
-        '  sf_log "Rendering tau-by-parts summary figure..."',
-        f"  if {shlex.join([str(part) for part in render_cmd])}; then",
-        '    sf_log "Rendered tau-by-parts summary figure in $((SECONDS - render_start))s."',
-        "  else",
-        '    sf_log "Warning: tau-by-parts summary render failed after $((SECONDS - render_start))s."',
-        "  fi",
-        "fi",
         'exit "$spaceflow_status"',
     ]
+    if not PUBLIC_DEMO:
+        render_cmd = [
+            PYTHON_BIN,
+            str(REPO_ROOT / "sq_ui" / "scripts" / "render_spaceflow_experiment_comparison.py"),
+            "--single",
+            str(run_dir),
+            "--output-name",
+            "output/variant_comparison_lower_camera.png",
+            "--azim",
+            "0.0",
+            "--elev",
+            "55.0",
+        ]
+        lines[-1:-1] = [
+            'if [ "$spaceflow_status" -eq 0 ]; then',
+            "  render_start=$SECONDS",
+            '  sf_log "Rendering tau-by-parts summary figure..."',
+            f"  if {shlex.join([str(part) for part in render_cmd])}; then",
+            '    sf_log "Rendered tau-by-parts summary figure in $((SECONDS - render_start))s."',
+            "  else",
+            '    sf_log "Warning: tau-by-parts summary render failed after $((SECONDS - render_start))s."',
+            "  fi",
+            "fi",
+        ]
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     script_path.chmod(0o755)
 
@@ -494,7 +514,7 @@ def _write_experiment_runner_config(
         "run_dir": str(config_path.parent),
         "variants": runner_variants,
         "comparison": {
-            "enabled": True,
+            "enabled": not PUBLIC_DEMO,
             "output_name": "output/variant_comparison_lower_camera.png",
             "azim": 0.0,
             "elev": 55.0,
@@ -925,6 +945,61 @@ def _run_file_url(run_id: str, relative_path: str) -> str:
     return f"/spaceflow/runs/file?run_id={quote(run_id)}&path={quote(relative_path)}"
 
 
+def _public_demo_variant_priority(variant: object, index: int) -> tuple[int, int]:
+    if not isinstance(variant, dict):
+        return (100, index)
+    mode = str(variant.get("mode") or "").strip().lower()
+    name = str(variant.get("name") or "").strip().lower()
+    if mode == "spaceflow_local_texture_routing" or name.startswith("01_spaceflow_local_texture_routing"):
+        return (0, index)
+    if mode == "local_tau" or name.startswith("01_local"):
+        return (1, index)
+    if name.startswith("01_"):
+        return (2, index)
+    return (50, index)
+
+
+def _public_demo_final_output_paths(meta: dict[str, object], output_dir: Path) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[str] = set()
+
+    def add(path: Path) -> None:
+        key = str(path)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(path)
+
+    add(output_dir / PUBLIC_DEMO_FINAL_OUTPUT)
+    variants = meta.get("experiment_variants")
+    if isinstance(variants, list):
+        ordered = sorted(enumerate(variants), key=lambda item: _public_demo_variant_priority(item[1], item[0]))
+        for _, variant in ordered:
+            if not isinstance(variant, dict):
+                continue
+            raw = str(variant.get("output_dir") or "").strip()
+            if not raw:
+                continue
+            variant_output_dir = Path(raw)
+            if not variant_output_dir.is_absolute():
+                variant_output_dir = output_dir / variant_output_dir
+            add(variant_output_dir / PUBLIC_DEMO_FINAL_OUTPUT)
+
+    add(output_dir / "01_spaceflow_local_texture_routing" / PUBLIC_DEMO_FINAL_OUTPUT)
+    return candidates
+
+
+def _public_demo_allowed_output_rel_paths(meta: dict[str, object], output_dir: Path) -> set[str]:
+    output_root = output_dir.resolve()
+    allowed: set[str] = set()
+    for path in _public_demo_final_output_paths(meta, output_dir):
+        try:
+            allowed.add(path.resolve().relative_to(output_root).as_posix())
+        except ValueError:
+            continue
+    return allowed
+
+
 def _list_output_files(meta: dict[str, object]) -> list[dict[str, object]]:
     output_dir_raw = str(meta.get("output_dir") or "")
     if not output_dir_raw:
@@ -959,6 +1034,11 @@ def _list_output_files(meta: dict[str, object]) -> list[dict[str, object]]:
                 "url": _run_file_url(run_id, rel) if run_id else "",
             }
         )
+
+    if PUBLIC_DEMO:
+        for path in _public_demo_final_output_paths(meta, output_dir):
+            add(path)
+        return files
 
     for rel in KNOWN_OUTPUTS:
         add(output_dir / rel)
@@ -1070,7 +1150,7 @@ def _collect_run_warnings(meta: dict[str, object]) -> list[dict[str, object]]:
     warnings: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
 
-    if output_dir_raw:
+    if output_dir_raw and not PUBLIC_DEMO:
         output_dir = Path(output_dir_raw)
         if output_dir.is_dir():
             for warning_path in sorted(output_dir.rglob("routing_warnings.json")):
@@ -1097,7 +1177,7 @@ def _run_with_outputs(meta: dict[str, object]) -> dict[str, object]:
 
 
 def _reconcile_untracked_run(meta: dict[str, object]) -> tuple[dict[str, object], bool]:
-    if meta.get("status") != "running":
+    if not _is_active_status(meta.get("status")):
         return meta, False
     log_text = _log_tail(str(meta.get("log_path", "")), 12000)
     lower = log_text.lower()
@@ -1112,6 +1192,12 @@ def _reconcile_untracked_run(meta: dict[str, object]) -> tuple[dict[str, object]
         "exited with exit code",
         "cuda out of memory",
         "failed with code",
+        "cancelled at",
+        "job step aborted",
+        "task 0: terminated",
+        "exited with status 1",
+        "exited with status 2",
+        "exited with status 88",
     ]
     if any(marker in lower for marker in failure_markers):
         meta = dict(meta)
@@ -1121,20 +1207,197 @@ def _reconcile_untracked_run(meta: dict[str, object]) -> tuple[dict[str, object]
     success_markers = [
         "structure-only mode complete",
         "[experiment] completed spaceflow experiment",
+        "completed spaceflow run",
+        "spaceflow command exited with status 0",
+        "rendered tau-by-parts summary figure",
     ]
     if any(marker in lower for marker in success_markers) and _list_output_files(meta):
         meta = dict(meta)
         meta["status"] = "succeeded"
         meta.setdefault("returncode", 0)
         return meta, True
+    last_activity = _run_last_activity_time(meta)
+    if last_activity and time.time() - last_activity > RUN_TIMEOUT:
+        meta = dict(meta)
+        meta["status"] = "succeeded" if _list_output_files(meta) else "failed"
+        meta.setdefault("returncode", 0 if meta["status"] == "succeeded" else -1)
+        return meta, True
     return meta, False
+
+
+def _run_last_activity_time(meta: dict[str, object]) -> float:
+    candidates: list[float] = []
+    for key in ("log_path", "output_dir"):
+        raw = str(meta.get(key) or "")
+        if not raw:
+            continue
+        path = Path(raw)
+        try:
+            candidates.append(path.stat().st_mtime)
+        except OSError:
+            pass
+    run_id = str(meta.get("run_id") or "")
+    if run_id:
+        try:
+            candidates.append(_run_meta_path(run_id).stat().st_mtime)
+        except OSError:
+            pass
+    return max(candidates) if candidates else 0.0
+
+
+def _is_active_status(status: object) -> bool:
+    return str(status or "").strip().lower() in ACTIVE_RUN_STATUSES
+
+
+def _reconcile_run_state(run_id: str, meta: dict[str, object]) -> dict[str, object]:
+    meta = dict(meta)
+    changed = False
+    proc = RUNS.get(run_id)
+    if proc is not None:
+        code = proc.poll()
+        if code is None:
+            if meta.get("cancel_requested"):
+                stop_requested_at = float(meta.get("stop_requested_at") or 0)
+                if stop_requested_at and time.time() - stop_requested_at > STOP_GRACE_SEC:
+                    _signal_run_process(proc, signal.SIGKILL)
+                next_status = "cancelling"
+            else:
+                next_status = "running"
+            if meta.get("status") != next_status:
+                meta["status"] = next_status
+                changed = True
+        else:
+            next_status = "cancelled" if meta.get("cancel_requested") else ("succeeded" if code == 0 else "failed")
+            if meta.get("status") != next_status or meta.get("returncode") != code:
+                meta["status"] = next_status
+                meta["returncode"] = code
+                changed = True
+            RUNS.pop(run_id, None)
+    else:
+        meta, changed = _reconcile_untracked_run(meta)
+    if changed:
+        _write_run_meta(run_id, meta)
+    return meta
+
+
+def _active_run_ids() -> list[str]:
+    active: set[str] = set()
+    for run_id in list(RUNS.keys()):
+        meta = _read_run_meta(run_id) or {"run_id": run_id, "status": "running"}
+        meta = _reconcile_run_state(run_id, meta)
+        if _is_active_status(meta.get("status")):
+            active.add(run_id)
+
+    if RUN_ROOT.is_dir():
+        for meta_path in RUN_ROOT.glob("*/run_meta.json"):
+            run_id = meta_path.parent.name
+            if run_id in active:
+                continue
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(meta, dict):
+                continue
+            meta = _reconcile_run_state(run_id, meta)
+            if _is_active_status(meta.get("status")):
+                active.add(run_id)
+    return sorted(active)
+
+
+def _dir_size_bytes(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return total
+    for item in path.rglob("*"):
+        try:
+            if item.is_file() or item.is_symlink():
+                total += item.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _cleanup_run_records(active_run_ids: set[str]) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    if not RUN_ROOT.is_dir():
+        return records
+    for meta_path in RUN_ROOT.glob("*/run_meta.json"):
+        run_dir = meta_path.parent
+        run_id = run_dir.name
+        if run_id in active_run_ids:
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            stat = run_dir.stat()
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        status = str(meta.get("status") or "").strip().lower()
+        if status in ACTIVE_RUN_STATUSES or status not in CLEANUP_RUN_STATUSES:
+            continue
+        records.append({
+            "run_id": run_id,
+            "path": run_dir,
+            "status": status,
+            "mtime": stat.st_mtime,
+            "size": _dir_size_bytes(run_dir),
+        })
+    records.sort(key=lambda item: float(item["mtime"]))
+    return records
+
+
+def _delete_run_dir(record: dict[str, object], reason: str) -> bool:
+    run_dir = record["path"]
+    if not isinstance(run_dir, Path):
+        return False
+    try:
+        shutil.rmtree(run_dir)
+        print(
+            f"[sq-spaceflow] Cleanup removed {record.get('run_id')} "
+            f"({record.get('status')}, {reason})",
+            flush=True,
+        )
+        return True
+    except OSError as exc:
+        print(f"[sq-spaceflow] Cleanup could not remove {run_dir}: {exc}", flush=True)
+        return False
+
+
+def _cleanup_old_runs() -> None:
+    if RETENTION_HOURS <= 0 and MAX_STORAGE_GB <= 0:
+        return
+    RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    active = set(_active_run_ids())
+    records = _cleanup_run_records(active)
+
+    if RETENTION_HOURS > 0:
+        cutoff = time.time() - RETENTION_HOURS * 3600
+        kept: list[dict[str, object]] = []
+        for record in records:
+            if float(record["mtime"]) < cutoff:
+                _delete_run_dir(record, f"older than {RETENTION_HOURS:g}h")
+            else:
+                kept.append(record)
+        records = kept
+
+    if MAX_STORAGE_GB > 0:
+        limit_bytes = int(MAX_STORAGE_GB * 1024 * 1024 * 1024)
+        total_bytes = _dir_size_bytes(RUN_ROOT)
+        for record in records:
+            if total_bytes <= limit_bytes:
+                break
+            if _delete_run_dir(record, f"storage over {MAX_STORAGE_GB:g}GB"):
+                total_bytes -= int(record["size"])
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "SpaceFlowUIService/0.1"
 
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if CORS_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
@@ -1236,7 +1499,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
         _send_file(self, file_path)
 
     def _handle_run_start(self) -> None:
+        with RUN_LOCK:
+            self._handle_run_start_locked()
+
+    def _handle_run_start_locked(self) -> None:
         try:
+            _cleanup_old_runs()
+            if MAX_ACTIVE_RUNS > 0:
+                active_run_ids = _active_run_ids()
+                if len(active_run_ids) >= MAX_ACTIVE_RUNS:
+                    self._send_json(
+                        409,
+                        {
+                            "error": {
+                                "message": "GPU busy: another SpaceFlow run is active. Try again when it finishes.",
+                                "active_run_ids": active_run_ids,
+                            }
+                        },
+                    )
+                    return
             form = self._multipart_form()
             run_config = _read_json_field(form, "runConfig", {})
             if not isinstance(run_config, dict):
@@ -1625,28 +1906,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not meta:
             self._send_json(404, {"error": {"message": f"Unknown run_id: {run_id}"}})
             return
-        proc = RUNS.get(run_id)
-        if proc is not None:
-            code = proc.poll()
-            if code is None:
-                if meta.get("cancel_requested"):
-                    stop_requested_at = float(meta.get("stop_requested_at") or 0)
-                    if stop_requested_at and time.time() - stop_requested_at > STOP_GRACE_SEC:
-                        _signal_run_process(proc, signal.SIGKILL)
-                        meta["status"] = "cancelling"
-                    else:
-                        meta["status"] = "cancelling"
-                else:
-                    meta["status"] = "running"
-            else:
-                meta["status"] = "cancelled" if meta.get("cancel_requested") else ("succeeded" if code == 0 else "failed")
-                meta["returncode"] = code
-                RUNS.pop(run_id, None)
-                _write_run_meta(run_id, meta)
-        else:
-            meta, changed = _reconcile_untracked_run(meta)
-            if changed:
-                _write_run_meta(run_id, meta)
+        meta = _reconcile_run_state(run_id, meta)
         log_tail = _log_tail(str(meta.get("log_path", "")))
         self._send_json(200, {"status": "ok", "run": _run_with_outputs(meta), "log_tail": log_tail})
 
@@ -1714,6 +1974,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send_json(403, {"error": {"message": str(exc)}})
             return
+        if PUBLIC_DEMO:
+            try:
+                normalized_rel = file_path.relative_to(output_dir).as_posix()
+            except ValueError:
+                self._send_json(403, {"error": {"message": "Requested file is outside the run output directory"}})
+                return
+            if normalized_rel not in _public_demo_allowed_output_rel_paths(meta, output_dir):
+                self._send_json(
+                    403,
+                    {"error": {"message": f"Public demo only exposes the final {PUBLIC_DEMO_FINAL_OUTPUT} output."}},
+                )
+                return
         if not file_path.is_file():
             self._send_json(404, {"error": {"message": f"Run output file not found: {rel_path}"}})
             return
@@ -1724,6 +1996,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(code)
         self._cors()
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(payload)
 
@@ -1731,12 +2005,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def main() -> None:
     for path in (SAVE_ROOT, RUN_ROOT):
         path.mkdir(parents=True, exist_ok=True)
-    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    _cleanup_old_runs()
+    server = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     print(
-        f"[sq-spaceflow] Listening on 0.0.0.0:{PORT}\n"
+        f"[sq-spaceflow] Listening on {HOST}:{PORT}\n"
         f"[sq-spaceflow] Service host: {socket.getfqdn()}\n"
         f"[sq-spaceflow] Allocated hosts: {', '.join(sorted(_allocated_hostnames())) or 'none'}\n"
         f"[sq-spaceflow] Launch mode: {'srun' if _should_use_srun() else 'local'}\n"
+        f"[sq-spaceflow] Public demo: {PUBLIC_DEMO} max_active_runs={MAX_ACTIVE_RUNS or 'unlimited'} cleanup_retention_h={RETENTION_HOURS:g} cleanup_max_gb={MAX_STORAGE_GB:g}\n"
         f"[sq-spaceflow] Asset root: {SAVE_ROOT}\n"
         f"[sq-spaceflow] Run root: {RUN_ROOT}\n"
         f"[sq-spaceflow] Cache root: {CACHE_ROOT}\n"

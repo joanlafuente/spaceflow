@@ -30,6 +30,16 @@ interface DownloadableGlbMesh {
   label: string;
 }
 
+interface DemoPreset {
+  id: string;
+  label: string;
+  prompt: string;
+  texturePrompt: string;
+  outputName: string;
+  npzUrl: string;
+  imageUrl: string;
+}
+
 interface TopBarProps {
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
@@ -198,6 +208,47 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
 }
 
 let nextPresetId = 0;
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
+
+const DEMO_PRESETS: DemoPreset[] = [
+  {
+    id: 'chair',
+    label: 'Chair',
+    prompt: 'A comfy chair',
+    texturePrompt: 'white comfy chair',
+    outputName: 'chair',
+    npzUrl: '/demo-presets/chair.npz',
+    imageUrl: '/demo-presets/chair.png',
+  },
+  {
+    id: 'car',
+    label: 'Car',
+    prompt: 'A car',
+    texturePrompt: 'A car',
+    outputName: 'car',
+    npzUrl: '/demo-presets/car.npz',
+    imageUrl: '/demo-presets/car.png',
+  },
+  {
+    id: 'bench',
+    label: 'Bench',
+    prompt: 'An elegant legged bench',
+    texturePrompt: 'An elegant legged bench',
+    outputName: 'bench',
+    npzUrl: '/demo-presets/bench.npz',
+    imageUrl: '/demo-presets/bench.png',
+  },
+  {
+    id: 'trophy',
+    label: 'Trophy',
+    prompt: 'A gold trophy',
+    texturePrompt: 'A gold trophy',
+    outputName: 'trophy',
+    npzUrl: '/demo-presets/trophy.npz',
+    imageUrl: '/demo-presets/trophy.png',
+  },
+];
 
 export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
@@ -260,7 +311,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       url: resolveSpaceflowUrl(meshFile.url),
       name: outputFileLabel(meshFile),
       runId: run.run_id,
-      path: meshFile.path,
+      path: PUBLIC_DEMO ? undefined : meshFile.path,
       relativePath: meshFile.relative_path,
     });
     setShowSpaceflow(false);
@@ -305,7 +356,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           showToast(
             inspectedFile
               ? `SpaceFlow succeeded: loaded ${outputFileLabel(inspectedFile)}`
-              : `SpaceFlow ${status.run.status}: ${status.run.output_dir ?? spaceflowRun.run_id}`,
+              : `SpaceFlow ${status.run.status}: ${PUBLIC_DEMO ? status.run.run_id : status.run.output_dir ?? spaceflowRun.run_id}`,
             8000,
           );
         }
@@ -334,7 +385,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   }, [showToast]);
 
   const handleSaveSpaceflowInputs = useCallback(async () => {
-    if (spaceflowSaving || visiblePrimitives.length === 0) return;
+    if (PUBLIC_DEMO || spaceflowSaving || visiblePrimitives.length === 0) return;
     setSpaceflowSaving(true);
     try {
       const lowTau = Number.parseFloat(spaceflowLowTau) || 3;
@@ -419,19 +470,19 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     }
     if (
       spaceflowTextureMode === 'image' &&
-      !spaceflowGlobalTextureImagePath.trim() &&
+      !(PUBLIC_DEMO ? '' : spaceflowGlobalTextureImagePath.trim()) &&
       !spaceflowGlobalTextureImageFile
     ) {
-      showToast('Choose a global texture image or enter a cluster image path.', 5000);
+      showToast(PUBLIC_DEMO ? 'Choose a global texture image.' : 'Choose a global texture image or enter a cluster image path.', 5000);
       return;
     }
     setSpaceflowRunning(true);
     setSpaceflowLogTail('');
     try {
       const globalTextureText = spaceflowGlobalTextureText.trim() || spaceflowTextPrompt.trim();
-      const globalTextureImagePath = spaceflowGlobalTextureImagePath.trim();
+      const globalTextureImagePath = PUBLIC_DEMO ? '' : spaceflowGlobalTextureImagePath.trim();
       const localTextureTexts = visiblePrimitives.map(p => (p.localTextureText ?? '').trim());
-      const localTextureImagePaths = visiblePrimitives.map(p => (p.localTextureImagePath ?? '').trim());
+      const localTextureImagePaths = visiblePrimitives.map(p => PUBLIC_DEMO ? '' : (p.localTextureImagePath ?? '').trim());
       const localTextureImageFiles = visiblePrimitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
       const outputName = spaceflowOutputName.trim() || outputNameFromPrompt(spaceflowTextPrompt);
       const experimentSuffix = experimentType === 'texture' ? '_texture_experiment' : '_experiment';
@@ -476,8 +527,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       if (run.status === 'succeeded') {
         inspectSpaceflowRunMesh(run, true);
       }
+      const runLocation = PUBLIC_DEMO ? run.run_id : run.output_dir ?? run.run_id;
       showToast(
-        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${runLabel} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
+        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${runLabel} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${runLocation}`,
         8000,
       );
       if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
@@ -518,7 +570,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       const run = await stopSpaceflowRun(spaceflowRun.run_id);
       setSpaceflowRun(run);
       setSpaceflowRunning(run.status === 'running' || run.status === 'cancelling');
-      showToast(`Stopping SpaceFlow: ${run.output_dir ?? run.run_id}`, 5000);
+      showToast(`Stopping SpaceFlow: ${PUBLIC_DEMO ? run.run_id : run.output_dir ?? run.run_id}`, 5000);
     } catch (err) {
       showToast(`Stop failed: ${err instanceof Error ? err.message : err}`, 8000);
     }
@@ -566,7 +618,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
       ...(p.bending !== undefined ? { bending: p.bending } : {}),
       ...(p.localTextureText ? { localTextureText: p.localTextureText } : {}),
-      ...(p.localTextureImagePath ? { localTextureImagePath: p.localTextureImagePath } : {}),
+      ...(!PUBLIC_DEMO && p.localTextureImagePath ? { localTextureImagePath: p.localTextureImagePath } : {}),
     }));
     try {
       await writeClipboardText(JSON.stringify(data, null, 2));
@@ -615,7 +667,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             ...(d.tapering !== undefined ? { tapering: d.tapering } : {}),
             ...(d.bending !== undefined ? { bending: d.bending } : {}),
             ...(d.localTextureText ? { localTextureText: d.localTextureText } : {}),
-            ...(d.localTextureImagePath ? { localTextureImagePath: d.localTextureImagePath } : {}),
+            ...(!PUBLIC_DEMO && d.localTextureImagePath ? { localTextureImagePath: d.localTextureImagePath } : {}),
           };
         });
         loadPreset(maybeRescalePrimitivesForEditor(prims));
@@ -647,6 +699,32 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     input.click();
     setShowImport(false);
   }, [loadPreset, showToast]);
+
+  const handleLoadDemoPreset = useCallback(async (preset: DemoPreset) => {
+    try {
+      const response = await fetch(preset.npzUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const prims = await importNpzToPrimitives(blob, preset.id, { basisZUpToYUp: false });
+      loadPreset(prims);
+      setProjectName(preset.id);
+      setSpaceflowTextPrompt(preset.prompt);
+      setSpaceflowGlobalTextureText(preset.texturePrompt);
+      setSpaceflowOutputName(preset.outputName);
+      setSpaceflowTextureMode('text');
+      setSpaceflowGlobalTextureImageFile(null);
+      setSpaceflowGlobalTextureImagePath('');
+      setSpaceflowTextureExperimentPromptEdited(false);
+      setSpaceflowTextureExperimentPrompt('');
+      const high = prims.filter(prim => prim.controlLevel === 'high').length;
+      const low = prims.filter(prim => prim.controlLevel === 'low').length;
+      showToast(`Loaded ${preset.label} demo (${high} high, ${low} low)`);
+    } catch (err) {
+      showToast(`Demo preset failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setShowImport(false);
+    }
+  }, [loadPreset, setSpaceflowTextureMode, showToast]);
 
   const handleOpenNpzPath = useCallback(() => {
     const path = window.prompt('Path to .npz');
@@ -904,30 +982,32 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                 <div className="spaceflow-panel-block">
                   <div className="spaceflow-panel-head">
                     <span className="spaceflow-panel-title">Inputs</span>
-                    <div className="spaceflow-head-actions">
-                      <button
-                        type="button"
-                        className="spaceflow-panel-action"
-                        onClick={() => {
-                          const next = !showSpaceflowHistoryPanel;
-                          setShowSpaceflowHistoryPanel(next);
-                          if (next) void refreshSpaceflowHistory();
-                        }}
-                        disabled={spaceflowHistoryLoading}
-                        title="Show saved SpaceFlow input bundles"
-                      >
-                        {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
-                      </button>
-                      <button
-                        type="button"
-                        className="spaceflow-panel-action"
-                        onClick={handleSaveSpaceflowInputs}
-                        disabled={spaceflowSaving || visiblePrimitives.length === 0}
-                        title="Save SpaceFlow input files"
-                      >
-                        {spaceflowSaving ? 'Saving...' : 'Save inputs'}
-                      </button>
-                    </div>
+                    {!PUBLIC_DEMO && (
+                      <div className="spaceflow-head-actions">
+                        <button
+                          type="button"
+                          className="spaceflow-panel-action"
+                          onClick={() => {
+                            const next = !showSpaceflowHistoryPanel;
+                            setShowSpaceflowHistoryPanel(next);
+                            if (next) void refreshSpaceflowHistory();
+                          }}
+                          disabled={spaceflowHistoryLoading}
+                          title="Show saved SpaceFlow input bundles"
+                        >
+                          {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
+                        </button>
+                        <button
+                          type="button"
+                          className="spaceflow-panel-action"
+                          onClick={handleSaveSpaceflowInputs}
+                          disabled={spaceflowSaving || visiblePrimitives.length === 0}
+                          title="Save SpaceFlow input files"
+                        >
+                          {spaceflowSaving ? 'Saving...' : 'Save inputs'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <p className="spaceflow-summary">
                     {highCount} high control, {lowCount} low control
@@ -937,7 +1017,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   </p>
                 </div>
 
-                {showSpaceflowHistoryPanel && (
+                {!PUBLIC_DEMO && showSpaceflowHistoryPanel && (
                   <div className="spaceflow-panel-block spaceflow-history-block">
                     <div className="spaceflow-panel-head">
                       <span className="spaceflow-panel-title">Saved inputs</span>
@@ -1034,14 +1114,16 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     </>
                   ) : (
                     <div className="spaceflow-image-inputs">
-                      <input
-                        type="text"
-                        className="generate-input generate-input-popover"
-                        value={spaceflowGlobalTextureImagePath}
-                        onChange={(e) => setSpaceflowGlobalTextureImagePath(e.target.value)}
-                        disabled={spaceflowRunning}
-                        placeholder="Global image path on cluster, or choose file below"
-                      />
+                      {!PUBLIC_DEMO && (
+                        <input
+                          type="text"
+                          className="generate-input generate-input-popover"
+                          value={spaceflowGlobalTextureImagePath}
+                          onChange={(e) => setSpaceflowGlobalTextureImagePath(e.target.value)}
+                          disabled={spaceflowRunning}
+                          placeholder="Global image path on cluster, or choose file below"
+                        />
+                      )}
                       <label className="spaceflow-file-picker">
                         <input
                           ref={globalTextureFileInputRef}
@@ -1055,7 +1137,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                         />
                         <span>{spaceflowGlobalTextureImageFile ? spaceflowGlobalTextureImageFile.name : 'Choose global texture image'}</span>
                       </label>
-                      {(spaceflowGlobalTextureImagePath || spaceflowGlobalTextureImageFile) && (
+                      {((!PUBLIC_DEMO && spaceflowGlobalTextureImagePath) || spaceflowGlobalTextureImageFile) && (
                         <button
                           type="button"
                           className="spaceflow-file-clear-btn"
@@ -1173,7 +1255,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   )}
                 </div>
 
-                {spaceflowRun?.output_dir && (
+                {!PUBLIC_DEMO && spaceflowRun?.output_dir && (
                   <div className="spaceflow-output-path">
                     <span>Output directory</span>
                     <code className="spaceflow-path-block" title={spaceflowRun.output_dir}>
@@ -1226,7 +1308,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                         href={resolveSpaceflowUrl(spaceflowPreviewImage.url)}
                         target="_blank"
                         rel="noreferrer"
-                        title={spaceflowPreviewImage.path}
+                        title={PUBLIC_DEMO ? outputFileLabel(spaceflowPreviewImage) : spaceflowPreviewImage.path}
                       >
                         <img src={resolveSpaceflowUrl(spaceflowPreviewImage.url)} alt="SpaceFlow preview" />
                       </a>
@@ -1239,7 +1321,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                           href={resolveSpaceflowUrl(file.url)}
                           target="_blank"
                           rel="noreferrer"
-                          title={file.path}
+                          title={PUBLIC_DEMO ? outputFileLabel(file) : file.path}
                         >
                           <span>{outputFileLabel(file)}</span>
                           <small>{file.kind} {formatFileSize(file.size)}</small>
@@ -1294,13 +1376,34 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             Import
           </button>
           {showImport && (
-            <div className="dropdown-menu">
+            <div className={`dropdown-menu${PUBLIC_DEMO ? ' demo-preset-menu' : ''}`}>
+              {PUBLIC_DEMO && (
+                <>
+                  <div className="demo-preset-grid">
+                    {DEMO_PRESETS.map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className="demo-preset-item"
+                        onClick={() => void handleLoadDemoPreset(preset)}
+                        title={`Load ${preset.label}`}
+                      >
+                        <img src={preset.imageUrl} alt="" className="demo-preset-thumb" />
+                        <span className="demo-preset-label">{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="dropdown-separator" />
+                </>
+              )}
               <button type="button" className="dropdown-item" onClick={handleImportJson}>
                 Import JSON preset
               </button>
-              <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
-                Open .npz path...
-              </button>
+              {!PUBLIC_DEMO && (
+                <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
+                  Open .npz path...
+                </button>
+              )}
               <button type="button" className="dropdown-item" onClick={handleImportNpz}>
                 Import NPZ
               </button>

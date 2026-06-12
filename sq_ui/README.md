@@ -22,6 +22,37 @@ curl -s http://127.0.0.1:11438/spaceflow/health | head
 
 Set `SQ_SPACEFLOW_FORCE_LOCAL=1` when already running on a GPU node and you do not want the service to wrap requests in `srun`.
 
+## Public Controlled Demo
+
+The public demo path keeps the SpaceFlow service private on localhost and exposes only an authenticated gateway.
+
+Create a local secret file that is already ignored by `.gitignore`:
+
+```bash
+cat > .env.public-demo <<'EOF'
+SQ_PUBLIC_USER=spaceflow
+SQ_PUBLIC_PASSWORD=replace-with-a-shared-password
+EOF
+chmod 600 .env.public-demo
+```
+
+Start the demo helper:
+
+```bash
+bash sq_ui/scripts/run_public_demo.sh
+```
+
+The script builds the UI with `VITE_PUBLIC_DEMO=1`, starts `spaceflow_service.py` on `127.0.0.1:11480`, starts `public_demo_gateway.py` on `127.0.0.1:11481`, and runs `cloudflared tunnel --url http://127.0.0.1:11481` when `cloudflared` is on `PATH`.
+
+Public mode defaults:
+
+- `SQ_SPACEFLOW_MAX_ACTIVE_RUNS=1`
+- `SQ_SPACEFLOW_RETENTION_HOURS=48`
+- `SQ_SPACEFLOW_MAX_STORAGE_GB=40`
+- `SQ_PUBLIC_MAX_UPLOAD_MB=64`
+
+Use the printed `https://...trycloudflare.com` URL plus the shared user/password for selected users. Quick tunnel URLs change when the tunnel restarts.
+
 ## Frontend
 
 ```bash

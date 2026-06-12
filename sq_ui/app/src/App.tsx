@@ -11,6 +11,8 @@ import './App.css';
 type ThemeMode = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'sq-ui-theme';
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
 
 function readInitialTheme(): ThemeMode {
   try {
@@ -78,6 +80,7 @@ export default function App() {
   }, [undo, redo, selectedId, removePrimitive, duplicatePrimitive]);
 
   useEffect(() => {
+    if (PUBLIC_DEMO) return;
     const request = getNpzUrlRequest();
     const requestKey = request
       ? JSON.stringify({ source: request.source, importOptions: request.importOptions })

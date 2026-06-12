@@ -11,7 +11,11 @@ import {
 } from './spaceflowConfig';
 import { serviceBaseUrl } from './devServiceUrl';
 
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
+
 function spaceflowBase(): string {
+  if (PUBLIC_DEMO) return '';
   return serviceBaseUrl(import.meta.env.VITE_SPACEFLOW_URL, 'http://localhost:11438');
 }
 

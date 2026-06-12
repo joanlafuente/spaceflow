@@ -9,6 +9,8 @@ const SCALE_MIN = 0.0001;
 const SCALE_SLIDER_MAX = 5;
 const SCALE_STEP = 0.0001;
 const LOG_SLIDER_STEPS = 1000;
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
 
 interface SliderRowProps {
   label: string;
@@ -282,16 +284,18 @@ export default function ParameterPanel() {
         </div>
         {spaceflowTextureMode === 'image' ? (
           <>
-            <label className="local-texture-field">
-              <span>Image path override</span>
-              <input
-                type="text"
-                className="name-input local-texture-input"
-                value={prim.localTextureImagePath ?? ''}
-                onChange={(e) => updateLocalTextureImagePath(e.target.value)}
-                placeholder="Empty uses global image"
-              />
-            </label>
+            {!PUBLIC_DEMO && (
+              <label className="local-texture-field">
+                <span>Image path override</span>
+                <input
+                  type="text"
+                  className="name-input local-texture-input"
+                  value={prim.localTextureImagePath ?? ''}
+                  onChange={(e) => updateLocalTextureImagePath(e.target.value)}
+                  placeholder="Empty uses global image"
+                />
+              </label>
+            )}
             <div className="local-texture-actions">
               <label className="local-texture-file-picker">
                 <input
@@ -306,7 +310,7 @@ export default function ParameterPanel() {
                   {localTextureImageFile?.name ?? 'Choose image override'}
                 </span>
               </label>
-              {(prim.localTextureImagePath || localTextureImageFile) && (
+              {((!PUBLIC_DEMO && prim.localTextureImagePath) || localTextureImageFile) && (
                 <button
                   type="button"
                   className="local-texture-clear-btn"

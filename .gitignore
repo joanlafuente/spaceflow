@@ -119,3 +119,14 @@ examples/**/*.npy
 *.pdf
 *.mp4
 *.glb
+*.json
+*.npz
+*.npy
+*.csv
+*.txt
+*.DS_Store
+
+# Public demo example presets are intentionally served by the app.
+!sq_ui/app/public/demo-presets/
+!sq_ui/app/public/demo-presets/*.npz
+!sq_ui/app/public/demo-presets/*.png
