@@ -1,0 +1,42 @@
+
+\section{Related Work}
+
+\noindent Our method builds on recent progress in 3D asset generation by introducing localized spatial and appearance control. We position our work relative to prior state of the art in 3D generation, spatial control, appearance editing, and primitive-based models.
+
+
+\subsection{3D Asset Generation}
+\label{sec:rw_3d_generation}
+
+The field of 3D generation has experienced rapid progress in both output quality and representation flexibility. Early 3D diffusion models operated directly on the original 3D representations, which limited efficiency and possible output types~\cite{nichol2022pointegenerating3dpoint}. Recent approaches have moved generation into compact latent spaces, yielding substantial gains in quality and scalability~\cite{NEURIPS2022_40e56dab,jun2023shapegeneratingconditional3d}. Recent 3D asset generators such as CLAY~\cite{10.1145/3658146}, Hunyuan3D~\cite{hunyuan3d22025tencent}, SAM 3D~\cite{Chen_2026_CVPR}, and TRELLIS~\cite{Xiang_2025_CVPR} further improve fidelity through large-scale training and richer 3D representations. While these models provide strong text, or image, conditioned generation, they are conditioned globally and do not support local, part-wise control.
+
+% While these models provide strong text or image conditioned generation, they do not offer explicit part-wise control over where geometric and appearance conditions should apply.
+
+
+\subsection{Spatially Controllable 3D Generation} 
+\label{sec:rw_spatial_control}
+
+Spatially controllable generation shifts conditioning from ambiguous text or image prompts to explicit 3D inputs, such as voxels, primitives, proxy shapes, or meshes. Existing methods can be grouped into training-based and test-time approaches. Training-based methods fine-tune generative models to accept geometric conditions~\cite{NEURIPS2022_40e56dab, 10.1145/3641519.3657461}. These approaches can provide direct spatial control, but require additional training costs and are often tied to the conditioning format and data distribution used during training. 
+
+Test-time methods inject spatial conditions during inference, either via optimization or latent projection. Optimization-based approaches project 3D constraints into rendered views or optimize an explicit 3D representation under geometric guidance~\cite{Metzer_2023_CVPR,10.1145/3641519.3657425}. SpaceControl~\cite{fedele2025spacecontrol} is closest to our work: it injects a user-specified 3D geometry into the latent space of a pretrained 3D generator and exposes a control strength that trades geometric fidelity for generative realism. However, this trade-off is applied globally. A single control strength cannot express common design intent where some regions should remain faithful to the input geometric control while others should be completed or reshaped by the generative prior. 
+
+\subsection{Appearance and Texture Control for 3D Assets} 
+\label{sec:rw_appearance_control}
+
+Appearance control has been widely explored across various 3D formats. For meshes, existing methods generate or edit textures using text prompts, image priors, or learned neural fields~\cite{text2mesh, 10.1145/3588432.3591503, perla2024easitex, Cohen-Bar_2025_CVPR}, while related work extends these stylization techniques to implicit radiance fields and Gaussian splats~\cite{liu2023stylerf, liu2023stylegaussian, 10.1007/978-3-031-85187-2_15}. Although these approaches can produce high-quality appearance edits, they are typically tied to a specific output representation or operate on an existing asset rather than controlling the appearance stage of a generative 3D pipeline.
+
+GuideFlow3D~\cite{sayandsarkar_2025_guideflow3d} is closest to our appearance-control setting, as it performs training-free guidance of a pretrained rectified-flow model and introduces a self-similarity loss for robust appearance transfer. However, GuideFlow3D is designed for global style transfer, applying an overall appearance specification to the entire asset.  In contrast, our approach enables part-wise appearance control. Instead of relying on global prompts or reference images that indirectly affect the whole object, we introduce a direct interface that routes specific appearance cues to designated object parts, preventing texture leakage.
+
+
+\subsection{Primitive-Based and Part-Aware Editing}
+\label{sec:rw_part_primitive_editing}
+
+A complementary line of work aims to make 3D assets editable by exposing an intermediate structure in the form of primitives, parts, graphs, or programs. 
+
+Primitive-abstraction methods approximate shapes with compact geometric elements, ranging from volumetric primitives to superquadrics and learned neural primitives~\cite{abstractionTulsiani17,Paschalidou2019CVPR,Paschalidou2021CVPR}. These decompositions provide interpretable manipulation handles, but are typically designed for abstraction or reconstruction and remain tied to the chosen primitive family or learned parser.
+
+
+Part-aware generative models make object structure explicit during generation. StructureNet~\cite{MoGuerreroEtAl:StructureNet:SiggraphAsia:2019} and ShapeAssembly~\cite{jones2020shapeAssembly} represent shapes through hierarchical part graphs or executable programs over cuboid proxies. Later neural approaches build part-level manipulation into implicit shapes, local radiance fields, or diffusion-based point and latent representations, enabling operations such as part transformation, recombination, completion, and mixing~\cite{hertz2022spaghetti,Tertikas2023CVPR,koo2023salad,nakayama2023difffacto}.
+
+Recent methods extend this idea toward more realistic and higher-fidelity asset generation: PartGen~\cite{Chen2025PartGen} reconstructs objects as meaningful editable parts, while CompoSE~\cite{slim2026composecompositionalsynthesisediting}, the closest prior in this line, uses coarse geometric primitives such as bounding boxes as part controls to synthesize part-separated objects for localized editing.
+
+These methods demonstrate the value of explicit part structure, but typically require the generated asset itself to be represented, generated, or reconstructed as a set of parts.

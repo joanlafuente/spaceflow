@@ -1,0 +1,6 @@
+batch_id=20260605T185622Z_examples_structure_texture150_experiment
+job_id=96769
+run_dir=/work/courses/3dv/team3/spaceflow-minimal/spaceflow_runtime/sq_ui_runs/20260605T185622Z_examples_structure_texture150_experiment
+launched_at=2026-06-05 20:56:22 CEST
+texture_optim_steps=150
+command=sbatch --partition=jobs --time=24:00:00 --wrap=/work/courses/3dv/team3/guideflow3d/envs/guideflow3d/bin/python sq_ui/scripts/run_examples_structure_experiment.py --run-id 20260605T185622Z_examples_structure_texture150_experiment --texture-optim-steps 150
