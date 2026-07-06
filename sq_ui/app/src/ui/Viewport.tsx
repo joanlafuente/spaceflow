@@ -43,20 +43,20 @@ const MESH_ILLUMINATION_STEP = 0.05;
 
 const VIEWPORT_THEME = {
   dark: {
-    background: '#0e1014',
-    gridCell: '#333a48',
-    gridSection: '#4a5568',
+    background: '#0b0f16',
+    gridCell: '#252d3a',
+    gridSection: '#3d4a5d',
     outline: '#ffffff',
     gizmoLabel: '#ffffff',
-    lowControlBBox: '#fbbf24',
+    lowControlBBox: '#facc15',
   },
   light: {
-    background: '#f6f8fb',
-    gridCell: '#cbd5e1',
-    gridSection: '#94a3b8',
-    outline: '#1e293b',
+    background: '#eef5fb',
+    gridCell: '#d7e0ea',
+    gridSection: '#9fb0c3',
+    outline: '#0f172a',
     gizmoLabel: '#0f172a',
-    lowControlBBox: '#d97706',
+    lowControlBBox: '#c2410c',
   },
 } satisfies Record<ThemeMode, {
   background: string;
@@ -839,14 +839,14 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
   return (
     <>
-      <ambientLight intensity={meshInspection ? 0.78 * inspectionLight : 0.5} />
-      <directionalLight position={[5, 8, 5]} intensity={meshInspection ? 1.1 * inspectionLight : 1} />
-      <directionalLight position={[-3, -4, -2]} intensity={meshInspection ? 0.5 * inspectionLight : 0.3} />
+      <ambientLight intensity={meshInspection ? 0.82 * inspectionLight : 0.56} />
+      <directionalLight color="#fff7ed" position={[5, 8, 5]} intensity={meshInspection ? 1.14 * inspectionLight : 1.05} />
+      <directionalLight color="#dbeafe" position={[-3, -4, -2]} intensity={meshInspection ? 0.54 * inspectionLight : 0.34} />
       {meshInspection && (
         <>
-          <hemisphereLight color="#ffffff" groundColor="#dbeafe" intensity={0.36 * inspectionLight} />
-          <directionalLight position={[0, -6, 6]} intensity={0.45 * inspectionLight} />
-          <directionalLight position={[-4, 3, 5]} intensity={0.28 * inspectionLight} />
+          <hemisphereLight color="#ffffff" groundColor="#bfdbfe" intensity={0.4 * inspectionLight} />
+          <directionalLight color="#fef3c7" position={[0, -6, 6]} intensity={0.46 * inspectionLight} />
+          <directionalLight color="#e0f2fe" position={[-4, 3, 5]} intensity={0.3 * inspectionLight} />
         </>
       )}
 

@@ -5,6 +5,15 @@ import {
   LOW_CONTROL_BBOX_MARGIN_MIN,
   LOW_CONTROL_BBOX_MARGIN_STEP,
 } from '../state/spaceflowConfig';
+import {
+  CopyIcon,
+  DiamondIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GripIcon,
+  PlusIcon,
+  TrashIcon,
+} from './icons';
 
 const PRIM_COLORS = [
   '#4fc3f7', '#81c784', '#ffb74d', '#e57373',
@@ -58,7 +67,7 @@ export default function PrimitiveList() {
       <div className="prim-list">
         {primitives.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">◇</div>
+            <div className="empty-icon"><DiamondIcon size={38} strokeWidth={1.6} /></div>
             <div className="empty-text">No primitives yet</div>
             <div className="empty-sub">Add your first superquadric</div>
           </div>
@@ -75,7 +84,7 @@ export default function PrimitiveList() {
             onDragEnd={handleDragEnd}
             onDragOver={(e) => e.preventDefault()}
           >
-            <span className="drag-handle" title="Drag to reorder">⠿</span>
+            <span className="drag-handle" title="Drag to reorder"><GripIcon size={15} /></span>
             <span
               className="prim-color-dot"
               style={{ background: PRIM_COLORS[i % PRIM_COLORS.length] }}
@@ -86,25 +95,31 @@ export default function PrimitiveList() {
             </span>
             <div className="prim-actions">
               <button
+                type="button"
                 className="icon-btn"
                 title={p.visible ? 'Hide' : 'Show'}
+                aria-label={p.visible ? `Hide ${p.name}` : `Show ${p.name}`}
                 onClick={(e) => { e.stopPropagation(); updatePrimitive(p.id, { visible: !p.visible }); }}
               >
-                {p.visible ? '👁' : '👁‍🗨'}
+                {p.visible ? <EyeIcon size={14} /> : <EyeOffIcon size={14} />}
               </button>
               <button
+                type="button"
                 className="icon-btn"
                 title="Duplicate"
+                aria-label={`Duplicate ${p.name}`}
                 onClick={(e) => { e.stopPropagation(); duplicatePrimitive(p.id); }}
               >
-                ⧉
+                <CopyIcon size={14} />
               </button>
               <button
+                type="button"
                 className="icon-btn danger"
                 title="Delete"
+                aria-label={`Delete ${p.name}`}
                 onClick={(e) => { e.stopPropagation(); removePrimitive(p.id); }}
               >
-                ✕
+                <TrashIcon size={14} />
               </button>
             </div>
           </div>
@@ -131,8 +146,9 @@ export default function PrimitiveList() {
       </div>
 
       <div className="add-section">
-        <button className="btn-primary" onClick={() => setShowPresets(!showPresets)}>
-          + Add Primitive
+        <button type="button" className="btn-primary" onClick={() => setShowPresets(!showPresets)}>
+          <PlusIcon size={15} />
+          Add Primitive
         </button>
         {showPresets && (
           <div className="preset-menu">

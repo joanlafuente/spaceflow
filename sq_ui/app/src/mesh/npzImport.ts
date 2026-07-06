@@ -302,7 +302,25 @@ export interface ImportNpzOptions {
   skipEditorRescale?: boolean;
 }
 
-function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
+export interface NpzSpaceflowMetadata {
+  projectName?: string;
+  textPrompt?: string;
+  outputName?: string;
+  textureMode?: 'text' | 'image';
+  globalTextureText?: string;
+  globalTextureImagePath?: string;
+  textureExperimentPrompt?: string;
+  primitiveNames?: string[];
+  localTextureTexts?: string[];
+  localTextureImagePaths?: string[];
+}
+
+export interface ImportedNpz {
+  primitives: Primitive[];
+  metadata: NpzSpaceflowMetadata | null;
+}
+
+function findZipEntry(zip: JSZip, basename: string): JSZip.JSZipObject | null {
   const direct = zip.file(basename);
   if (direct && !direct.dir) return direct;
   for (const k of Object.keys(zip.files)) {
@@ -311,6 +329,10 @@ function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
     if (k === basename || k.endsWith(`/${basename}`)) return entry;
   }
   return null;
+}
+
+function findZipNpy(zip: JSZip, basename: string): JSZip.JSZipObject | null {
+  return findZipEntry(zip, basename);
 }
 
 function parsedVector(parsed: ParsedNpy, expectedLength: number, label: string): number[] {
@@ -339,11 +361,124 @@ function filterByConfidence(exports: PrimitiveExport[], confidence: ParsedNpy, t
   return keep.map(item => exports[item.index]!).filter(Boolean);
 }
 
-export async function importNpzToPrimitives(
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim() : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const str = stringValue(value);
+    if (str) return str;
+  }
+  return undefined;
+}
+
+function stringArrayValue(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.map(item => (typeof item === 'string' ? item : ''));
+}
+
+function firstStringArray(...values: unknown[]): string[] | undefined {
+  for (const value of values) {
+    const arr = stringArrayValue(value);
+    if (arr) return arr;
+  }
+  return undefined;
+}
+
+function normalizeTextureMode(value: unknown): 'text' | 'image' | undefined {
+  const raw = stringValue(value)?.toLowerCase();
+  return raw === 'text' || raw === 'image' ? raw : undefined;
+}
+
+function normalizeSpaceflowMetadata(raw: unknown): NpzSpaceflowMetadata | null {
+  const root = objectValue(raw);
+  if (!root) return null;
+  const texture = objectValue(root.texture_guidance) ?? objectValue(root.textureGuidance);
+  const metadata: NpzSpaceflowMetadata = {};
+
+  const projectName = firstString(root.projectName, root.project_name);
+  if (projectName) metadata.projectName = projectName;
+  const textPrompt = firstString(root.textPrompt, root.text_prompt, root.prompt);
+  if (textPrompt) metadata.textPrompt = textPrompt;
+  const outputName = firstString(root.outputName, root.output_name);
+  if (outputName) metadata.outputName = outputName;
+  const textureExperimentPrompt = firstString(root.textureExperimentPrompt, root.texture_experiment_prompt);
+  if (textureExperimentPrompt) metadata.textureExperimentPrompt = textureExperimentPrompt;
+
+  const textureMode = normalizeTextureMode(root.textureMode)
+    ?? normalizeTextureMode(root.appearanceMode)
+    ?? normalizeTextureMode(texture?.mode);
+  if (textureMode) metadata.textureMode = textureMode;
+  const globalTextureText = firstString(
+    root.globalTextureText,
+    root.appearanceText,
+    root.global_text,
+    texture?.global_text,
+  );
+  if (globalTextureText) metadata.globalTextureText = globalTextureText;
+  const globalTextureImagePath = firstString(
+    root.globalTextureImagePath,
+    root.appearanceImagePath,
+    root.global_image_path,
+    texture?.global_image_path,
+  );
+  if (globalTextureImagePath) metadata.globalTextureImagePath = globalTextureImagePath;
+
+  const primitiveNames = firstStringArray(root.primitiveNames, root.primitive_names);
+  if (primitiveNames) metadata.primitiveNames = primitiveNames;
+  const localTextureTexts = firstStringArray(
+    root.localTextureTexts,
+    root.local_text_prompts,
+    texture?.local_text_prompts,
+  );
+  if (localTextureTexts) metadata.localTextureTexts = localTextureTexts;
+  const localTextureImagePaths = firstStringArray(
+    root.localTextureImagePaths,
+    root.local_image_paths,
+    texture?.local_image_paths,
+  );
+  if (localTextureImagePaths) metadata.localTextureImagePaths = localTextureImagePaths;
+
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+async function readSpaceflowMetadata(zip: JSZip): Promise<NpzSpaceflowMetadata | null> {
+  const file = findZipEntry(zip, 'spaceflow_metadata.json') ?? findZipEntry(zip, 'spaceflow/metadata.json');
+  if (!file) return null;
+  const text = await file.async('string');
+  return normalizeSpaceflowMetadata(JSON.parse(text));
+}
+
+function withSpaceflowMetadata(primitives: Primitive[], metadata: NpzSpaceflowMetadata | null): Primitive[] {
+  if (!metadata) return primitives;
+  const names = metadata.primitiveNames ?? [];
+  const localTexts = metadata.localTextureTexts ?? [];
+  const localImagePaths = metadata.localTextureImagePaths ?? [];
+  return primitives.map((primitive, index) => {
+    const name = names[index]?.trim();
+    const localTextureText = localTexts[index]?.trim();
+    const localTextureImagePath = localImagePaths[index]?.trim();
+    return {
+      ...primitive,
+      ...(name ? { name } : {}),
+      ...(localTextureText ? { localTextureText } : {}),
+      ...(localTextureImagePath ? { localTextureImagePath } : {}),
+    };
+  });
+}
+
+export async function importNpzWithMetadata(
   blob: Blob,
   namePrefix = 'npz',
   options?: ImportNpzOptions,
-): Promise<Primitive[]> {
+): Promise<ImportedNpz> {
   const zip = await JSZip.loadAsync(blob);
   const readNpy = async (names: string | string[]): Promise<ParsedNpy> => {
     const candidates = Array.isArray(names) ? names : [names];
@@ -372,6 +507,7 @@ export async function importNpzToPrimitives(
   const controlLevels = controlLevelsFile ? await controlLevelsFile.async('arraybuffer').then(parseNpyBuffer) : null;
   const confidence = confidenceFile ? await confidenceFile.async('arraybuffer').then(parseNpyBuffer) : null;
   const zUp = zUpFile ? await zUpFile.async('arraybuffer').then(parseNpyScalarBool).catch(() => null) : null;
+  const metadata = await readSpaceflowMetadata(zip);
 
   let exports = npzArraysToExports(scales, shapes, translations, rotations, tapering, bending);
   if (controlLevels) {
@@ -418,5 +554,16 @@ export async function importNpzToPrimitives(
   if (!options?.skipEditorRescale) {
     prims = maybeRescalePrimitivesForEditor(prims);
   }
-  return prims;
+  return {
+    primitives: withSpaceflowMetadata(prims, metadata),
+    metadata,
+  };
+}
+
+export async function importNpzToPrimitives(
+  blob: Blob,
+  namePrefix = 'npz',
+  options?: ImportNpzOptions,
+): Promise<Primitive[]> {
+  return (await importNpzWithMetadata(blob, namePrefix, options)).primitives;
 }

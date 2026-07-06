@@ -79,6 +79,8 @@ export interface AppState {
   loadPreset: (primitives: Primitive[]) => void;
   /** Apply the same world-space rotation (ZYX Euler delta in degrees) to every primitive. */
   rotateAllWorld: (deltaEulerDeg: [number, number, number]) => void;
+  /** Swap high-control and low-control labels on every primitive. */
+  invertControlLevels: () => void;
 }
 
 let idCounter = 0;
@@ -337,6 +339,20 @@ export const useStore = create<AppState>((set, get) => ({
     });
     set({
       primitives,
+      undoStack: [...state.undoStack, entry],
+      redoStack: [],
+    });
+  },
+
+  invertControlLevels: () => {
+    const state = get();
+    if (state.primitives.length === 0) return;
+    const entry = snapshot(state);
+    set({
+      primitives: state.primitives.map(p => ({
+        ...p,
+        controlLevel: p.controlLevel === 'high' ? 'low' : 'high',
+      })),
       undoStack: [...state.undoStack, entry],
       redoStack: [],
     });

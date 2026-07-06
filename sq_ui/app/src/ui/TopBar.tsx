@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
-import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
+import { importNpzToPrimitives, importNpzWithMetadata, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
 import { eulerToMatrix, isOrthogonal, matrixToEuler } from '../state/rotation';
 import {
@@ -20,6 +20,22 @@ import { useStore, type Primitive } from '../state/store';
 import { useTextureUploadStore } from '../state/textureUploads';
 import { useSpaceflowUiStore } from '../state/spaceflowUi';
 import { captureSuperquadricRenderBlob } from '../state/viewportCapture';
+import {
+  AlertTriangleIcon,
+  ChairIcon,
+  CircleIcon,
+  DownloadIcon,
+  InvertControlIcon,
+  MoonIcon,
+  RedoIcon,
+  RotateIcon,
+  SparklesIcon,
+  SunIcon,
+  TableIcon,
+  UndoIcon,
+  UploadIcon,
+  XIcon,
+} from './icons';
 
 type ThemeMode = 'dark' | 'light';
 type SpaceflowExperimentType = 'geometry' | 'texture';
@@ -256,6 +272,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const meshInspection = useStore(s => s.meshInspection);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
+  const invertControlLevels = useStore(s => s.invertControlLevels);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
@@ -678,7 +695,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     };
     input.click();
     setShowImport(false);
-  }, [loadPreset, showToast]);
+  }, [loadPreset, setSpaceflowTextureMode, showToast]);
 
   const handleImportNpz = useCallback(() => {
     const input = document.createElement('input');
@@ -689,9 +706,33 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       if (!file) return;
       try {
         const stem = safeName(file.name.replace(/\.npz$/i, ''), 'npz');
-        const prims = await importNpzToPrimitives(file, stem, { basisZUpToYUp: false });
+        const { primitives: prims, metadata } = await importNpzWithMetadata(file, stem, { basisZUpToYUp: false });
         loadPreset(prims);
-        showToast(`Loaded ${prims.length} primitives from ${file.name}`);
+        if (metadata?.projectName) setProjectName(metadata.projectName);
+        if (metadata?.textPrompt) setSpaceflowTextPrompt(metadata.textPrompt);
+        if (metadata?.outputName) setSpaceflowOutputName(metadata.outputName);
+        if (metadata?.textureMode) setSpaceflowTextureMode(metadata.textureMode);
+        if (metadata?.globalTextureText) {
+          setSpaceflowGlobalTextureText(metadata.globalTextureText);
+          setSpaceflowTextureMode('text');
+        }
+        if (!PUBLIC_DEMO && metadata?.globalTextureImagePath) {
+          setSpaceflowGlobalTextureImagePath(metadata.globalTextureImagePath);
+          setSpaceflowTextureMode('image');
+        }
+        if (metadata?.textureExperimentPrompt) {
+          setSpaceflowTextureExperimentPrompt(metadata.textureExperimentPrompt);
+          setSpaceflowTextureExperimentPromptEdited(true);
+        } else if (metadata) {
+          setSpaceflowTextureExperimentPrompt('');
+          setSpaceflowTextureExperimentPromptEdited(false);
+        }
+        setSpaceflowGlobalTextureImageFile(null);
+        const textureCount = prims.filter(p => (p.localTextureText ?? '').trim() || (p.localTextureImagePath ?? '').trim()).length;
+        const withTexture = metadata?.globalTextureText || metadata?.globalTextureImagePath || textureCount > 0;
+        showToast(
+          `Loaded ${prims.length} primitives from ${file.name}${withTexture ? ` with ${textureCount} local texture prompt${textureCount === 1 ? '' : 's'}` : ''}`,
+        );
       } catch (err) {
         showToast(`NPZ import failed: ${err instanceof Error ? err.message : err}`, 6000);
       }
@@ -835,6 +876,18 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     setShowExport(false);
   }, [loadPreset, showToast]);
 
+  const handleInvertControl = useCallback(() => {
+    if (primitives.length === 0) return;
+    const nextHighCount = primitives.filter(p => p.controlLevel === 'low').length;
+    const nextLowCount = primitives.length - nextHighCount;
+    invertControlLevels();
+    setShowImport(false);
+    setShowExport(false);
+    setShowRotateAll(false);
+    setShowSpaceflow(false);
+    showToast(`Inverted control levels (${nextHighCount} high, ${nextLowCount} low)`);
+  }, [invertControlLevels, primitives, showToast]);
+
   const highCount = visiblePrimitives.filter(p => p.controlLevel === 'high').length;
   const lowCount = visiblePrimitives.filter(p => p.controlLevel === 'low').length;
   const allOrtho = visiblePrimitives.every(p => isOrthogonal(p.rotation));
@@ -900,12 +953,34 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       </div>
 
       <div className="top-center">
-        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo" aria-label="Undo">↩</button>
-        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo" aria-label="Redo">↪</button>
+        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo" aria-label="Undo">
+          <UndoIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo" aria-label="Redo">
+          <RedoIcon size={16} />
+        </button>
         <span className="separator" />
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single ellipsoid" aria-label="Load single ellipsoid template">⊙</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template" aria-label="Load table template">⊞</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template" aria-label="Load chair template">⊟</button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single ellipsoid" aria-label="Load single ellipsoid template">
+          <CircleIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template" aria-label="Load table template">
+          <TableIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template" aria-label="Load chair template">
+          <ChairIcon size={16} />
+        </button>
+        <span className="separator" />
+        <button
+          type="button"
+          className="toolbar-btn toolbar-btn-menu"
+          onClick={handleInvertControl}
+          disabled={primitives.length === 0}
+          title="Invert high-control and low-control primitives"
+          aria-label="Invert control levels"
+        >
+          <InvertControlIcon className="toolbar-btn-menu-icon" size={14} />
+          <span className="toolbar-btn-menu-label">Invert Control</span>
+        </button>
         <span className="separator" />
         <div className={`export-dropdown rotate-all-group${showRotateAll ? ' is-open' : ''}`}>
           <button
@@ -920,7 +995,8 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             disabled={primitives.length === 0}
             title="Rotate all primitives"
           >
-            Rotate All
+            <RotateIcon className="toolbar-btn-menu-icon" size={14} />
+            <span className="toolbar-btn-menu-label">Rotate All</span>
           </button>
           {showRotateAll && (
             <div className="dropdown-menu rotate-all-menu">
@@ -947,6 +1023,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
               disabled={spaceflowSaving}
               title="Run SpaceFlow from the current superquadrics"
             >
+              <SparklesIcon size={14} />
               {spaceflowRunning ? 'Running...' : 'SpaceFlow'}
             </button>
           ) : (
@@ -970,7 +1047,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   type="button"
                   aria-label="Close SpaceFlow panel"
                 >
-                  ×
+                  <XIcon size={15} />
                 </button>
               </div>
               <div
@@ -1347,7 +1424,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
 
       <div className="top-right">
         {hasWarnings && (
-          <span className="validation-warn" title="Some rotation matrices are not orthogonal">⚠</span>
+          <span className="validation-warn" title="Some rotation matrices are not orthogonal">
+            <AlertTriangleIcon size={17} />
+          </span>
         )}
         <button
           type="button"
@@ -1359,11 +1438,16 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           onClick={() => onThemeModeChange(themeMode === 'dark' ? 'light' : 'dark')}
         >
           <span className="theme-toggle-thumb" aria-hidden />
-          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>☀</span>
-          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>☾</span>
+          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>
+            <SunIcon size={14} strokeWidth={2.2} />
+          </span>
+          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>
+            <MoonIcon size={14} strokeWidth={2.2} />
+          </span>
         </button>
         <div className="export-dropdown">
           <button
+            type="button"
             className="btn-accent"
             onClick={() => {
               setShowImport(!showImport);
@@ -1373,6 +1457,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             }}
             title="Import presets or open NPZ files"
           >
+            <UploadIcon size={14} />
             Import
           </button>
           {showImport && (
@@ -1412,6 +1497,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         </div>
         <div className="export-dropdown">
           <button
+            type="button"
             className="btn-accent"
             onClick={() => {
               setShowExport(!showExport);
@@ -1421,6 +1507,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             }}
             title="Export or copy presets"
           >
+            <DownloadIcon size={14} />
             Export
           </button>
           {showExport && (
