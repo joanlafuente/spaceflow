@@ -435,24 +435,32 @@ body {
   background: none;
 }
 
-.toast {
+.toast,
+.app-toast {
   position: fixed;
-  bottom: 24px;
+  top: auto;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-elevated);
   color: var(--text-primary);
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   font-size: 13px;
+  line-height: 1.45;
   font-weight: 500;
   z-index: 500;
   box-shadow: var(--shadow-toast);
   animation: toast-in 0.25s ease-out;
   cursor: pointer;
-  max-width: 500px;
+  width: fit-content;
+  max-width: min(720px, calc(100vw - 32px));
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  overflow-x: hidden;
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 @keyframes toast-in {
@@ -2685,12 +2693,72 @@ textarea.spaceflow-experiment-prompt-input {
   -webkit-backdrop-filter: var(--glass-filter);
 }
 
-.toast {
+.toast,
+.app-toast {
   background: var(--glass-panel-strong);
   border-color: var(--glass-border-strong);
   box-shadow: var(--shadow-glass);
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.add-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.add-controls .btn-primary {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-inline: 12px;
+}
+
+.invert-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 42px;
+  min-height: 34px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(45, 212, 191, 0.10)),
+    var(--glass-control);
+  color: var(--accent);
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast),
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast),
+    color var(--motion-fast),
+    opacity var(--motion-fast);
+}
+
+.invert-control-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.52);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.26), rgba(45, 212, 191, 0.18)),
+    var(--glass-control-hover);
+  color: var(--text-primary);
+}
+
+.invert-control-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.invert-control-btn:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.invert-control-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -2701,7 +2769,8 @@ textarea.spaceflow-experiment-prompt-input {
   .generate-popover,
   .viewport-inspection-bar,
   .viewport-preview-modal,
-  .toast {
+  .toast,
+  .app-toast {
     background: var(--bg-panel);
   }
 }
@@ -2742,6 +2811,14 @@ textarea.spaceflow-experiment-prompt-input {
   .spaceflow-popover {
     top: 70px;
     width: min(560px, calc(100vw - 16px));
+  }
+
+  .toast,
+  .app-toast {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 20px);
+    max-height: 36vh;
+    padding: 9px 12px;
   }
 }
 

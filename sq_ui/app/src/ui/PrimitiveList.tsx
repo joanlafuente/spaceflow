@@ -11,6 +11,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   GripIcon,
+  InvertControlIcon,
   PlusIcon,
   TrashIcon,
 } from './icons';
@@ -30,6 +31,7 @@ export default function PrimitiveList() {
   const selectPrimitive = useStore(s => s.selectPrimitive);
   const updatePrimitive = useStore(s => s.updatePrimitive);
   const reorderPrimitives = useStore(s => s.reorderPrimitives);
+  const invertControlLevels = useStore(s => s.invertControlLevels);
   const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
   const setLowControlBBoxMargin = useStore(s => s.setLowControlBBoxMargin);
   const lowControlBBoxMarginPercent = Math.round(lowControlBBoxMargin * 100);
@@ -56,6 +58,12 @@ export default function PrimitiveList() {
     }
     setShowPresets(false);
   }, [addPrimitive]);
+
+  const handleInvertControl = useCallback(() => {
+    if (primitives.length === 0) return;
+    invertControlLevels();
+    setShowPresets(false);
+  }, [invertControlLevels, primitives.length]);
 
   return (
     <div className="panel left-panel">
@@ -146,10 +154,22 @@ export default function PrimitiveList() {
       </div>
 
       <div className="add-section">
-        <button type="button" className="btn-primary" onClick={() => setShowPresets(!showPresets)}>
-          <PlusIcon size={15} />
-          Add Primitive
-        </button>
+        <div className="add-controls">
+          <button type="button" className="btn-primary" onClick={() => setShowPresets(!showPresets)}>
+            <PlusIcon size={15} />
+            Add Primitive
+          </button>
+          <button
+            type="button"
+            className="invert-control-btn"
+            onClick={handleInvertControl}
+            disabled={primitives.length === 0}
+            title="Invert high-control and low-control primitives"
+            aria-label="Invert control levels"
+          >
+            <InvertControlIcon size={18} />
+          </button>
+        </div>
         {showPresets && (
           <div className="preset-menu">
             <button className="preset-item" onClick={() => handleAdd()}>Blank (ball)</button>

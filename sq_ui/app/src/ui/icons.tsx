@@ -94,8 +94,6 @@ export function InvertControlIcon(props: IconProps) {
       <path d="m14 4 3 3-3 3" />
       <path d="M17 17H7" />
       <path d="m10 14-3 3 3 3" />
-      <circle cx="7" cy="7" r="2.5" />
-      <circle cx="17" cy="17" r="2.5" />
     </IconBase>
   );
 }

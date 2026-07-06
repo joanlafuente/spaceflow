@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
 import { importNpzToPrimitives, importNpzWithMetadata, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
+import type { NpzSpaceflowMetadata } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
 import { eulerToMatrix, isOrthogonal, matrixToEuler } from '../state/rotation';
 import {
@@ -25,7 +26,6 @@ import {
   ChairIcon,
   CircleIcon,
   DownloadIcon,
-  InvertControlIcon,
   MoonIcon,
   RedoIcon,
   RotateIcon,
@@ -38,7 +38,7 @@ import {
 } from './icons';
 
 type ThemeMode = 'dark' | 'light';
-type SpaceflowExperimentType = 'geometry' | 'texture';
+type SpaceflowExperimentType = 'geometry' | 'texture' | 'full';
 
 interface DownloadableGlbMesh {
   url: string;
@@ -119,7 +119,7 @@ function textureExperimentPromptTemplate(
   const shape = shapePrompt.trim() || 'a 3D asset';
   const globalTexture = globalTextureText.trim() || shape;
   const parts = [
-    `Create a 3D asset of: ${shape}.`,
+    `${shape}.`,
     `Overall appearance and texture: ${globalTexture}.`,
   ];
   const localParts = primitives
@@ -272,7 +272,6 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const meshInspection = useStore(s => s.meshInspection);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
-  const invertControlLevels = useStore(s => s.invertControlLevels);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
@@ -295,6 +294,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
   const spaceflowTextureMode = useSpaceflowUiStore(s => s.textureMode);
   const setSpaceflowTextureMode = useSpaceflowUiStore(s => s.setTextureMode);
+  const importedNpzMetadata = useSpaceflowUiStore(s => s.importedNpzMetadata);
   const [spaceflowGlobalTextureText, setSpaceflowGlobalTextureText] = useState('');
   const [spaceflowTextureExperimentPrompt, setSpaceflowTextureExperimentPrompt] = useState('');
   const [spaceflowTextureExperimentPromptEdited, setSpaceflowTextureExperimentPromptEdited] = useState(false);
@@ -318,6 +318,30 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     setToast(msg);
     window.setTimeout(() => setToast(null), durationMs);
   }, []);
+
+  const applySpaceflowMetadata = useCallback((metadata: NpzSpaceflowMetadata | null) => {
+    if (!metadata) return;
+    if (metadata.projectName) setProjectName(metadata.projectName);
+    if (metadata.textPrompt) setSpaceflowTextPrompt(metadata.textPrompt);
+    if (metadata.outputName) setSpaceflowOutputName(metadata.outputName);
+    if (metadata.textureMode) setSpaceflowTextureMode(metadata.textureMode);
+    if (metadata.globalTextureText) {
+      setSpaceflowGlobalTextureText(metadata.globalTextureText);
+      setSpaceflowTextureMode('text');
+    }
+    if (!PUBLIC_DEMO && metadata.globalTextureImagePath) {
+      setSpaceflowGlobalTextureImagePath(metadata.globalTextureImagePath);
+      setSpaceflowTextureMode('image');
+    }
+    if (metadata.textureExperimentPrompt) {
+      setSpaceflowTextureExperimentPrompt(metadata.textureExperimentPrompt);
+      setSpaceflowTextureExperimentPromptEdited(true);
+    } else {
+      setSpaceflowTextureExperimentPrompt('');
+      setSpaceflowTextureExperimentPromptEdited(false);
+    }
+    setSpaceflowGlobalTextureImageFile(null);
+  }, [setSpaceflowTextureMode]);
 
   const inspectSpaceflowRunMesh = useCallback((run: SpaceflowRunStatus, automatic = false) => {
     const meshFile = pickSpaceflowInspectionMesh(run.output_files ?? []);
@@ -354,6 +378,10 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const textureExperimentPromptValue = spaceflowTextureExperimentPromptEdited
     ? spaceflowTextureExperimentPrompt
     : generatedTextureExperimentPrompt;
+
+  useEffect(() => {
+    if (importedNpzMetadata) applySpaceflowMetadata(importedNpzMetadata.metadata);
+  }, [applySpaceflowMetadata, importedNpzMetadata]);
 
   useEffect(() => {
     if (!spaceflowRun?.run_id || !spaceflowRunActive) return;
@@ -474,14 +502,15 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       showToast('Enter a SpaceFlow text prompt.', 5000);
       return;
     }
-    if (experimentType === 'texture' && spaceflowTextureMode !== 'text') {
-      showToast('Texture experiment supports text texture guidance only.', 6000);
+    const includesTextureExperiment = experimentType === 'texture' || experimentType === 'full';
+    if (includesTextureExperiment && spaceflowTextureMode !== 'text') {
+      showToast('Texture and full experiments support text texture guidance only.', 6000);
       return;
     }
-    const textureExperimentPrompt = experimentType === 'texture'
+    const textureExperimentPrompt = includesTextureExperiment
       ? textureExperimentPromptValue.trim()
       : '';
-    if (experimentType === 'texture' && !textureExperimentPrompt) {
+    if (includesTextureExperiment && !textureExperimentPrompt) {
       showToast('Enter a TRELLIS texture experiment prompt.', 6000);
       return;
     }
@@ -502,13 +531,19 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       const localTextureImagePaths = visiblePrimitives.map(p => PUBLIC_DEMO ? '' : (p.localTextureImagePath ?? '').trim());
       const localTextureImageFiles = visiblePrimitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
       const outputName = spaceflowOutputName.trim() || outputNameFromPrompt(spaceflowTextPrompt);
-      const experimentSuffix = experimentType === 'texture' ? '_texture_experiment' : '_experiment';
+      const experimentSuffix = experimentType === 'texture'
+        ? '_texture_experiment'
+        : experimentType === 'full'
+          ? '_full_experiment'
+          : '_experiment';
       const runOutputName = experimentMode && !outputName.endsWith(experimentSuffix)
         ? `${outputName}${experimentSuffix}`
         : outputName;
       const runLabel = experimentType === 'texture'
         ? 'SpaceFlow texture experiment'
-        : experimentMode
+        : experimentType === 'full'
+          ? 'SpaceFlow full experiment'
+          : experimentMode
           ? 'SpaceFlow experiment'
           : 'SpaceFlow';
       const { run, bundle } = await startSpaceflowRun({
@@ -526,7 +561,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           globalTextureImagePath,
           localTextureTexts,
           localTextureImagePaths,
-          textureExperimentPrompt: experimentType === 'texture' ? textureExperimentPrompt : undefined,
+          textureExperimentPrompt: includesTextureExperiment ? textureExperimentPrompt : undefined,
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
@@ -695,7 +730,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     };
     input.click();
     setShowImport(false);
-  }, [loadPreset, setSpaceflowTextureMode, showToast]);
+  }, [loadPreset, showToast]);
 
   const handleImportNpz = useCallback(() => {
     const input = document.createElement('input');
@@ -708,26 +743,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         const stem = safeName(file.name.replace(/\.npz$/i, ''), 'npz');
         const { primitives: prims, metadata } = await importNpzWithMetadata(file, stem, { basisZUpToYUp: false });
         loadPreset(prims);
-        if (metadata?.projectName) setProjectName(metadata.projectName);
-        if (metadata?.textPrompt) setSpaceflowTextPrompt(metadata.textPrompt);
-        if (metadata?.outputName) setSpaceflowOutputName(metadata.outputName);
-        if (metadata?.textureMode) setSpaceflowTextureMode(metadata.textureMode);
-        if (metadata?.globalTextureText) {
-          setSpaceflowGlobalTextureText(metadata.globalTextureText);
-          setSpaceflowTextureMode('text');
-        }
-        if (!PUBLIC_DEMO && metadata?.globalTextureImagePath) {
-          setSpaceflowGlobalTextureImagePath(metadata.globalTextureImagePath);
-          setSpaceflowTextureMode('image');
-        }
-        if (metadata?.textureExperimentPrompt) {
-          setSpaceflowTextureExperimentPrompt(metadata.textureExperimentPrompt);
-          setSpaceflowTextureExperimentPromptEdited(true);
-        } else if (metadata) {
-          setSpaceflowTextureExperimentPrompt('');
-          setSpaceflowTextureExperimentPromptEdited(false);
-        }
-        setSpaceflowGlobalTextureImageFile(null);
+        applySpaceflowMetadata(metadata);
         const textureCount = prims.filter(p => (p.localTextureText ?? '').trim() || (p.localTextureImagePath ?? '').trim()).length;
         const withTexture = metadata?.globalTextureText || metadata?.globalTextureImagePath || textureCount > 0;
         showToast(
@@ -739,7 +755,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     };
     input.click();
     setShowImport(false);
-  }, [loadPreset, showToast]);
+  }, [applySpaceflowMetadata, loadPreset, showToast]);
 
   const handleLoadDemoPreset = useCallback(async (preset: DemoPreset) => {
     try {
@@ -876,18 +892,6 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     setShowExport(false);
   }, [loadPreset, showToast]);
 
-  const handleInvertControl = useCallback(() => {
-    if (primitives.length === 0) return;
-    const nextHighCount = primitives.filter(p => p.controlLevel === 'low').length;
-    const nextLowCount = primitives.length - nextHighCount;
-    invertControlLevels();
-    setShowImport(false);
-    setShowExport(false);
-    setShowRotateAll(false);
-    setShowSpaceflow(false);
-    showToast(`Inverted control levels (${nextHighCount} high, ${nextLowCount} low)`);
-  }, [invertControlLevels, primitives, showToast]);
-
   const highCount = visiblePrimitives.filter(p => p.controlLevel === 'high').length;
   const lowCount = visiblePrimitives.filter(p => p.controlLevel === 'low').length;
   const allOrtho = visiblePrimitives.every(p => isOrthogonal(p.rotation));
@@ -968,18 +972,6 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         </button>
         <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template" aria-label="Load chair template">
           <ChairIcon size={16} />
-        </button>
-        <span className="separator" />
-        <button
-          type="button"
-          className="toolbar-btn toolbar-btn-menu"
-          onClick={handleInvertControl}
-          disabled={primitives.length === 0}
-          title="Invert high-control and low-control primitives"
-          aria-label="Invert control levels"
-        >
-          <InvertControlIcon className="toolbar-btn-menu-icon" size={14} />
-          <span className="toolbar-btn-menu-label">Invert Control</span>
         </button>
         <span className="separator" />
         <div className={`export-dropdown rotate-all-group${showRotateAll ? ' is-open' : ''}`}>
@@ -1314,6 +1306,17 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   >
                     Texture exp
                   </button>
+                  <button
+                    className="btn-generate-go btn-spaceflow-texture-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('full')}
+                    disabled={!canStartTextureExperiment}
+                    title={spaceflowTextureMode === 'text'
+                      ? 'Run structure and texture comparison variants'
+                      : 'Full experiment requires text texture guidance'}
+                  >
+                    Full exp
+                  </button>
                   {spaceflowRunActive && (
                     <button
                       className="btn-generate-go btn-spaceflow-stop"
@@ -1554,7 +1557,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
         </div>
       </div>
 
-      {toast && <div className="toast" onClick={() => setToast(null)}>{toast}</div>}
+      {toast && <div className="app-toast" onClick={() => setToast(null)}>{toast}</div>}
     </div>
   );
 }
