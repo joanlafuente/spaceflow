@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./static/css/style.css?v=2">
+  <link rel="stylesheet" href="./static/css/style.css?v=4">
   <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
 </head>
 <body>
@@ -30,32 +30,59 @@
 
   <!-- ── INSTRUCTION MODAL ──────────────────────────────────────── -->
   <div id="instruction-modal" class="modal-overlay" style="display:none">
-    <div class="modal-card" style="max-width:560px">
+    <div class="modal-card instruction-card" id="instruction-card" style="max-width:620px">
       <div class="modal-logo">Before you begin</div>
       <h2 class="modal-title" style="font-size:20px;margin-bottom:16px">
         How this study works
       </h2>
+
       <p style="font-size:14px;color:var(--text);line-height:1.7;margin-bottom:14px">
-        In each trial, a model generates a 3D asset from a text prompt and an
-        input geometric shape. The input shape is divided into two control regions:
+        In each trial, a model generates a 3D asset from a <strong>text prompt</strong>
+        and an <strong>input geometric shape</strong>. The input shape is divided
+        into two control regions that govern how much the output must follow the geometry:
       </p>
-      <div style="background:var(--bg);border-radius:8px;padding:14px 18px;margin-bottom:14px;font-size:14px;line-height:1.8">
+
+      <div style="background:var(--bg);border-radius:8px;padding:14px 18px;margin-bottom:20px;font-size:14px;line-height:1.9">
         <div>
-          <strong style="color:#d2a32a;">● Orange regions</strong> —
-          strongly controlled. The generated object should stay close to their shape.
+          <strong style="color:#d2a32a;">● Orange regions</strong> — <em>strongly controlled.</em>
+          The generated object must stay close to the shape and placement of these parts.
         </div>
-        <div style="margin-top:6px">
-          <strong>○ Grey/white regions</strong> —
-          weakly controlled. The model may generate freely to match the prompt.
+        <div style="margin-top:8px">
+          <strong>○ Grey/white regions</strong> — <em>weakly controlled.</em>
+          The model generates freely here; the result should match the text prompt.
         </div>
       </div>
-      <p style="font-size:14px;color:var(--text-muted);line-height:1.7;margin-bottom:24px">
-        You will compare <strong>pairs</strong> of generated objects and answer
-        three questions. Judge each question independently.
-        A good result should match the prompt <em>and</em> preserve the intended
-        structure in the orange regions.
+
+      <p class="instruction-example-label">Example 1 — chair with a slat back</p>
+      <div class="instruction-banner-wrap">
+        <img src="./static/img/explanation_chair.png"
+             class="instruction-banner-img"
+             alt="Chair example: orange legs must follow input shape, white back should match the slat back prompt">
+      </div>
+
+      <p class="instruction-example-label">Example 2 — elegant legged bench</p>
+      <div class="instruction-banner-wrap">
+        <img src="./static/img/explanation_bench.png"
+             class="instruction-banner-img"
+             alt="Bench example: orange seat must follow input shape, white legs should match the elegant legs prompt">
+      </div>
+
+      <p style="font-size:14px;color:var(--text);line-height:1.7;margin-top:20px;margin-bottom:10px">
+        <strong>In each trial</strong>, you will see the input geometric shape alongside
+        two generated 3D objects (Sample A and Sample B). Answer three questions:
       </p>
-      <button id="instruction-ready" class="btn btn-primary">
+      <ol style="font-size:14px;color:var(--text);line-height:1.9;margin:0 0 14px 18px;padding:0">
+        <li><strong>Q1 — Control:</strong> Which object better matches the prompt in grey regions and the input shape in orange regions?</li>
+        <li><strong>Q2 — Realism:</strong> Which looks more realistic?</li>
+        <li><strong>Q3 — Overall:</strong> Which looks better overall?</li>
+      </ol>
+      <p style="font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:24px">
+        Judge each question independently. A good result should <em>both</em> match
+        the text prompt and preserve the intended structure in the orange regions —
+        just getting one right is not enough.
+      </p>
+
+      <button id="instruction-ready" class="btn btn-primary" disabled>
         I'm ready →
       </button>
     </div>
@@ -82,28 +109,31 @@
       </div>
     </div>
 
-    <!-- Task description -->
-    <div class="task-card">
-      <div style="font-size:14px; color:var(--text-muted); margin-bottom:14px">
-        <strong style="color:#d2a32a">● Orange</strong> — follow input shape closely &nbsp;·&nbsp;
-        <strong style="color:var(--text)">○ Grey/white</strong> — generated freely to match the prompt
-      </div>
-      <div class="prompt-row">
-        <span class="prompt-label">Prompt</span>
-        <span class="prompt-text" id="prompt-box">—</span>
-      </div>
-    </div>
-
-    <!-- Single SQ prior reference -->
+    <!-- Input shape + prompt + legend -->
     <div class="references-section">
       <div class="section-label">Input Geometric Shape</div>
-      <div class="tau-reference-card" style="width:fit-content">
-        <div class="ref-img-wrap">
-          <div id="ref-container" class="tau-reference-img"></div>
+      <div class="tau-reference-row">
+
+        <div class="tau-reference-card">
+          <div class="ref-img-wrap">
+            <div id="ref-container" class="tau-reference-img"></div>
+          </div>
+          <div class="reference-tag">
+            <span style="color:#d2a32a; font-weight:600;">orange = high geometric control</span>
+          </div>
         </div>
-        <div class="reference-tag">
-          <span style="color:#d2a32a; font-weight:600;">orange = high geometric control</span>
+
+        <div class="tau-reference-desc">
+          <div class="ref-desc-title">Prompt</div>
+          <p class="prompt-text" id="prompt-box"
+             style="font-size:17px;font-weight:500;color:var(--text);line-height:1.5;margin-bottom:28px">—</p>
+          <div class="ref-desc-title">Control regions</div>
+          <div style="font-size:14px;line-height:2.2;margin-top:6px">
+            <div><strong style="color:#d2a32a;">● Orange</strong> — follow input shape closely</div>
+            <div><strong style="color:var(--text)">○ Grey/white</strong> — match the prompt</div>
+          </div>
         </div>
+
       </div>
     </div>
 
@@ -130,7 +160,7 @@
 
         <div class="question">
           <div class="question-text">
-            Q1 - Which object best matches the prompt in the grey regions while also closely following the orange input shape?
+            Q1 — Which object better matches the prompt in grey regions and the input shape in orange regions?
           </div>
           <div class="choices">
             <label class="choice-label"><input type="radio" name="q1" value="Model A" required><span class="choice-btn">Sample A</span></label>
@@ -175,6 +205,6 @@
 
   </div><!-- /main-content -->
 
-  <script src="./static/js/main_tau.js?v=2"></script>
+  <script src="./static/js/main_tau.js?v=6"></script>
 </body>
 </html>

@@ -2,148 +2,115 @@
 """
 generate_trials_tau.py
 ──────────────────────
-Generates trials_tau.json from the tau control study data.
+Generates trials_tau.json from the new 45-scene experiment directory.
 
 Expected structure under static/data/tau/:
-    local_tau/
-        1_chair.glb
-        2_sofa.glb
-        ...
-    tau_3/
-        1_chair.glb
-        2_sofa.glb
-        ...
-    tau_10/
-        1_chair.glb
-        2_sofa.glb
-        ...
-    sq_priors_images/
-        1_chair_sq.png      (any name, matched by number prefix)
-        2_sofa_sq.png
-        ...
+    local_tau/          acoustic_guitar.glb, airplane_bent_tapered.glb, ...
+    tau_3/              same names
+    tau_10/             same names
+    sq_priors_glbs/     acoustic_guitar_sq.glb, ...
 
-Edit tau_metadata.json to set prompts for each numbered example.
+File names are derived from the experiment folder name by stripping _full_experiment.
+Prompts are read from each scene's output/experiment_manifest.json.
 
 Usage:
+    cd docs/
     python generate_trials_tau.py
 """
 
-import json, os, random, re
+import json, random
 from pathlib import Path
 
 # ── CONFIG ────────────────────────────────────────────────────────────────
-DATA_ROOT    = Path("static/data/tau")
-OUTPUT_FILE  = Path("trials_tau.json")
-METADATA     = Path("tau_metadata.json")
+DATA_ROOT   = Path("static/data/tau")
+OUTPUT_FILE = Path("trials_tau.json")
+SRC_ROOT    = Path("/work/courses/3dv/team3/spaceflow-minimal/outputs_examples_spaceflow_ALREADY_CHECKED")
 
-METHOD_DIRS  = {
+METHOD_DIRS = {
     "local_tau": DATA_ROOT / "local_tau",
-    "tau_3":     DATA_ROOT / "tau_3",      # uniform low τ
-    "tau_10":    DATA_ROOT / "tau_10",     # uniform high τ
+    "tau_3":     DATA_ROOT / "tau_3",
+    "tau_10":    DATA_ROOT / "tau_10",
 }
-SQ_DIR       = DATA_ROOT / "sq_priors_glbs"
+SQ_DIR = DATA_ROOT / "sq_priors_glbs"
 
-# The three pairwise comparisons to generate per scene
+LOCAL_TAU_SUBDIR = "01_local_tau3_tau10_polyak0p18"
+
 PAIRS = [
-    ("local_tau", "tau_10"),   # ours vs uniform high
-    ("local_tau", "tau_3"),    # ours vs uniform low
+    ("local_tau", "tau_10"),   # ours vs uniform high τ
+    ("local_tau", "tau_3"),    # ours vs uniform low τ
 ]
 
 # ── HELPERS ───────────────────────────────────────────────────────────────
-def get_number(filename):
-    """Extract leading number from filename: '1_chair.glb' → 1"""
-    m = re.match(r'^(\d+)', filename)
-    return int(m.group(1)) if m else None
-
-def find_file(directory, number):
-    """Find any file in directory whose name starts with '{number}_'."""
-    if not directory.exists():
+def get_prompt(scene_name: str) -> str | None:
+    """Extract prompt from the experiment manifest for the local_tau variant."""
+    manifest = SRC_ROOT / f"{scene_name}_full_experiment" / "output" / "experiment_manifest.json"
+    if not manifest.exists():
         return None
-    for f in directory.iterdir():
-        if get_number(f.name) == number:
-            return f
-    return None
+    data = json.loads(manifest.read_text())
+    variants = data.get("variants", [])
+    for v in variants:
+        if v.get("name") == LOCAL_TAU_SUBDIR:
+            return v.get("prompt")
+    # Fallback: use first variant's prompt
+    return variants[0].get("prompt") if variants else None
 
 # ── MAIN ──────────────────────────────────────────────────────────────────
 def generate():
-    # Load metadata (prompts)
-    if not METADATA.exists():
-        print(f"ERROR: {METADATA} not found.")
-        print("Create it using tau_metadata.json template.")
+    # Discover scenes from what was actually copied into local_tau/
+    glb_files = sorted(METHOD_DIRS["local_tau"].glob("*.glb"))
+    if not glb_files:
+        print(f"ERROR: No GLB files found in {METHOD_DIRS['local_tau']}")
         return
 
-    with open(METADATA) as f:
-        meta = json.load(f)
+    scene_names = [f.stem for f in glb_files]   # e.g. "acoustic_guitar"
+    print(f"Found {len(scene_names)} scenes\n")
 
-    # Find all scene numbers from the local_tau folder
-    if not METHOD_DIRS["local_tau"].exists():
-        print(f"ERROR: {METHOD_DIRS['local_tau']} not found.")
-        return
-
-    glb_files   = [f for f in METHOD_DIRS["local_tau"].iterdir()
-                   if f.suffix.lower() in ('.glb', '.gltf')]
-    numbers     = sorted(set(filter(None, [get_number(f.name) for f in glb_files])))
-
-    if not numbers:
-        print(f"No GLB files found in {METHOD_DIRS['local_tau']}")
-        return
-
-    print(f"Found {len(numbers)} scenes: {numbers}\n")
     trials = []
 
-    for num in numbers:
-        num_str = str(num)
+    for scene_name in scene_names:
+        scene_id = f"scene_{scene_name}"
 
-        # Check metadata
-        if num_str not in meta:
-            print(f"  SKIP scene {num}: no entry in {METADATA}")
+        # Prompt from experiment manifest
+        prompt = get_prompt(scene_name)
+        if not prompt:
+            print(f"  SKIP {scene_name}: no prompt found in manifest")
             continue
 
-        scene_meta = meta[num_str]
-        if "prompt" not in scene_meta:
-            print(f"  SKIP scene {num}: missing 'prompt' in metadata")
-            continue
-
-        # Find SQ prior image
-        sq_file = find_file(SQ_DIR, num)
-        if sq_file is None:
-            print(f"  WARN scene {num}: no SQ prior image found in {SQ_DIR}")
-            ref_path = ""
-        else:
-            ref_path = str(sq_file).replace("\\", "/")
-
-        # Find GLB for each method
+        # GLB paths (already confirmed present by copy script)
         method_files = {}
         skip = False
         for method, directory in METHOD_DIRS.items():
-            f = find_file(directory, num)
-            if f is None:
-                print(f"  SKIP scene {num}: no file for method '{method}' in {directory}")
+            glb = directory / f"{scene_name}.glb"
+            if not glb.exists():
+                print(f"  SKIP {scene_name}: missing {glb}")
                 skip = True
                 break
-            method_files[method] = str(f).replace("\\", "/")
-
+            method_files[method] = str(glb).replace("\\", "/")
         if skip:
             continue
 
-        # Generate one trial per pair
-        scene_id = f"scene_{num:02d}"
+        # SQ prior
+        sq_glb = SQ_DIR / f"{scene_name}_sq.glb"
+        if not sq_glb.exists():
+            print(f"  WARN {scene_name}: no SQ prior at {sq_glb}")
+            ref_path = ""
+        else:
+            ref_path = str(sq_glb).replace("\\", "/")
+
+        # One trial per pair
         for method_a, method_b in PAIRS:
-            # Randomize which side A/B appears on
             if random.random() < 0.5:
                 method_a, method_b = method_b, method_a
-
-            trial = {
-                "scene_id":    scene_id,
-                "pair":        f"{method_a}_vs_{method_b}",
-                "mapping":     {"A": method_a, "B": method_b},
-                "outputs_a":   [method_files[method_a]],
-                "outputs_b":   [method_files[method_b]],
-                "ref":         ref_path,
-                "prompt":      scene_meta["prompt"],
-            }
-            trials.append(trial)
-            print(f"  + scene {num}: {method_a} vs {method_b}")
+            trials.append({
+                "scene_id":  scene_id,
+                "pair":      f"{method_a}_vs_{method_b}",
+                "mapping":   {"A": method_a, "B": method_b},
+                "outputs_a": [method_files[method_a]],
+                "outputs_b": [method_files[method_b]],
+                "ref":       ref_path,
+                "prompt":    prompt,
+            })
+            print(f"  + {scene_name}: {method_a} vs {method_b}")
 
     if not trials:
         print("\nNo trials generated.")
@@ -154,9 +121,10 @@ def generate():
     with open(OUTPUT_FILE, "w") as f:
         json.dump(trials, f, indent=2)
 
+    n_scenes = len(scene_names)
     print(f"\n✓ Wrote {len(trials)} trials to {OUTPUT_FILE}")
-    print(f"  ({len(numbers)} scenes × 3 pairs)")
-    print(f"  Each participant sees up to TRIALS_PER_PARTICIPANT (set in main_tau.js)")
+    print(f"  ({n_scenes} scenes × {len(PAIRS)} pairs)")
+    print(f"  Each participant sees SCENES_PER_PAIR×2 trials (set in main_tau.js)")
 
 if __name__ == "__main__":
     generate()

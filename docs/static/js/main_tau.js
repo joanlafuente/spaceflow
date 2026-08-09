@@ -1,13 +1,16 @@
 // ── CONFIG ────────────────────────────────────────────────────────────────
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDfs7_90-ses_2cNxUfrOFzucSTNZd6DrSMSgnQdfetqnMxcnSyL0y1WHs0Kcgc-m4/exec"; // same URL as appearance study
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDfs7_90-ses_2cNxUfrOFzucSTNZd6DrSMSgnQdfetqnMxcnSyL0y1WHs0Kcgc-m4/exec";
 
-const STUDY_ID             = "tau_control";
-const USERNAME_KEY         = 'spaceflow_username';
-const SCENES_PER_PAIR = 5; // 5 scenes × 2 pair types = 10 trials per participant
+const STUDY_ID        = "tau_control";
+const USERNAME_KEY    = 'spaceflow_username';
+const SCENES_PER_PAIR = 5; // 5 scenes × 2 pair types = 10 trials per batch
 
 // ── STATE ─────────────────────────────────────────────────────────────────
-let trials        = [];
-let trialIndex    = 0;
+let trials          = [];
+let trialIndex      = 0;
+let allTrials       = [];        // full pool, kept for continuation batches
+const seenSceneIds  = new Set(); // scenes shown so far (across all batches)
+
 let currentUsername =
   localStorage.getItem(USERNAME_KEY) ||
   sessionStorage.getItem(`username_${STUDY_ID}`);
@@ -40,22 +43,51 @@ function submitUsername() {
 }
 
 function hideModal() {
-  document.getElementById('username-modal').style.display = 'none';
+  document.getElementById('username-modal').style.display    = 'none';
   document.getElementById('instruction-modal').style.display = 'flex';
-  document.getElementById('main-content').style.display   = 'block';
-  document.getElementById('display-username').textContent  = currentUsername || '';
+  document.getElementById('main-content').style.display      = 'block';
+  document.getElementById('display-username').textContent    = currentUsername || '';
+
+  // Scroll-to-unlock: keep button disabled until participant reaches the bottom
+  const card     = document.getElementById('instruction-card');
+  const readyBtn = document.getElementById('instruction-ready');
+
+  function checkScroll() {
+    if (card.scrollHeight - card.scrollTop - card.clientHeight < 60) {
+      readyBtn.disabled = false;
+      card.removeEventListener('scroll', checkScroll);
+    }
+  }
+  card.addEventListener('scroll', checkScroll);
+  // Unlock immediately if content fits without scrolling
+  checkScroll();
 }
 
-// deterministic shuffle based on username
-function seededShuffle(arr, seed) {
-  const s = [...arr];
-  let h = [...seed].reduce((a, c) => Math.imul(31, a) + c.charCodeAt(0) | 0, 0);
-  for (let i = s.length - 1; i > 0; i--) {
-    h = Math.imul(h ^ h >>> 16, 0x45d9f3b);
-    const j = Math.abs(h) % (i + 1);
-    [s[i], s[j]] = [s[j], s[i]];
-  }
-  return s;
+// ── SAMPLING ──────────────────────────────────────────────────────────────
+// Pick SCENES_PER_PAIR unseen scenes for each pair type, with no overlap
+// between the two types. Returns a shuffled array of trials.
+function sampleBatch(pool) {
+  const vsHigh = pool.filter(t =>
+    (t.mapping.A === 'local_tau' || t.mapping.B === 'local_tau') &&
+    (t.mapping.A === 'tau_10'    || t.mapping.B === 'tau_10')
+  );
+  const vsLow = pool.filter(t =>
+    (t.mapping.A === 'local_tau' || t.mapping.B === 'local_tau') &&
+    (t.mapping.A === 'tau_3'     || t.mapping.B === 'tau_3')
+  );
+
+  // Shuffle all unseen scene IDs randomly
+  const scenes = [...new Set(pool.map(t => t.scene_id))]
+    .sort(() => Math.random() - 0.5);
+
+  const n             = Math.min(SCENES_PER_PAIR, Math.floor(scenes.length / 2));
+  const scenesForHigh = new Set(scenes.slice(0, n));
+  const scenesForLow  = new Set(scenes.slice(n, n * 2));
+
+  const selectedHigh = vsHigh.filter(t => scenesForHigh.has(t.scene_id));
+  const selectedLow  = vsLow.filter(t =>  scenesForLow.has(t.scene_id));
+
+  return [...selectedHigh, ...selectedLow].sort(() => Math.random() - 0.5);
 }
 
 // ── STUDY INIT ────────────────────────────────────────────────────────────
@@ -63,36 +95,9 @@ async function initStudy() {
   try {
     const res = await fetch('./trials_tau.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const all = await res.json();
+    allTrials = await res.json();
 
-    // Split into the two comparison types
-    const vsHigh = all.filter(t =>
-      (t.mapping.A === 'local_tau' || t.mapping.B === 'local_tau') &&
-      (t.mapping.A === 'tau_10'    || t.mapping.B === 'tau_10')
-    );
-    const vsLow = all.filter(t =>
-      (t.mapping.A === 'local_tau' || t.mapping.B === 'local_tau') &&
-      (t.mapping.A === 'tau_3'     || t.mapping.B === 'tau_3')
-    );
-
-    // Shuffle all scenes, then split between pair types
-    // → no participant sees the same scene in both comparisons
-    const scenes = seededShuffle(
-      [...new Set(all.map(t => t.scene_id))],
-      currentUsername
-    );
-
-    const n             = Math.min(SCENES_PER_PAIR, Math.floor(scenes.length / 2));
-    const scenesForHigh = new Set(scenes.slice(0, n));
-    const scenesForLow  = new Set(scenes.slice(n, n * 2));
-
-    const selectedHigh = vsHigh.filter(t => scenesForHigh.has(t.scene_id));
-    const selectedLow  = vsLow.filter(t =>  scenesForLow.has(t.scene_id));
-
-    // Combine and shuffle so pair types are interleaved
-    trials = [...selectedHigh, ...selectedLow]
-      .sort(() => Math.random() - 0.5);
-
+    trials     = sampleBatch(allTrials);
     trialIndex = 0;
     loadNextTrial();
   } catch (err) {
@@ -105,6 +110,7 @@ async function initStudy() {
 function loadNextTrial() {
   if (trialIndex >= trials.length) { showCompletion(); return; }
   const trial = trials[trialIndex++];
+  seenSceneIds.add(trial.scene_id);
   updateProgress();
   populateTrial(trial);
 }
@@ -160,7 +166,6 @@ function createMediaElement(url, altText) {
     v.muted = true; v.playsInline = true;
     v.style.cssText = 'width:100%;border-radius:6px;display:block;';
     return v;
-
   } else {
     const img     = document.createElement('img');
     img.src       = url;
@@ -237,24 +242,58 @@ document.getElementById('survey-form').addEventListener('submit', async (e) => {
 function showCompletion() {
   document.getElementById('progress-fill').style.width = '100%';
   document.getElementById('progress-text').textContent =
-    `${trials.length} of ${trials.length} — Complete`;
+    `${trials.length} of ${trials.length} (complete)`;
 
-  ['task-card', 'references-section', 'outputs-section', 'survey-section']
-    .forEach(cls => {
-      const el = document.querySelector('.' + cls);
-      if (el) el.style.display = 'none';
-    });
+  const studySections = ['references-section', 'outputs-section', 'survey-section'];
+  studySections.forEach(cls => {
+    const el = document.querySelector('.' + cls);
+    if (el) el.style.display = 'none';
+  });
+
+  // Check how many unseen scenes remain across both pair types
+  const unseenPool = allTrials.filter(t => !seenSceneIds.has(t.scene_id));
+  const unseenScenes = new Set(unseenPool.map(t => t.scene_id));
+  // Need at least 2 per pair type (4 total) to offer a meaningful continuation
+  const canContinue = unseenScenes.size >= 4;
+
+  const continueHtml = canContinue ? `
+    <div style="margin-top:28px;border-top:1px solid #e4e2dc;padding-top:24px">
+      <span style="display:inline-block;background:#f7f6f3;border:1px solid #e4e2dc;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7a7870;margin-bottom:14px">
+        Optional
+      </span>
+      <button id="continue-btn" class="btn btn-primary" style="width:100%">
+        Keep going and rate more examples →
+      </button>
+      <p style="font-size:13px;color:var(--text-muted);margin-top:10px;margin-bottom:0">
+        (Your responses so far are already saved!)
+      </p>
+    </div>` : '';
 
   document.querySelector('.page').insertAdjacentHTML('beforeend', `
-    <div class="completion-card">
+    <div class="completion-card" id="completion-card">
       <div class="completion-emoji">🎉</div>
       <div class="completion-title">Study complete!</div>
       <div class="completion-text">
         Thank you, <strong>${currentUsername}</strong>!<br>
         Your responses have been saved.
       </div>
+      ${continueHtml}
     </div>
   `);
+
+  if (canContinue) {
+    document.getElementById('continue-btn').addEventListener('click', () => {
+      document.getElementById('completion-card').remove();
+      studySections.forEach(cls => {
+        const el = document.querySelector('.' + cls);
+        if (el) el.style.display = '';
+      });
+      // Sample next batch from unseen scenes only
+      trials     = sampleBatch(unseenPool);
+      trialIndex = 0;
+      loadNextTrial();
+    });
+  }
 }
 
 function showMessage(msg, isError = false) {
