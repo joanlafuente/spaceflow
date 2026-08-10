@@ -7,7 +7,10 @@ SpaceFlow explores a practical question for text-to-3D systems: how can a user k
 
 <video src="docs/media/sailboat_spin.mp4" controls muted loop playsinline poster="docs/media/sailboat_spin_poster.png" width="520"></video>
 
-[View rotating sailboat preview](docs/media/sailboat_spin.mp4)
+
+https://github.com/user-attachments/assets/c4c95db5-bb5f-4100-bb1a-42addd9a8e40
+
+
 
 ## Overview
 
@@ -86,7 +89,7 @@ npm run build
 Start the backend service:
 
 ```bash
-python sq_ui/scripts/spaceflow_service.py
+python3 sq_ui/scripts/spaceflow_service.py
 ```
 
 Start the editor:
