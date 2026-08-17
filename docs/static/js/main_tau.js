@@ -64,8 +64,9 @@ function hideModal() {
 }
 
 // ── SAMPLING ──────────────────────────────────────────────────────────────
-// Pick SCENES_PER_PAIR unseen scenes for each pair type, with no overlap
-// between the two types. Returns a shuffled array of trials.
+// Pick SCENES_PER_PAIR scenes from each pair type independently.
+// Sampling from each pool separately ensures scenes that only exist in one
+// pair type (e.g. monitor has no tau_3) don't create empty slots.
 function sampleBatch(pool) {
   const vsHigh = pool.filter(t =>
     (t.mapping.A === 'local_tau' || t.mapping.B === 'local_tau') &&
@@ -76,18 +77,18 @@ function sampleBatch(pool) {
     (t.mapping.A === 'tau_3'     || t.mapping.B === 'tau_3')
   );
 
-  // Shuffle all unseen scene IDs randomly
-  const scenes = [...new Set(pool.map(t => t.scene_id))]
-    .sort(() => Math.random() - 0.5);
+  function pickScenes(trialList, n) {
+    const scenes = [...new Set(trialList.map(t => t.scene_id))]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, n);
+    const sceneSet = new Set(scenes);
+    return trialList.filter(t => sceneSet.has(t.scene_id));
+  }
 
-  const n             = Math.min(SCENES_PER_PAIR, Math.floor(scenes.length / 2));
-  const scenesForHigh = new Set(scenes.slice(0, n));
-  const scenesForLow  = new Set(scenes.slice(n, n * 2));
-
-  const selectedHigh = vsHigh.filter(t => scenesForHigh.has(t.scene_id));
-  const selectedLow  = vsLow.filter(t =>  scenesForLow.has(t.scene_id));
-
-  return [...selectedHigh, ...selectedLow].sort(() => Math.random() - 0.5);
+  return [
+    ...pickScenes(vsHigh, SCENES_PER_PAIR),
+    ...pickScenes(vsLow,  SCENES_PER_PAIR),
+  ].sort(() => Math.random() - 0.5);
 }
 
 // ── STUDY INIT ────────────────────────────────────────────────────────────

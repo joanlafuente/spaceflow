@@ -1,547 +1,19 @@
 [
   {
-    "scene_id": "scene_rocket_wrong_fins",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/rocket_wrong_fins.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/rocket_wrong_fins.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/rocket_wrong_fins_sq.glb",
-    "prompt": "a small retro rocket with three tail fins and a round window"
-  },
-  {
-    "scene_id": "scene_steam_locomotive",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/steam_locomotive.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/steam_locomotive.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/steam_locomotive_sq.glb",
-    "prompt": "a small vintage steam locomotive"
-  },
-  {
-    "scene_id": "scene_bicycle_wrong_wheel",
+    "scene_id": "scene_medieval_catapult",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/bicycle_wrong_wheel.glb"
+      "static/data/tau/tau_10/medieval_catapult.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/bicycle_wrong_wheel.glb"
+      "static/data/tau/local_tau/medieval_catapult.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/bicycle_wrong_wheel_sq.glb",
-    "prompt": "a classic bicycle with two round spoked wheels"
-  },
-  {
-    "scene_id": "scene_arcade_cabinet",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/arcade_cabinet.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/arcade_cabinet.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/arcade_cabinet_sq.glb",
-    "prompt": "a retro arcade cabinet with joystick controls"
-  },
-  {
-    "scene_id": "scene_acoustic_guitar",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/acoustic_guitar.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/acoustic_guitar.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/acoustic_guitar_sq.glb",
-    "prompt": "an acoustic guitar with a dark fingerboard"
-  },
-  {
-    "scene_id": "scene_vintage_diving_helmet",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/vintage_diving_helmet.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/vintage_diving_helmet.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/vintage_diving_helmet_sq.glb",
-    "prompt": "a vintage brass diving helmet"
-  },
-  {
-    "scene_id": "scene_dragonfly",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/dragonfly.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/dragonfly.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/dragonfly_sq.glb",
-    "prompt": "a delicate dragonfly with transparent wings"
-  },
-  {
-    "scene_id": "scene_antique_gramophone",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/antique_gramophone.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/antique_gramophone.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/antique_gramophone_sq.glb",
-    "prompt": "an antique gramophone with a large brass horn"
-  },
-  {
-    "scene_id": "scene_film_camera_tripod",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/film_camera_tripod.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/film_camera_tripod.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/film_camera_tripod_sq.glb",
-    "prompt": "a vintage film camera on a tripod"
-  },
-  {
-    "scene_id": "scene_windmill",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/windmill.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/windmill.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/windmill_sq.glb",
-    "prompt": "a rustic windmill with four wooden blades"
-  },
-  {
-    "scene_id": "scene_windmill",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/windmill.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/windmill.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/windmill_sq.glb",
-    "prompt": "a rustic windmill with four wooden blades"
-  },
-  {
-    "scene_id": "scene_japanese_stone_lantern",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/japanese_stone_lantern.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/japanese_stone_lantern.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/japanese_stone_lantern_sq.glb",
-    "prompt": "a Japanese stone garden lantern"
-  },
-  {
-    "scene_id": "scene_airplane_bent_tapered",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/airplane_bent_tapered.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/airplane_bent_tapered.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/airplane_bent_tapered_sq.glb",
-    "prompt": "a small vintage propeller airplane with tapered wings"
-  },
-  {
-    "scene_id": "scene_ornate_candle_lantern",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/ornate_candle_lantern.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/ornate_candle_lantern.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/ornate_candle_lantern_sq.glb",
-    "prompt": "an ornate candle lantern with glass panels"
-  },
-  {
-    "scene_id": "scene_sandcastle",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/sandcastle.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/sandcastle.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/sandcastle_sq.glb",
-    "prompt": "a beach sandcastle with towers and a small flag"
-  },
-  {
-    "scene_id": "scene_astronomical_telescope",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/astronomical_telescope.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/astronomical_telescope.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/astronomical_telescope_sq.glb",
-    "prompt": "an astronomical telescope on a tripod mount"
-  },
-  {
-    "scene_id": "scene_sewing_machine",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/sewing_machine.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/sewing_machine.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/sewing_machine_sq.glb",
-    "prompt": "a vintage sewing machine with fabric under the needle"
-  },
-  {
-    "scene_id": "scene_violin_with_bow",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/violin_with_bow.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/violin_with_bow.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/violin_with_bow_sq.glb",
-    "prompt": "a wooden violin with a bow beside it"
-  },
-  {
-    "scene_id": "scene_laboratory_microscope",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/laboratory_microscope.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/laboratory_microscope.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/laboratory_microscope_sq.glb",
-    "prompt": "a laboratory microscope"
-  },
-  {
-    "scene_id": "scene_pirate_ship",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/pirate_ship.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/pirate_ship.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/pirate_ship_sq.glb",
-    "prompt": "a small pirate ship with two masts and cream sails"
-  },
-  {
-    "scene_id": "scene_hot_air_balloon",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/hot_air_balloon.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/hot_air_balloon.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/hot_air_balloon_sq.glb",
-    "prompt": "a vintage hot air balloon with a wicker basket"
-  },
-  {
-    "scene_id": "scene_art_deco_birdcage",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/art_deco_birdcage.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/art_deco_birdcage.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/art_deco_birdcage_sq.glb",
-    "prompt": "an art deco birdcage with a small bird inside"
-  },
-  {
-    "scene_id": "scene_pagoda_shrine",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/pagoda_shrine.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/pagoda_shrine.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/pagoda_shrine_sq.glb",
-    "prompt": "a small three-tier pagoda shrine"
-  },
-  {
-    "scene_id": "scene_lamp_wrong_shade",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/lamp_wrong_shade.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/lamp_wrong_shade.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/lamp_wrong_shade_sq.glb",
-    "prompt": "a table lamp with a conical fabric lampshade"
-  },
-  {
-    "scene_id": "scene_retro_robot_toy",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/retro_robot_toy.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/retro_robot_toy.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/retro_robot_toy_sq.glb",
-    "prompt": "a retro tin robot toy"
-  },
-  {
-    "scene_id": "scene_ceramic_teapot",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/ceramic_teapot.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/ceramic_teapot.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/ceramic_teapot_sq.glb",
-    "prompt": "a ceramic teapot with a curved handle and spout"
-  },
-  {
-    "scene_id": "scene_vintage_diving_helmet",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/vintage_diving_helmet.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/vintage_diving_helmet.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/vintage_diving_helmet_sq.glb",
-    "prompt": "a vintage brass diving helmet"
-  },
-  {
-    "scene_id": "scene_space_shuttle",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/space_shuttle.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/space_shuttle.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/space_shuttle_sq.glb",
-    "prompt": "a compact space shuttle with delta wings"
-  },
-  {
-    "scene_id": "scene_lunar_rover",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/lunar_rover.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/lunar_rover.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/lunar_rover_sq.glb",
-    "prompt": "a compact lunar rover with six wheels and solar panels"
-  },
-  {
-    "scene_id": "scene_carousel_horse",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/carousel_horse.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/carousel_horse.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/carousel_horse_sq.glb",
-    "prompt": "a decorated carousel horse on a vertical pole"
-  },
-  {
-    "scene_id": "scene_astronomical_telescope",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/astronomical_telescope.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/astronomical_telescope.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/astronomical_telescope_sq.glb",
-    "prompt": "an astronomical telescope on a tripod mount"
-  },
-  {
-    "scene_id": "scene_motorcycle_sidecar",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/motorcycle_sidecar.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/motorcycle_sidecar.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/motorcycle_sidecar_sq.glb",
-    "prompt": "a vintage motorcycle with a sidecar"
-  },
-  {
-    "scene_id": "scene_sandcastle",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/sandcastle.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/sandcastle.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/sandcastle_sq.glb",
-    "prompt": "a beach sandcastle with towers and a small flag"
-  },
-  {
-    "scene_id": "scene_grand_piano",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/grand_piano.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/grand_piano.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/grand_piano_sq.glb",
-    "prompt": "a glossy grand piano with an open lid"
+    "ref": "static/data/tau/sq_priors_glbs/medieval_catapult_sq.glb",
+    "prompt": "a small medieval wooden catapult with a stone projectile"
   },
   {
     "scene_id": "scene_vintage_radio",
@@ -560,116 +32,292 @@
     "prompt": "a vintage tabletop radio with dials and antenna"
   },
   {
-    "scene_id": "scene_grand_piano",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/grand_piano.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/grand_piano.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/grand_piano_sq.glb",
-    "prompt": "a glossy grand piano with an open lid"
-  },
-  {
-    "scene_id": "scene_sewing_machine",
+    "scene_id": "scene_retro_laboratory_microscope",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/sewing_machine.glb"
+      "static/data/tau/tau_10/retro_laboratory_microscope.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/sewing_machine.glb"
+      "static/data/tau/local_tau/retro_laboratory_microscope.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/sewing_machine_sq.glb",
-    "prompt": "a vintage sewing machine with fabric under the needle"
+    "ref": "static/data/tau/sq_priors_glbs/retro_laboratory_microscope_sq.glb",
+    "prompt": "a compact retro laboratory microscope with a heavy base, angled support, specimen stage, eyepiece, and objective housing"
   },
   {
-    "scene_id": "scene_vintage_radio",
+    "scene_id": "scene_garden_watering_can",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/vintage_radio.glb"
+      "static/data/tau/tau_3/garden_watering_can.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/vintage_radio.glb"
+      "static/data/tau/local_tau/garden_watering_can.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/vintage_radio_sq.glb",
-    "prompt": "a vintage tabletop radio with dials and antenna"
+    "ref": "static/data/tau/sq_priors_glbs/garden_watering_can_sq.glb",
+    "prompt": "a traditional garden watering can with a round body, long rising spout, top handle, and sprinkler rose"
   },
   {
-    "scene_id": "scene_garden_fountain",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/garden_fountain.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/garden_fountain.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/garden_fountain_sq.glb",
-    "prompt": "a tiered stone garden fountain"
-  },
-  {
-    "scene_id": "scene_art_deco_birdcage",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/art_deco_birdcage.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/art_deco_birdcage.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/art_deco_birdcage_sq.glb",
-    "prompt": "an art deco birdcage with a small bird inside"
-  },
-  {
-    "scene_id": "scene_orbiting_satellite",
+    "scene_id": "scene_21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/orbiting_satellite.glb"
+      "static/data/tau/tau_3/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/orbiting_satellite.glb"
+      "static/data/tau/local_tau/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/orbiting_satellite_sq.glb",
-    "prompt": "a small satellite with solar panels and a dish antenna"
+    "ref": "static/data/tau/sq_priors_glbs/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat_sq.glb",
+    "prompt": "wood chair with straight legs and a cushioned seat"
   },
   {
-    "scene_id": "scene_antique_gramophone",
+    "scene_id": "scene_classic_steam_iron",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/classic_steam_iron.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_steam_iron.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_steam_iron_sq.glb",
+    "prompt": "a simple steam iron with a pointed soleplate, solid body, and raised top handle"
+  },
+  {
+    "scene_id": "scene_wooden_baseball_bat",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_baseball_bat.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/wooden_baseball_bat.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_baseball_bat_sq.glb",
+    "prompt": "a baseball bat"
+  },
+  {
+    "scene_id": "scene_piano",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/piano.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/piano.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/piano_sq.glb",
+    "prompt": "an upright piano"
+  },
+  {
+    "scene_id": "scene_22_20260605T223506Z_chair",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/22_20260605T223506Z_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/22_20260605T223506Z_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/22_20260605T223506Z_chair_sq.glb",
+    "prompt": "chair"
+  },
+  {
+    "scene_id": "scene_rowing_boat_with_oars",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/rowing_boat_with_oars.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/rowing_boat_with_oars.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/rowing_boat_with_oars_sq.glb",
+    "prompt": "a small wooden rowing boat with two bench seats and a pair of oars"
+  },
+  {
+    "scene_id": "scene_classic_sewing_machine",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/classic_sewing_machine.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_sewing_machine.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_sewing_machine_sq.glb",
+    "prompt": "a classic domestic sewing machine with a broad base, upright pillar, horizontal arm, descending needle head, and large side handwheel"
+  },
+  {
+    "scene_id": "scene_red_apple",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/red_apple.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/red_apple.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_apple_sq.glb",
+    "prompt": "an apple"
+  },
+  {
+    "scene_id": "scene_18_elegant_legged_bench",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/18_elegant_legged_bench.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/18_elegant_legged_bench.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/18_elegant_legged_bench_sq.glb",
+    "prompt": "Elegant legged bench"
+  },
+  {
+    "scene_id": "scene_wooden_park_bench",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/antique_gramophone.glb"
+      "static/data/tau/tau_10/wooden_park_bench.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/antique_gramophone.glb"
+      "static/data/tau/local_tau/wooden_park_bench.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/antique_gramophone_sq.glb",
-    "prompt": "an antique gramophone with a large brass horn"
+    "ref": "static/data/tau/sq_priors_glbs/wooden_park_bench_sq.glb",
+    "prompt": "a classic wooden park bench with a broad seat, tall backrest, and two sturdy side support frames"
+  },
+  {
+    "scene_id": "scene_lantern_wrong_handle",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/lantern_wrong_handle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/lantern_wrong_handle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/lantern_wrong_handle_sq.glb",
+    "prompt": "camping lantern"
+  },
+  {
+    "scene_id": "scene_classic_steam_iron",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/classic_steam_iron.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_steam_iron.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_steam_iron_sq.glb",
+    "prompt": "a simple steam iron with a pointed soleplate, solid body, and raised top handle"
+  },
+  {
+    "scene_id": "scene_red_bucket",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/red_bucket.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/red_bucket.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_bucket_sq.glb",
+    "prompt": "a bucket"
+  },
+  {
+    "scene_id": "scene_blue_teacup",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/blue_teacup.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/blue_teacup.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/blue_teacup_sq.glb",
+    "prompt": "a teacup"
+  },
+  {
+    "scene_id": "scene_14_clock_with_button_on_top",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/14_clock_with_button_on_top.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/14_clock_with_button_on_top.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/14_clock_with_button_on_top_sq.glb",
+    "prompt": "Clock with button on top"
+  },
+  {
+    "scene_id": "scene_wooden_baseball_bat",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_baseball_bat.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/wooden_baseball_bat.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_baseball_bat_sq.glb",
+    "prompt": "a baseball bat"
   },
   {
     "scene_id": "scene_swan_boat_wrong_head",
@@ -688,516 +336,276 @@
     "prompt": "a white swan paddle boat with a graceful curved neck"
   },
   {
-    "scene_id": "scene_rocket_wrong_fins",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/rocket_wrong_fins.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/rocket_wrong_fins.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/rocket_wrong_fins_sq.glb",
-    "prompt": "a small retro rocket with three tail fins and a round window"
-  },
-  {
-    "scene_id": "scene_laboratory_microscope",
+    "scene_id": "scene_red_bucket",
     "pair": "local_tau_vs_tau_3",
     "mapping": {
       "A": "local_tau",
       "B": "tau_3"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/laboratory_microscope.glb"
+      "static/data/tau/local_tau/red_bucket.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/laboratory_microscope.glb"
+      "static/data/tau/tau_3/red_bucket.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/laboratory_microscope_sq.glb",
-    "prompt": "a laboratory microscope"
-  },
-  {
-    "scene_id": "scene_hot_air_balloon",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/hot_air_balloon.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/hot_air_balloon.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/hot_air_balloon_sq.glb",
-    "prompt": "a vintage hot air balloon with a wicker basket"
-  },
-  {
-    "scene_id": "scene_pagoda_shrine",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/pagoda_shrine.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/pagoda_shrine.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/pagoda_shrine_sq.glb",
-    "prompt": "a small three-tier pagoda shrine"
-  },
-  {
-    "scene_id": "scene_cuckoo_clock",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/cuckoo_clock.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/cuckoo_clock.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/cuckoo_clock_sq.glb",
-    "prompt": "a carved wooden cuckoo clock with a pendulum"
-  },
-  {
-    "scene_id": "scene_film_camera_tripod",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/film_camera_tripod.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/film_camera_tripod.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/film_camera_tripod_sq.glb",
-    "prompt": "a vintage film camera on a tripod"
-  },
-  {
-    "scene_id": "scene_medieval_catapult",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/medieval_catapult.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/medieval_catapult.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/medieval_catapult_sq.glb",
-    "prompt": "a small medieval wooden catapult with a stone projectile"
-  },
-  {
-    "scene_id": "scene_steam_locomotive",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/steam_locomotive.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/steam_locomotive.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/steam_locomotive_sq.glb",
-    "prompt": "a small vintage steam locomotive"
-  },
-  {
-    "scene_id": "scene_motorcycle_sidecar",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/motorcycle_sidecar.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/motorcycle_sidecar.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/motorcycle_sidecar_sq.glb",
-    "prompt": "a vintage motorcycle with a sidecar"
-  },
-  {
-    "scene_id": "scene_lunar_rover",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/lunar_rover.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/lunar_rover.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/lunar_rover_sq.glb",
-    "prompt": "a compact lunar rover with six wheels and solar panels"
-  },
-  {
-    "scene_id": "scene_acoustic_guitar",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/acoustic_guitar.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/acoustic_guitar.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/acoustic_guitar_sq.glb",
-    "prompt": "an acoustic guitar with a dark fingerboard"
-  },
-  {
-    "scene_id": "scene_bonsai_tree_pot",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/bonsai_tree_pot.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/bonsai_tree_pot.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/bonsai_tree_pot_sq.glb",
-    "prompt": "a small bonsai tree in a ceramic pot"
-  },
-  {
-    "scene_id": "scene_dragonfly",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/dragonfly.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/dragonfly.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/dragonfly_sq.glb",
-    "prompt": "a delicate dragonfly with transparent wings"
-  },
-  {
-    "scene_id": "scene_lighthouse",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/lighthouse.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/lighthouse.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/lighthouse_sq.glb",
-    "prompt": "a coastal lighthouse with a red roof"
-  },
-  {
-    "scene_id": "scene_violin_with_bow",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/violin_with_bow.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/violin_with_bow.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/violin_with_bow_sq.glb",
-    "prompt": "a wooden violin with a bow beside it"
-  },
-  {
-    "scene_id": "scene_lamp_wrong_shade",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/lamp_wrong_shade.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/lamp_wrong_shade.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/lamp_wrong_shade_sq.glb",
-    "prompt": "a table lamp with a conical fabric lampshade"
-  },
-  {
-    "scene_id": "scene_pirate_ship",
-    "pair": "local_tau_vs_tau_10",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_10"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/pirate_ship.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_10/pirate_ship.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/pirate_ship_sq.glb",
-    "prompt": "a small pirate ship with two masts and cream sails"
+    "ref": "static/data/tau/sq_priors_glbs/red_bucket_sq.glb",
+    "prompt": "a bucket"
   },
   {
     "scene_id": "scene_airplane_bent_tapered",
-    "pair": "local_tau_vs_tau_3",
+    "pair": "tau_3_vs_local_tau",
     "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
+      "A": "tau_3",
+      "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/airplane_bent_tapered.glb"
+      "static/data/tau/tau_3/airplane_bent_tapered.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/airplane_bent_tapered.glb"
+      "static/data/tau/local_tau/airplane_bent_tapered.glb"
     ],
     "ref": "static/data/tau/sq_priors_glbs/airplane_bent_tapered_sq.glb",
     "prompt": "a small vintage propeller airplane with tapered wings"
   },
   {
-    "scene_id": "scene_space_shuttle",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/space_shuttle.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/space_shuttle.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/space_shuttle_sq.glb",
-    "prompt": "a compact space shuttle with delta wings"
-  },
-  {
-    "scene_id": "scene_ornate_candle_lantern",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/ornate_candle_lantern.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/ornate_candle_lantern.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/ornate_candle_lantern_sq.glb",
-    "prompt": "an ornate candle lantern with glass panels"
-  },
-  {
-    "scene_id": "scene_orbiting_satellite",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/orbiting_satellite.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/orbiting_satellite.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/orbiting_satellite_sq.glb",
-    "prompt": "a small satellite with solar panels and a dish antenna"
-  },
-  {
-    "scene_id": "scene_bonsai_tree_pot",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/bonsai_tree_pot.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/bonsai_tree_pot.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/bonsai_tree_pot_sq.glb",
-    "prompt": "a small bonsai tree in a ceramic pot"
-  },
-  {
-    "scene_id": "scene_concert_harp",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/concert_harp.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/concert_harp.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/concert_harp_sq.glb",
-    "prompt": "an elegant concert harp"
-  },
-  {
-    "scene_id": "scene_carousel_horse",
-    "pair": "local_tau_vs_tau_3",
+    "scene_id": "scene_leather_hiking_boot",
+    "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
-      "B": "tau_3"
+      "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/carousel_horse.glb"
+      "static/data/tau/local_tau/leather_hiking_boot.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/carousel_horse.glb"
+      "static/data/tau/tau_10/leather_hiking_boot.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/carousel_horse_sq.glb",
-    "prompt": "a decorated carousel horse on a vertical pole"
+    "ref": "static/data/tau/sq_priors_glbs/leather_hiking_boot_sq.glb",
+    "prompt": "a sturdy leather hiking boot with a high ankle, thick sole, and reinforced toe"
   },
   {
-    "scene_id": "scene_hourglass",
+    "scene_id": "scene_13_sailboat",
     "pair": "tau_3_vs_local_tau",
     "mapping": {
       "A": "tau_3",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_3/hourglass.glb"
+      "static/data/tau/tau_3/13_sailboat.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/hourglass.glb"
+      "static/data/tau/local_tau/13_sailboat.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/hourglass_sq.glb",
-    "prompt": "an antique hourglass with wooden caps"
+    "ref": "static/data/tau/sq_priors_glbs/13_sailboat_sq.glb",
+    "prompt": "Sailboat"
   },
   {
-    "scene_id": "scene_medieval_catapult",
-    "pair": "tau_10_vs_local_tau",
-    "mapping": {
-      "A": "tau_10",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_10/medieval_catapult.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/medieval_catapult.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/medieval_catapult_sq.glb",
-    "prompt": "a small medieval wooden catapult with a stone projectile"
-  },
-  {
-    "scene_id": "scene_umbrella_wrong_canopy",
+    "scene_id": "scene_classic_sewing_machine",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/umbrella_wrong_canopy.glb"
+      "static/data/tau/local_tau/classic_sewing_machine.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/umbrella_wrong_canopy.glb"
+      "static/data/tau/tau_10/classic_sewing_machine.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/umbrella_wrong_canopy_sq.glb",
-    "prompt": "an open umbrella with a curved fabric canopy"
+    "ref": "static/data/tau/sq_priors_glbs/classic_sewing_machine_sq.glb",
+    "prompt": "a classic domestic sewing machine with a broad base, upright pillar, horizontal arm, descending needle head, and large side handwheel"
   },
   {
-    "scene_id": "scene_garden_fountain",
+    "scene_id": "scene_antique_gramophone",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/garden_fountain.glb"
+      "static/data/tau/tau_10/antique_gramophone.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/garden_fountain.glb"
+      "static/data/tau/local_tau/antique_gramophone.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/garden_fountain_sq.glb",
-    "prompt": "a tiered stone garden fountain"
+    "ref": "static/data/tau/sq_priors_glbs/antique_gramophone_sq.glb",
+    "prompt": "an antique gramophone with a large brass horn"
   },
   {
-    "scene_id": "scene_lighthouse",
+    "scene_id": "scene_bicycle_wrong_wheel",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/lighthouse.glb"
+      "static/data/tau/local_tau/bicycle_wrong_wheel.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/lighthouse.glb"
+      "static/data/tau/tau_10/bicycle_wrong_wheel.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/lighthouse_sq.glb",
-    "prompt": "a coastal lighthouse with a red roof"
+    "ref": "static/data/tau/sq_priors_glbs/bicycle_wrong_wheel_sq.glb",
+    "prompt": "a classic bicycle with two round spoked wheels"
   },
   {
-    "scene_id": "scene_ceramic_teapot",
-    "pair": "tau_3_vs_local_tau",
-    "mapping": {
-      "A": "tau_3",
-      "B": "local_tau"
-    },
-    "outputs_a": [
-      "static/data/tau/tau_3/ceramic_teapot.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/local_tau/ceramic_teapot.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/ceramic_teapot_sq.glb",
-    "prompt": "a ceramic teapot with a curved handle and spout"
-  },
-  {
-    "scene_id": "scene_concert_harp",
+    "scene_id": "scene_potted_cactus",
     "pair": "local_tau_vs_tau_3",
     "mapping": {
       "A": "local_tau",
       "B": "tau_3"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/concert_harp.glb"
+      "static/data/tau/local_tau/potted_cactus.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/concert_harp.glb"
+      "static/data/tau/tau_3/potted_cactus.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/concert_harp_sq.glb",
-    "prompt": "an elegant concert harp"
+    "ref": "static/data/tau/sq_priors_glbs/potted_cactus_sq.glb",
+    "prompt": "a potted cactus"
   },
   {
-    "scene_id": "scene_swan_boat_wrong_head",
+    "scene_id": "scene_18_elegant_legged_bench",
     "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
       "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/swan_boat_wrong_head.glb"
+      "static/data/tau/local_tau/18_elegant_legged_bench.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_10/swan_boat_wrong_head.glb"
+      "static/data/tau/tau_10/18_elegant_legged_bench.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/swan_boat_wrong_head_sq.glb",
-    "prompt": "a white swan paddle boat with a graceful curved neck"
+    "ref": "static/data/tau/sq_priors_glbs/18_elegant_legged_bench_sq.glb",
+    "prompt": "Elegant legged bench"
+  },
+  {
+    "scene_id": "scene_09_a_plane",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/09_a_plane.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/09_a_plane.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/09_a_plane_sq.glb",
+    "prompt": "A plane"
+  },
+  {
+    "scene_id": "scene_14_clock_with_button_on_top",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/14_clock_with_button_on_top.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/14_clock_with_button_on_top.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/14_clock_with_button_on_top_sq.glb",
+    "prompt": "Clock with button on top"
+  },
+  {
+    "scene_id": "scene_19_monitor_with_an_attached_keyboard",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/19_monitor_with_an_attached_keyboard.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/19_monitor_with_an_attached_keyboard_sq.glb",
+    "prompt": "Monitor with an attached keyboard"
+  },
+  {
+    "scene_id": "scene_claw_hammer",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/claw_hammer.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/claw_hammer.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/claw_hammer_sq.glb",
+    "prompt": "a simple claw hammer with a long handle and a steel hammer head"
+  },
+  {
+    "scene_id": "scene_11_pickup_truck",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/11_pickup_truck.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/11_pickup_truck.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/11_pickup_truck_sq.glb",
+    "prompt": "pickup truck"
+  },
+  {
+    "scene_id": "scene_silver_trophy_cup",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/silver_trophy_cup.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/silver_trophy_cup.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/silver_trophy_cup_sq.glb",
+    "prompt": "a classic silver trophy cup with two side handles on a dark pedestal base"
+  },
+  {
+    "scene_id": "scene_twin_bell_alarm_clock",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/twin_bell_alarm_clock.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/twin_bell_alarm_clock.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/twin_bell_alarm_clock_sq.glb",
+    "prompt": "a classic twin-bell alarm clock with a round body, front clock face, two top bells, and a small top handle"
+  },
+  {
+    "scene_id": "scene_20_circular_headed_guy",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/20_circular_headed_guy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/20_circular_headed_guy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/20_circular_headed_guy_sq.glb",
+    "prompt": "Circular headed guy"
   },
   {
     "scene_id": "scene_japanese_stone_lantern",
@@ -1216,52 +624,1492 @@
     "prompt": "a Japanese stone garden lantern"
   },
   {
-    "scene_id": "scene_retro_robot_toy",
-    "pair": "local_tau_vs_tau_3",
+    "scene_id": "scene_tabletop_world_globe",
+    "pair": "local_tau_vs_tau_10",
     "mapping": {
       "A": "local_tau",
-      "B": "tau_3"
+      "B": "tau_10"
     },
     "outputs_a": [
-      "static/data/tau/local_tau/retro_robot_toy.glb"
+      "static/data/tau/local_tau/tabletop_world_globe.glb"
     ],
     "outputs_b": [
-      "static/data/tau/tau_3/retro_robot_toy.glb"
+      "static/data/tau/tau_10/tabletop_world_globe.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/retro_robot_toy_sq.glb",
-    "prompt": "a retro tin robot toy"
+    "ref": "static/data/tau/sq_priors_glbs/tabletop_world_globe_sq.glb",
+    "prompt": "a classic tabletop world globe on a tilted axis with a compact pedestal and broad round base"
   },
   {
-    "scene_id": "scene_umbrella_wrong_canopy",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/umbrella_wrong_canopy.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/umbrella_wrong_canopy.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/umbrella_wrong_canopy_sq.glb",
-    "prompt": "an open umbrella with a curved fabric canopy"
-  },
-  {
-    "scene_id": "scene_cuckoo_clock",
+    "scene_id": "scene_01_a_chair",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/cuckoo_clock.glb"
+      "static/data/tau/tau_10/01_a_chair.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/cuckoo_clock.glb"
+      "static/data/tau/local_tau/01_a_chair.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/cuckoo_clock_sq.glb",
-    "prompt": "a carved wooden cuckoo clock with a pendulum"
+    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_hourglass",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/hourglass.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/hourglass.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/hourglass_sq.glb",
+    "prompt": "an antique hourglass with wooden caps"
+  },
+  {
+    "scene_id": "scene_11_pickup_truck",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/11_pickup_truck.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/11_pickup_truck.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/11_pickup_truck_sq.glb",
+    "prompt": "pickup truck"
+  },
+  {
+    "scene_id": "scene_tripod_camping_stool",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/tripod_camping_stool.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/tripod_camping_stool.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/tripod_camping_stool_sq.glb",
+    "prompt": "a compact tripod camping stool with a round fabric seat and three splayed legs"
+  },
+  {
+    "scene_id": "scene_04_a_wooden_toy_of_a_person",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/04_a_wooden_toy_of_a_person_sq.glb",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_02_a_bar_chair",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/02_a_bar_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/02_a_bar_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/02_a_bar_chair_sq.glb",
+    "prompt": "A bar chair"
+  },
+  {
+    "scene_id": "scene_orbiting_satellite",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/orbiting_satellite.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/orbiting_satellite.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/orbiting_satellite_sq.glb",
+    "prompt": "a small satellite with solar panels and a dish antenna"
+  },
+  {
+    "scene_id": "scene_rocket_wrong_fins",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/rocket_wrong_fins.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/rocket_wrong_fins.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/rocket_wrong_fins_sq.glb",
+    "prompt": "a small retro rocket with three tail fins and a round window"
+  },
+  {
+    "scene_id": "scene_16_lamp_with_rectangular_base",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/16_lamp_with_rectangular_base.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/16_lamp_with_rectangular_base.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/16_lamp_with_rectangular_base_sq.glb",
+    "prompt": "Lamp with Rectangular base"
+  },
+  {
+    "scene_id": "scene_silver_spoon",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/silver_spoon.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/silver_spoon.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/silver_spoon_sq.glb",
+    "prompt": "a spoon"
+  },
+  {
+    "scene_id": "scene_arcade_cabinet",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/arcade_cabinet.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/arcade_cabinet.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/arcade_cabinet_sq.glb",
+    "prompt": "a retro arcade cabinet with joystick controls"
+  },
+  {
+    "scene_id": "scene_retro_laboratory_microscope",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/retro_laboratory_microscope.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/retro_laboratory_microscope.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/retro_laboratory_microscope_sq.glb",
+    "prompt": "a compact retro laboratory microscope with a heavy base, angled support, specimen stage, eyepiece, and objective housing"
+  },
+  {
+    "scene_id": "scene_black_frying_pan",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/black_frying_pan.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/black_frying_pan.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/black_frying_pan_sq.glb",
+    "prompt": "a frying pan"
+  },
+  {
+    "scene_id": "scene_09_a_plane",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/09_a_plane.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/09_a_plane.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/09_a_plane_sq.glb",
+    "prompt": "A plane"
+  },
+  {
+    "scene_id": "scene_wooden_skateboard",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_skateboard.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/wooden_skateboard.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_skateboard_sq.glb",
+    "prompt": "a simple skateboard with a wooden deck and two pairs of wheels"
+  },
+  {
+    "scene_id": "scene_film_camera_tripod",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/film_camera_tripod.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/film_camera_tripod.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/film_camera_tripod_sq.glb",
+    "prompt": "a vintage film camera on a tripod"
+  },
+  {
+    "scene_id": "scene_25_20260606T002730Z_toy_elephant",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/25_20260606T002730Z_toy_elephant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/25_20260606T002730Z_toy_elephant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/25_20260606T002730Z_toy_elephant_sq.glb",
+    "prompt": "toy elephant"
+  },
+  {
+    "scene_id": "scene_bonsai_tree_pot",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/bonsai_tree_pot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/bonsai_tree_pot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/bonsai_tree_pot_sq.glb",
+    "prompt": "a small bonsai tree in a ceramic pot"
+  },
+  {
+    "scene_id": "scene_tabletop_world_globe",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/tabletop_world_globe.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/tabletop_world_globe.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/tabletop_world_globe_sq.glb",
+    "prompt": "a classic tabletop world globe on a tilted axis with a compact pedestal and broad round base"
+  },
+  {
+    "scene_id": "scene_20_circular_headed_guy",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/20_circular_headed_guy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/20_circular_headed_guy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/20_circular_headed_guy_sq.glb",
+    "prompt": "Circular headed guy"
+  },
+  {
+    "scene_id": "scene_japanese_stone_lantern",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/japanese_stone_lantern.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/japanese_stone_lantern.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/japanese_stone_lantern_sq.glb",
+    "prompt": "a Japanese stone garden lantern"
+  },
+  {
+    "scene_id": "scene_12_pool_table",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/12_pool_table.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/12_pool_table.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/12_pool_table_sq.glb",
+    "prompt": "Pool Table"
+  },
+  {
+    "scene_id": "scene_13_sailboat",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/13_sailboat.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/13_sailboat.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/13_sailboat_sq.glb",
+    "prompt": "Sailboat"
+  },
+  {
+    "scene_id": "scene_17_f1_car",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/17_f1_car.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/17_f1_car.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/17_f1_car_sq.glb",
+    "prompt": "F1 Car"
+  },
+  {
+    "scene_id": "scene_potted_rubber_plant",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/potted_rubber_plant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/potted_rubber_plant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/potted_rubber_plant_sq.glb",
+    "prompt": "a healthy potted rubber plant with a tapered ceramic pot, central trunk, and three broad clusters of leaves"
+  },
+  {
+    "scene_id": "scene_27_20260607T151438Z_A_comfy_chair_with_cushions",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/27_20260607T151438Z_A_comfy_chair_with_cushions.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/27_20260607T151438Z_A_comfy_chair_with_cushions.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/27_20260607T151438Z_A_comfy_chair_with_cushions_sq.glb",
+    "prompt": "A comfy chair with cushions"
+  },
+  {
+    "scene_id": "scene_airplane_bent_tapered",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/airplane_bent_tapered.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/airplane_bent_tapered.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/airplane_bent_tapered_sq.glb",
+    "prompt": "a small vintage propeller airplane with tapered wings"
+  },
+  {
+    "scene_id": "scene_standing_coat_rack",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/standing_coat_rack.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/standing_coat_rack.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/standing_coat_rack_sq.glb",
+    "prompt": "standing coat rack"
+  },
+  {
+    "scene_id": "scene_leather_hiking_boot",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/leather_hiking_boot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/leather_hiking_boot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/leather_hiking_boot_sq.glb",
+    "prompt": "a sturdy leather hiking boot with a high ankle, thick sole, and reinforced toe"
+  },
+  {
+    "scene_id": "scene_windmill",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/windmill.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/windmill.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/windmill_sq.glb",
+    "prompt": "a rustic windmill with four wooden blades"
+  },
+  {
+    "scene_id": "scene_garden_watering_can",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/garden_watering_can.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/garden_watering_can.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/garden_watering_can_sq.glb",
+    "prompt": "a traditional garden watering can with a round body, long rising spout, top handle, and sprinkler rose"
+  },
+  {
+    "scene_id": "scene_wooden_park_bench",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_park_bench.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/wooden_park_bench.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_park_bench_sq.glb",
+    "prompt": "a classic wooden park bench with a broad seat, tall backrest, and two sturdy side support frames"
+  },
+  {
+    "scene_id": "scene_red_metal_toolbox",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/red_metal_toolbox.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/red_metal_toolbox.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_metal_toolbox_sq.glb",
+    "prompt": "a simple metal toolbox with a rectangular box, fitted lid, top carrying handle, and front latches"
+  },
+  {
+    "scene_id": "scene_kitchen_stand_mixer",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/kitchen_stand_mixer.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/kitchen_stand_mixer.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/kitchen_stand_mixer_sq.glb",
+    "prompt": "a classic kitchen stand mixer with a tilting motor head, metal bowl, and beater"
+  },
+  {
+    "scene_id": "scene_red_metal_toolbox",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/red_metal_toolbox.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/red_metal_toolbox.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_metal_toolbox_sq.glb",
+    "prompt": "a simple metal toolbox with a rectangular box, fitted lid, top carrying handle, and front latches"
+  },
+  {
+    "scene_id": "scene_red_toy_rocket",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/red_toy_rocket.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/red_toy_rocket.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_toy_rocket_sq.glb",
+    "prompt": "a toy rocket"
+  },
+  {
+    "scene_id": "scene_04_a_wooden_toy_of_a_person",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/04_a_wooden_toy_of_a_person.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/04_a_wooden_toy_of_a_person_sq.glb",
+    "prompt": "A wooden toy of a person"
+  },
+  {
+    "scene_id": "scene_suitcase_record_player",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/suitcase_record_player.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/suitcase_record_player.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/suitcase_record_player_sq.glb",
+    "prompt": "a vintage suitcase record player with an open lid, round platter, and tonearm"
+  },
+  {
+    "scene_id": "scene_hot_air_balloon",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/hot_air_balloon.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/hot_air_balloon.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/hot_air_balloon_sq.glb",
+    "prompt": "a vintage hot air balloon with a wicker basket"
+  },
+  {
+    "scene_id": "scene_12_pool_table",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/12_pool_table.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/12_pool_table.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/12_pool_table_sq.glb",
+    "prompt": "Pool Table"
+  },
+  {
+    "scene_id": "scene_hot_air_balloon",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/hot_air_balloon.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/hot_air_balloon.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/hot_air_balloon_sq.glb",
+    "prompt": "a vintage hot air balloon with a wicker basket"
+  },
+  {
+    "scene_id": "scene_windmill",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/windmill.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/windmill.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/windmill_sq.glb",
+    "prompt": "a rustic windmill with four wooden blades"
+  },
+  {
+    "scene_id": "scene_lantern_wrong_handle",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/lantern_wrong_handle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/lantern_wrong_handle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/lantern_wrong_handle_sq.glb",
+    "prompt": "camping lantern"
+  },
+  {
+    "scene_id": "scene_umbrella_wrong_canopy",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/umbrella_wrong_canopy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/umbrella_wrong_canopy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/umbrella_wrong_canopy_sq.glb",
+    "prompt": "an open umbrella with a curved fabric canopy"
+  },
+  {
+    "scene_id": "scene_ornate_candle_lantern",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/ornate_candle_lantern.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/ornate_candle_lantern.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/ornate_candle_lantern_sq.glb",
+    "prompt": "an ornate candle lantern with glass panels"
+  },
+  {
+    "scene_id": "scene_26_20260606T004034Z_classic_chair_with_a_slat_back",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/26_20260606T004034Z_classic_chair_with_a_slat_back.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/26_20260606T004034Z_classic_chair_with_a_slat_back.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/26_20260606T004034Z_classic_chair_with_a_slat_back_sq.glb",
+    "prompt": "classic chair with a slat back"
+  },
+  {
+    "scene_id": "scene_hourglass",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/hourglass.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/hourglass.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/hourglass_sq.glb",
+    "prompt": "an antique hourglass with wooden caps"
+  },
+  {
+    "scene_id": "scene_closed_umbrella",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/closed_umbrella.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/closed_umbrella.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/closed_umbrella_sq.glb",
+    "prompt": "a simple closed umbrella with a folded canopy, straight shaft, pointed tip, and hooked handle"
+  },
+  {
+    "scene_id": "scene_23_20260605T231612Z_office_chair",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/23_20260605T231612Z_office_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/23_20260605T231612Z_office_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/23_20260605T231612Z_office_chair_sq.glb",
+    "prompt": "office chair"
+  },
+  {
+    "scene_id": "scene_desk_lamp",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/desk_lamp.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/desk_lamp.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/desk_lamp_sq.glb",
+    "prompt": "an adjustable desk lamp"
+  },
+  {
+    "scene_id": "scene_classic_moka_pot",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/classic_moka_pot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/classic_moka_pot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_moka_pot_sq.glb",
+    "prompt": "a classic stovetop moka pot with a faceted lower boiler, upper coffee chamber, fitted lid, pouring spout, and side handle"
+  },
+  {
+    "scene_id": "scene_classic_moka_pot",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/classic_moka_pot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_moka_pot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_moka_pot_sq.glb",
+    "prompt": "a classic stovetop moka pot with a faceted lower boiler, upper coffee chamber, fitted lid, pouring spout, and side handle"
+  },
+  {
+    "scene_id": "scene_classic_ceramic_teapot",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/classic_ceramic_teapot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/classic_ceramic_teapot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_ceramic_teapot_sq.glb",
+    "prompt": "a classic ceramic teapot with a rounded body, fitted lid, long pouring spout, and curved side handle"
+  },
+  {
+    "scene_id": "scene_twin_bell_alarm_clock",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/twin_bell_alarm_clock.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/twin_bell_alarm_clock.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/twin_bell_alarm_clock_sq.glb",
+    "prompt": "a classic twin-bell alarm clock with a round body, front clock face, two top bells, and a small top handle"
+  },
+  {
+    "scene_id": "scene_24_20260605T233210Z_stool_with_a_pillow",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/24_20260605T233210Z_stool_with_a_pillow.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/24_20260605T233210Z_stool_with_a_pillow.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/24_20260605T233210Z_stool_with_a_pillow_sq.glb",
+    "prompt": "stool with a pillow"
+  },
+  {
+    "scene_id": "scene_retro_robot_toy",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/retro_robot_toy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/retro_robot_toy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/retro_robot_toy_sq.glb",
+    "prompt": "a retro tin robot toy"
+  },
+  {
+    "scene_id": "scene_crystal_chandelier",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/crystal_chandelier.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/crystal_chandelier.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/crystal_chandelier_sq.glb",
+    "prompt": "a small crystal chandelier with a central tier and hanging prisms"
+  },
+  {
+    "scene_id": "scene_space_shuttle",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/space_shuttle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/space_shuttle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/space_shuttle_sq.glb",
+    "prompt": "a compact space shuttle with delta wings"
+  },
+  {
+    "scene_id": "scene_classic_binoculars",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/classic_binoculars.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/classic_binoculars.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_binoculars_sq.glb",
+    "prompt": "classic field binoculars with two parallel barrels, eyepieces, and a central hinge"
+  },
+  {
+    "scene_id": "scene_garden_wheelbarrow",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/garden_wheelbarrow.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/garden_wheelbarrow.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/garden_wheelbarrow_sq.glb",
+    "prompt": "a sturdy garden wheelbarrow with a single front wheel and two wooden handles"
+  },
+  {
+    "scene_id": "scene_green_glass_bottle",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/green_glass_bottle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/green_glass_bottle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/green_glass_bottle_sq.glb",
+    "prompt": "a simple glass bottle with a rounded body, narrow neck, and small stopper"
+  },
+  {
+    "scene_id": "scene_red_apple",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/red_apple.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/red_apple.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_apple_sq.glb",
+    "prompt": "an apple"
+  },
+  {
+    "scene_id": "scene_23_20260605T231612Z_office_chair",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/23_20260605T231612Z_office_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/23_20260605T231612Z_office_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/23_20260605T231612Z_office_chair_sq.glb",
+    "prompt": "office chair"
+  },
+  {
+    "scene_id": "scene_articulated_desk_lamp",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/articulated_desk_lamp.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/articulated_desk_lamp.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/articulated_desk_lamp_sq.glb",
+    "prompt": "an articulated metal desk lamp with a weighted base, two angled arms, and a broad adjustable shade"
+  },
+  {
+    "scene_id": "scene_brass_hand_bell",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/brass_hand_bell.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/brass_hand_bell.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/brass_hand_bell_sq.glb",
+    "prompt": "a hand bell"
+  },
+  {
+    "scene_id": "scene_22_20260605T223506Z_chair",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/22_20260605T223506Z_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/22_20260605T223506Z_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/22_20260605T223506Z_chair_sq.glb",
+    "prompt": "chair"
+  },
+  {
+    "scene_id": "scene_classic_fire_hydrant",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/classic_fire_hydrant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_fire_hydrant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_fire_hydrant_sq.glb",
+    "prompt": "a classic street fire hydrant with a stout central barrel, broad ground flange, domed top cap, and two opposing side outlets"
+  },
+  {
+    "scene_id": "scene_ornate_candle_lantern",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/ornate_candle_lantern.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/ornate_candle_lantern.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/ornate_candle_lantern_sq.glb",
+    "prompt": "an ornate candle lantern with glass panels"
+  },
+  {
+    "scene_id": "scene_rocket_wrong_fins",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/rocket_wrong_fins.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/rocket_wrong_fins.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/rocket_wrong_fins_sq.glb",
+    "prompt": "a small retro rocket with three tail fins and a round window"
+  },
+  {
+    "scene_id": "scene_wooden_skateboard",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_skateboard.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/wooden_skateboard.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_skateboard_sq.glb",
+    "prompt": "a simple skateboard with a wooden deck and two pairs of wheels"
+  },
+  {
+    "scene_id": "scene_space_shuttle",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/space_shuttle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/space_shuttle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/space_shuttle_sq.glb",
+    "prompt": "a compact space shuttle with delta wings"
+  },
+  {
+    "scene_id": "scene_floor_tom_drum",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/floor_tom_drum.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/floor_tom_drum.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/floor_tom_drum_sq.glb",
+    "prompt": "floor tom drum"
+  },
+  {
+    "scene_id": "scene_wooden_snow_sled",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_snow_sled.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/wooden_snow_sled.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_snow_sled_sq.glb",
+    "prompt": "a traditional wooden snow sled with two runners, a raised back, and a pull rope"
+  },
+  {
+    "scene_id": "scene_classic_ceramic_teapot",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/classic_ceramic_teapot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/classic_ceramic_teapot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_ceramic_teapot_sq.glb",
+    "prompt": "a classic ceramic teapot with a rounded body, fitted lid, long pouring spout, and curved side handle"
+  },
+  {
+    "scene_id": "scene_rowing_boat_with_oars",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/rowing_boat_with_oars.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/rowing_boat_with_oars.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/rowing_boat_with_oars_sq.glb",
+    "prompt": "a small wooden rowing boat with two bench seats and a pair of oars"
+  },
+  {
+    "scene_id": "scene_film_camera_tripod",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/film_camera_tripod.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/film_camera_tripod.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/film_camera_tripod_sq.glb",
+    "prompt": "a vintage film camera on a tripod"
+  },
+  {
+    "scene_id": "scene_astronomical_telescope",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/astronomical_telescope.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/astronomical_telescope.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/astronomical_telescope_sq.glb",
+    "prompt": "an astronomical telescope on a tripod mount"
+  },
+  {
+    "scene_id": "scene_brass_hand_bell",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/brass_hand_bell.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/brass_hand_bell.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/brass_hand_bell_sq.glb",
+    "prompt": "a hand bell"
+  },
+  {
+    "scene_id": "scene_standing_coat_rack",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/standing_coat_rack.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/standing_coat_rack.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/standing_coat_rack_sq.glb",
+    "prompt": "standing coat rack"
+  },
+  {
+    "scene_id": "scene_antique_gramophone",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/antique_gramophone.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/antique_gramophone.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/antique_gramophone_sq.glb",
+    "prompt": "an antique gramophone with a large brass horn"
+  },
+  {
+    "scene_id": "scene_lamp_wrong_shade",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/lamp_wrong_shade.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/lamp_wrong_shade.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/lamp_wrong_shade_sq.glb",
+    "prompt": "a table lamp with a conical fabric lampshade"
+  },
+  {
+    "scene_id": "scene_wooden_snow_sled",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/wooden_snow_sled.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/wooden_snow_sled.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/wooden_snow_sled_sq.glb",
+    "prompt": "a traditional wooden snow sled with two runners, a raised back, and a pull rope"
+  },
+  {
+    "scene_id": "scene_black_frying_pan",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/black_frying_pan.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/black_frying_pan.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/black_frying_pan_sq.glb",
+    "prompt": "a frying pan"
+  },
+  {
+    "scene_id": "scene_floor_tom_drum",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/floor_tom_drum.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/floor_tom_drum.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/floor_tom_drum_sq.glb",
+    "prompt": "floor tom drum"
+  },
+  {
+    "scene_id": "scene_kitchen_stand_mixer",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/kitchen_stand_mixer.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/kitchen_stand_mixer.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/kitchen_stand_mixer_sq.glb",
+    "prompt": "a classic kitchen stand mixer with a tilting motor head, metal bowl, and beater"
+  },
+  {
+    "scene_id": "scene_claw_hammer",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/claw_hammer.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/claw_hammer.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/claw_hammer_sq.glb",
+    "prompt": "a simple claw hammer with a long handle and a steel hammer head"
+  },
+  {
+    "scene_id": "scene_01_a_chair",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/01_a_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/01_a_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/01_a_chair_sq.glb",
+    "prompt": "A chair"
+  },
+  {
+    "scene_id": "scene_garden_wheelbarrow",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/garden_wheelbarrow.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/garden_wheelbarrow.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/garden_wheelbarrow_sq.glb",
+    "prompt": "a sturdy garden wheelbarrow with a single front wheel and two wooden handles"
+  },
+  {
+    "scene_id": "scene_02_a_bar_chair",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/02_a_bar_chair.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/02_a_bar_chair.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/02_a_bar_chair_sq.glb",
+    "prompt": "A bar chair"
+  },
+  {
+    "scene_id": "scene_bicycle_wrong_wheel",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/bicycle_wrong_wheel.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/bicycle_wrong_wheel.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/bicycle_wrong_wheel_sq.glb",
+    "prompt": "a classic bicycle with two round spoked wheels"
+  },
+  {
+    "scene_id": "scene_blue_teacup",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/blue_teacup.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/blue_teacup.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/blue_teacup_sq.glb",
+    "prompt": "a teacup"
+  },
+  {
+    "scene_id": "scene_crystal_chandelier",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/crystal_chandelier.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/crystal_chandelier.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/crystal_chandelier_sq.glb",
+    "prompt": "a small crystal chandelier with a central tier and hanging prisms"
   },
   {
     "scene_id": "scene_arcade_cabinet",
@@ -1280,35 +2128,515 @@
     "prompt": "a retro arcade cabinet with joystick controls"
   },
   {
-    "scene_id": "scene_bicycle_wrong_wheel",
-    "pair": "local_tau_vs_tau_3",
-    "mapping": {
-      "A": "local_tau",
-      "B": "tau_3"
-    },
-    "outputs_a": [
-      "static/data/tau/local_tau/bicycle_wrong_wheel.glb"
-    ],
-    "outputs_b": [
-      "static/data/tau/tau_3/bicycle_wrong_wheel.glb"
-    ],
-    "ref": "static/data/tau/sq_priors_glbs/bicycle_wrong_wheel_sq.glb",
-    "prompt": "a classic bicycle with two round spoked wheels"
-  },
-  {
-    "scene_id": "scene_hourglass",
+    "scene_id": "scene_closed_umbrella",
     "pair": "tau_10_vs_local_tau",
     "mapping": {
       "A": "tau_10",
       "B": "local_tau"
     },
     "outputs_a": [
-      "static/data/tau/tau_10/hourglass.glb"
+      "static/data/tau/tau_10/closed_umbrella.glb"
     ],
     "outputs_b": [
-      "static/data/tau/local_tau/hourglass.glb"
+      "static/data/tau/local_tau/closed_umbrella.glb"
     ],
-    "ref": "static/data/tau/sq_priors_glbs/hourglass_sq.glb",
-    "prompt": "an antique hourglass with wooden caps"
+    "ref": "static/data/tau/sq_priors_glbs/closed_umbrella_sq.glb",
+    "prompt": "a simple closed umbrella with a folded canopy, straight shaft, pointed tip, and hooked handle"
+  },
+  {
+    "scene_id": "scene_potted_rubber_plant",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/potted_rubber_plant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/potted_rubber_plant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/potted_rubber_plant_sq.glb",
+    "prompt": "a healthy potted rubber plant with a tapered ceramic pot, central trunk, and three broad clusters of leaves"
+  },
+  {
+    "scene_id": "scene_desk_lamp",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/desk_lamp.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/desk_lamp.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/desk_lamp_sq.glb",
+    "prompt": "an adjustable desk lamp"
+  },
+  {
+    "scene_id": "scene_bonsai_tree_pot",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/bonsai_tree_pot.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/bonsai_tree_pot.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/bonsai_tree_pot_sq.glb",
+    "prompt": "a small bonsai tree in a ceramic pot"
+  },
+  {
+    "scene_id": "scene_24_20260605T233210Z_stool_with_a_pillow",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/24_20260605T233210Z_stool_with_a_pillow.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/24_20260605T233210Z_stool_with_a_pillow.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/24_20260605T233210Z_stool_with_a_pillow_sq.glb",
+    "prompt": "stool with a pillow"
+  },
+  {
+    "scene_id": "scene_vintage_radio",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/vintage_radio.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/vintage_radio.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/vintage_radio_sq.glb",
+    "prompt": "a vintage tabletop radio with dials and antenna"
+  },
+  {
+    "scene_id": "scene_enamel_coffee_mug",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/enamel_coffee_mug.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/enamel_coffee_mug.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/enamel_coffee_mug_sq.glb",
+    "prompt": "a simple coffee mug with a cylindrical body and a curved side handle"
+  },
+  {
+    "scene_id": "scene_26_20260606T004034Z_classic_chair_with_a_slat_back",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/26_20260606T004034Z_classic_chair_with_a_slat_back.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/26_20260606T004034Z_classic_chair_with_a_slat_back.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/26_20260606T004034Z_classic_chair_with_a_slat_back_sq.glb",
+    "prompt": "classic chair with a slat back"
+  },
+  {
+    "scene_id": "scene_tripod_camping_stool",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/tripod_camping_stool.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/tripod_camping_stool.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/tripod_camping_stool_sq.glb",
+    "prompt": "a compact tripod camping stool with a round fabric seat and three splayed legs"
+  },
+  {
+    "scene_id": "scene_16_lamp_with_rectangular_base",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/16_lamp_with_rectangular_base.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/16_lamp_with_rectangular_base.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/16_lamp_with_rectangular_base_sq.glb",
+    "prompt": "Lamp with Rectangular base"
+  },
+  {
+    "scene_id": "scene_suitcase_record_player",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/suitcase_record_player.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/suitcase_record_player.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/suitcase_record_player_sq.glb",
+    "prompt": "a vintage suitcase record player with an open lid, round platter, and tonearm"
+  },
+  {
+    "scene_id": "scene_lamp_wrong_shade",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/lamp_wrong_shade.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/lamp_wrong_shade.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/lamp_wrong_shade_sq.glb",
+    "prompt": "a table lamp with a conical fabric lampshade"
+  },
+  {
+    "scene_id": "scene_red_toy_rocket",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/red_toy_rocket.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/red_toy_rocket.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/red_toy_rocket_sq.glb",
+    "prompt": "a toy rocket"
+  },
+  {
+    "scene_id": "scene_classic_fire_hydrant",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/classic_fire_hydrant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/classic_fire_hydrant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_fire_hydrant_sq.glb",
+    "prompt": "a classic street fire hydrant with a stout central barrel, broad ground flange, domed top cap, and two opposing side outlets"
+  },
+  {
+    "scene_id": "scene_silver_spoon",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/silver_spoon.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/silver_spoon.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/silver_spoon_sq.glb",
+    "prompt": "a spoon"
+  },
+  {
+    "scene_id": "scene_25_20260606T002730Z_toy_elephant",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/25_20260606T002730Z_toy_elephant.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/25_20260606T002730Z_toy_elephant.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/25_20260606T002730Z_toy_elephant_sq.glb",
+    "prompt": "toy elephant"
+  },
+  {
+    "scene_id": "scene_potted_cactus",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/potted_cactus.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/potted_cactus.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/potted_cactus_sq.glb",
+    "prompt": "a potted cactus"
+  },
+  {
+    "scene_id": "scene_17_f1_car",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/17_f1_car.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/17_f1_car.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/17_f1_car_sq.glb",
+    "prompt": "F1 Car"
+  },
+  {
+    "scene_id": "scene_green_glass_bottle",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/green_glass_bottle.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/green_glass_bottle.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/green_glass_bottle_sq.glb",
+    "prompt": "a simple glass bottle with a rounded body, narrow neck, and small stopper"
+  },
+  {
+    "scene_id": "scene_21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/21_20260605T221847Z_wood_chair_with_straight_legs_and_a_cushioned_seat_sq.glb",
+    "prompt": "wood chair with straight legs and a cushioned seat"
+  },
+  {
+    "scene_id": "scene_umbrella_wrong_canopy",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/umbrella_wrong_canopy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/umbrella_wrong_canopy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/umbrella_wrong_canopy_sq.glb",
+    "prompt": "an open umbrella with a curved fabric canopy"
+  },
+  {
+    "scene_id": "scene_27_20260607T151438Z_A_comfy_chair_with_cushions",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/27_20260607T151438Z_A_comfy_chair_with_cushions.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/27_20260607T151438Z_A_comfy_chair_with_cushions.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/27_20260607T151438Z_A_comfy_chair_with_cushions_sq.glb",
+    "prompt": "A comfy chair with cushions"
+  },
+  {
+    "scene_id": "scene_enamel_coffee_mug",
+    "pair": "local_tau_vs_tau_10",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_10"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/enamel_coffee_mug.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_10/enamel_coffee_mug.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/enamel_coffee_mug_sq.glb",
+    "prompt": "a simple coffee mug with a cylindrical body and a curved side handle"
+  },
+  {
+    "scene_id": "scene_retro_robot_toy",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/retro_robot_toy.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/retro_robot_toy.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/retro_robot_toy_sq.glb",
+    "prompt": "a retro tin robot toy"
+  },
+  {
+    "scene_id": "scene_astronomical_telescope",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/astronomical_telescope.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/astronomical_telescope.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/astronomical_telescope_sq.glb",
+    "prompt": "an astronomical telescope on a tripod mount"
+  },
+  {
+    "scene_id": "scene_medieval_catapult",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/medieval_catapult.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/medieval_catapult.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/medieval_catapult_sq.glb",
+    "prompt": "a small medieval wooden catapult with a stone projectile"
+  },
+  {
+    "scene_id": "scene_piano",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/piano.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/piano.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/piano_sq.glb",
+    "prompt": "an upright piano"
+  },
+  {
+    "scene_id": "scene_articulated_desk_lamp",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/articulated_desk_lamp.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/articulated_desk_lamp.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/articulated_desk_lamp_sq.glb",
+    "prompt": "an articulated metal desk lamp with a weighted base, two angled arms, and a broad adjustable shade"
+  },
+  {
+    "scene_id": "scene_orbiting_satellite",
+    "pair": "local_tau_vs_tau_3",
+    "mapping": {
+      "A": "local_tau",
+      "B": "tau_3"
+    },
+    "outputs_a": [
+      "static/data/tau/local_tau/orbiting_satellite.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/tau_3/orbiting_satellite.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/orbiting_satellite_sq.glb",
+    "prompt": "a small satellite with solar panels and a dish antenna"
+  },
+  {
+    "scene_id": "scene_silver_trophy_cup",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/silver_trophy_cup.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/silver_trophy_cup.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/silver_trophy_cup_sq.glb",
+    "prompt": "a classic silver trophy cup with two side handles on a dark pedestal base"
+  },
+  {
+    "scene_id": "scene_classic_binoculars",
+    "pair": "tau_3_vs_local_tau",
+    "mapping": {
+      "A": "tau_3",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_3/classic_binoculars.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/classic_binoculars.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/classic_binoculars_sq.glb",
+    "prompt": "classic field binoculars with two parallel barrels, eyepieces, and a central hinge"
+  },
+  {
+    "scene_id": "scene_swan_boat_wrong_head",
+    "pair": "tau_10_vs_local_tau",
+    "mapping": {
+      "A": "tau_10",
+      "B": "local_tau"
+    },
+    "outputs_a": [
+      "static/data/tau/tau_10/swan_boat_wrong_head.glb"
+    ],
+    "outputs_b": [
+      "static/data/tau/local_tau/swan_boat_wrong_head.glb"
+    ],
+    "ref": "static/data/tau/sq_priors_glbs/swan_boat_wrong_head_sq.glb",
+    "prompt": "a white swan paddle boat with a graceful curved neck"
   }
 ]

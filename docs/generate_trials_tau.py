@@ -24,7 +24,7 @@ from pathlib import Path
 # ── CONFIG ────────────────────────────────────────────────────────────────
 DATA_ROOT   = Path("static/data/tau")
 OUTPUT_FILE = Path("trials_tau.json")
-SRC_ROOT    = Path("/work/courses/3dv/team3/spaceflow-minimal/outputs_examples_spaceflow_ALREADY_CHECKED")
+SRC_ROOT    = Path("/work/courses/3dv/team3/spaceflow-minimal/83_final_examples")
 
 METHOD_DIRS = {
     "local_tau": DATA_ROOT / "local_tau",
@@ -43,16 +43,31 @@ PAIRS = [
 # ── HELPERS ───────────────────────────────────────────────────────────────
 def get_prompt(scene_name: str) -> str | None:
     """Extract prompt from the experiment manifest for the local_tau variant."""
-    manifest = SRC_ROOT / f"{scene_name}_full_experiment" / "output" / "experiment_manifest.json"
-    if not manifest.exists():
-        return None
-    data = json.loads(manifest.read_text())
-    variants = data.get("variants", [])
-    for v in variants:
-        if v.get("name") == LOCAL_TAU_SUBDIR:
-            return v.get("prompt")
-    # Fallback: use first variant's prompt
-    return variants[0].get("prompt") if variants else None
+    # Try exact match first, then glob (handles non-standard dir names like the monitor)
+    exact = SRC_ROOT / f"{scene_name}_full_experiment"
+    matches = [exact] if exact.exists() else list(SRC_ROOT.glob(f"{scene_name}_full_experiment*"))
+    scene_dir = matches[0] if matches else exact
+    manifest = scene_dir / "output" / "experiment_manifest.json"
+    if manifest.exists():
+        data = json.loads(manifest.read_text())
+        variants = data.get("variants", [])
+        for v in variants:
+            if v.get("name") == LOCAL_TAU_SUBDIR:
+                prompt = v.get("prompt")
+                if prompt:
+                    return prompt
+        # Fallback: use first variant's prompt if it has one
+        if variants and variants[0].get("prompt"):
+            return variants[0]["prompt"]
+
+    # Fallback for old-format scenes: read inputs/prompt.txt
+    prompt_txt = scene_dir / "inputs" / "prompt.txt"
+    if prompt_txt.exists():
+        for line in prompt_txt.read_text().splitlines():
+            if line.startswith("Shape prompt:"):
+                return line[len("Shape prompt:"):].strip()
+
+    return None
 
 # ── MAIN ──────────────────────────────────────────────────────────────────
 def generate():
@@ -76,29 +91,24 @@ def generate():
             print(f"  SKIP {scene_name}: no prompt found in manifest")
             continue
 
-        # GLB paths (already confirmed present by copy script)
+        # Collect available GLB paths per method
         method_files = {}
-        skip = False
         for method, directory in METHOD_DIRS.items():
             glb = directory / f"{scene_name}.glb"
-            if not glb.exists():
-                print(f"  SKIP {scene_name}: missing {glb}")
-                skip = True
-                break
-            method_files[method] = str(glb).replace("\\", "/")
-        if skip:
-            continue
+            if glb.exists():
+                method_files[method] = str(glb).replace("\\", "/")
 
         # SQ prior
         sq_glb = SQ_DIR / f"{scene_name}_sq.glb"
+        ref_path = str(sq_glb).replace("\\", "/") if sq_glb.exists() else ""
         if not sq_glb.exists():
             print(f"  WARN {scene_name}: no SQ prior at {sq_glb}")
-            ref_path = ""
-        else:
-            ref_path = str(sq_glb).replace("\\", "/")
 
-        # One trial per pair
+        # One trial per pair — skip pair if either method GLB is missing
         for method_a, method_b in PAIRS:
+            if method_a not in method_files or method_b not in method_files:
+                print(f"  SKIP {scene_name}: {method_a} vs {method_b} (missing GLB)")
+                continue
             if random.random() < 0.5:
                 method_a, method_b = method_b, method_a
             trials.append({
