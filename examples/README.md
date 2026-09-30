@@ -3,12 +3,15 @@
 These 83 small example bundles contain the superquadric primitives, global and
 local prompts, scene metadata, and saved experiment parameters. Each example
 has three NPZ inputs (`all`, `high_control`, and `low_control_bbox`), a manifest,
-scene JSON, runner configuration, and run metadata.
+shape prompt, runner configuration, and run metadata.
 
 Paths in the published metadata use a portable example-root placeholder. The
 replay tool resolves them into a new output directory without changing prompts,
 seeds, or optimization settings. The original metadata and generated SpaceFlow
 and baseline outputs are preserved separately in the recovered data archive.
+The all-primitives NPZ also contains editor metadata so that opening it restores
+the saved part names and text conditions. Adding this metadata preserves the
+original numeric primitive array bytes.
 
 To run the SpaceFlow variant after installing the GPU runtime and model cache:
 
