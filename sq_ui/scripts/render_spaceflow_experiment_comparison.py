@@ -5,29 +5,33 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import textwrap
 from pathlib import Path
 
 import matplotlib
 import numpy as np
 import trimesh
+from PIL import Image, ImageOps
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-DEFAULT_RUN_ROOT = Path("/work/courses/3dv/team3/spaceflow_runtime/sq_ui_runs")
-SQ_HIGH_COLOR = np.array([0x2d, 0xd4, 0xbf], dtype=np.float64) / 255.0
-SQ_LOW_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_RUN_ROOT = REPO_ROOT / "spaceflow_runtime" / "sq_ui_runs"
+SQ_HIGH_COLOR = np.array([0xf5, 0x9e, 0x0b], dtype=np.float64) / 255.0
+SQ_LOW_COLOR = np.array([0xf8, 0xfa, 0xfc], dtype=np.float64) / 255.0
 SQ_FALLBACK_COLOR = np.array([0.68, 0.73, 0.76], dtype=np.float64)
 PANEL_RENDER_SIZE = 900
+CONDITION_THUMB_SIZE = 256
 
-VARIANTS = [
+STRUCTURE_VARIANTS = [
     (
         "tau-by-parts\nlow 3 / high 10",
         [
-            "output/tau3_tau10_polyak0p18/out_sim.glb",
-            "output/01_local_tau3_tau10_polyak0p18/out_sim.glb",
+            "output/tau3_tau10_polyak0p18/out_sim_geometry.glb",
+            "output/01_local_tau3_tau10_polyak0p18/out_sim_geometry.glb",
             "output/tau3_tau10_polyak0p18/out_sim_geometry.glb",
             "output/01_local_tau3_tau10_polyak0p18/out_sim_geometry.glb",
         ],
@@ -35,8 +39,8 @@ VARIANTS = [
     (
         "global low tau\n3",
         [
-            "output/tau3_polyak0/out_sim.glb",
-            "output/02_global_tau3_polyak0/out_sim.glb",
+            "output/tau3_polyak0/out_sim_geometry.glb",
+            "output/02_global_tau3_polyak0/out_sim_geometry.glb",
             "output/tau3_polyak0/out_sim_geometry.glb",
             "output/02_global_tau3_polyak0/out_sim_geometry.glb",
         ],
@@ -44,15 +48,54 @@ VARIANTS = [
     (
         "global high tau\n10",
         [
-            "output/tau10_polyak0/out_sim.glb",
-            "output/03_global_tau10_polyak0/out_sim.glb",
+            "output/tau10_polyak0/out_sim_geometry.glb",
+            "output/03_global_tau10_polyak0/out_sim_geometry.glb",
             "output/tau10_polyak0/out_sim_geometry.glb",
             "output/03_global_tau10_polyak0/out_sim_geometry.glb",
         ],
     ),
 ]
 
+TEXTURE_VARIANTS = [
+    (
+        "TRELLIS raw\nflat prompt",
+        [
+            "output/02_trellis_raw_flat_prompt/out_sim.glb",
+            "output/02_trellis_raw_flat_prompt/out_sim_geometry.glb",
+        ],
+        180.0,
+    ),
+    (
+        "SpaceFlow structure\nTRELLIS appearance FM",
+        [
+            "output/03_fixed_structure_appearance_fm/out_sim.glb",
+            "output/03_fixed_structure_appearance_fm/out_sim_geometry.glb",
+        ],
+    ),
+    (
+        "SpaceFlow structure\nGuideFlow appearance FM",
+        [
+            "output/04_fixed_structure_guideflow_appearance_fm/out_sim.glb",
+            "output/04_fixed_structure_guideflow_appearance_fm/out_sim_geometry.glb",
+        ],
+    ),
+    (
+        "SpaceFlow\nlocal texture routing",
+        [
+            "output/01_spaceflow_local_texture_routing/out_sim.glb",
+            "output/01_spaceflow_local_texture_routing/out_sim_geometry.glb",
+        ],
+    ),
+]
+
+SINGLE_RESULT_PATHS = [
+    "output/out_sim.glb",
+    "output/out_sim_geometry.glb",
+]
+
 SQ_RENDER_PATHS = [
+    "output/spatial_control_mesh.ply",
+    "output/01_spaceflow_local_texture_routing/spatial_control_mesh.ply",
     "output/01_local_tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/tau3_tau10_polyak0p18/spatial_control_mesh.ply",
     "output/02_global_tau3_polyak0/spatial_control_mesh.ply",
@@ -79,6 +122,28 @@ def read_json(path: Path) -> dict[str, object]:
 
 def run_meta(run_dir: Path) -> dict[str, object]:
     return read_json(run_dir / "run_meta.json")
+
+
+def experiment_type_from_meta(meta: dict[str, object]) -> str:
+    raw = str(meta.get("experiment_type") or "").strip().lower()
+    if raw in {"geometry", "texture", "full"}:
+        return raw
+    run_config = meta.get("run_config")
+    if isinstance(run_config, dict):
+        raw = str(run_config.get("experimentType") or "").strip().lower()
+        if raw in {"geometry", "texture", "full"}:
+            return raw
+    return "geometry"
+
+
+def experiment_type_for_run(run_dir: Path, meta: dict[str, object] | None = None) -> str:
+    meta = meta if meta is not None else run_meta(run_dir)
+    kind = experiment_type_from_meta(meta)
+    if kind != "geometry":
+        return kind
+    runner_config = read_json(run_dir / "experiment_runner_config.json")
+    raw = str(runner_config.get("experiment_type") or "").strip().lower()
+    return raw if raw in {"geometry", "texture", "full"} else kind
 
 
 def asset_manifest(meta: dict[str, object]) -> dict[str, object]:
@@ -160,12 +225,221 @@ def texture_conditions(meta: dict[str, object], primitive_count: int) -> tuple[s
     return mode, local_conditions, global_condition
 
 
-def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
+def resolve_condition_image_path(run_dir: Path, value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    candidates = [path] if path.is_absolute() else [run_dir / path, Path.cwd() / path, path]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _condition_image_values(meta: dict[str, object]) -> tuple[object, list[object]]:
+    texture = meta.get("texture_guidance")
+    run_config = meta.get("run_config")
+    texture = texture if isinstance(texture, dict) else {}
+    run_config = run_config if isinstance(run_config, dict) else {}
+
+    global_value = (
+        texture.get("global_image_path")
+        or run_config.get("globalTextureImagePath")
+        or run_config.get("appearanceImagePath")
+    )
+    local_values = texture.get("local_image_paths") or run_config.get("localTextureImagePaths") or []
+    if not isinstance(local_values, list):
+        local_values = []
+    return global_value, local_values
+
+
+def _condition_label(labels: list[str]) -> str:
+    global_label = "Global" if "Global" in labels else ""
+    sq_numbers = [label.removeprefix("SQ ") for label in labels if label.startswith("SQ ")]
+    sq_label = f"SQ {', '.join(sq_numbers)}" if sq_numbers else ""
+    if global_label and sq_label:
+        return f"{global_label} + {sq_label}"
+    return global_label or sq_label
+
+
+def condition_image_tiles(run_dir: Path, meta: dict[str, object]) -> list[dict[str, object]]:
+    if texture_mode(meta) != "image":
+        return []
+
+    global_value, local_values = _condition_image_values(meta)
+    grouped: dict[str, dict[str, object]] = {}
+
+    def add_tile(path: Path, label: str) -> None:
+        key = str(path.resolve(strict=False))
+        tile = grouped.setdefault(key, {"path": path, "labels": []})
+        labels = tile["labels"]
+        if isinstance(labels, list) and label not in labels:
+            labels.append(label)
+
+    global_path = resolve_condition_image_path(run_dir, global_value)
+    if global_path is not None:
+        add_tile(global_path, "Global")
+
+    for index, value in enumerate(local_values):
+        local_path = resolve_condition_image_path(run_dir, value)
+        if local_path is not None:
+            add_tile(local_path, f"SQ {index + 1}")
+
+    tiles = []
+    for tile in grouped.values():
+        labels = tile.get("labels")
+        path = tile.get("path")
+        if not isinstance(labels, list) or not isinstance(path, Path):
+            continue
+        tiles.append({
+            "path": path,
+            "label": _condition_label([str(label) for label in labels]),
+            "caption": path.name,
+        })
+    return tiles
+
+
+def _warning_message(raw: object) -> str:
+    if isinstance(raw, str):
+        return raw.strip()
+    if isinstance(raw, dict):
+        return str(raw.get("message") or "").strip()
+    return ""
+
+
+def _routing_warnings_from_file(path: Path) -> list[str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    items = raw.get("warnings") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return []
+    return [message for message in (_warning_message(item) for item in items) if message]
+
+
+def _routing_warnings_from_log(log_path: Path) -> list[str]:
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    pattern = re.compile(
+        r"Local (?P<kind>text|image) condition\(s\) for SQ\(s\) "
+        r"\[(?P<indices>[^\]]+)\] have zero routed cells"
+    )
+    warnings = []
+    for match in pattern.finditer(text):
+        indices = []
+        for token in match.group("indices").split(","):
+            try:
+                indices.append(int(token.strip()))
+            except ValueError:
+                pass
+        if not indices:
+            continue
+        sq_label = ", ".join(str(index + 1) for index in indices)
+        warnings.append(
+            f"Local {match.group('kind')} prompt(s) for SQs {sq_label} "
+            "received zero routed cells; those local overrides had no effect."
+        )
+    return warnings
+
+
+def routing_warning_messages(run_dir: Path) -> list[str]:
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for warning_path in sorted((run_dir / "output").rglob("routing_warnings.json")):
+        for message in _routing_warnings_from_file(warning_path):
+            if message not in seen:
+                warnings.append(message)
+                seen.add(message)
+    for message in _routing_warnings_from_log(run_dir / "spaceflow.log"):
+        if message not in seen:
+            warnings.append(message)
+            seen.add(message)
+    return warnings
+
+
+def _ellipsize(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3] + "..."
+
+
+def _thumbnail(path: Path) -> np.ndarray:
+    image = Image.open(path).convert("RGBA")
+    resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+    image = ImageOps.contain(image, (CONDITION_THUMB_SIZE, CONDITION_THUMB_SIZE), method=resampling)
+    canvas = Image.new("RGBA", (CONDITION_THUMB_SIZE, CONDITION_THUMB_SIZE), (255, 255, 255, 255))
+    offset = ((CONDITION_THUMB_SIZE - image.width) // 2, (CONDITION_THUMB_SIZE - image.height) // 2)
+    canvas.alpha_composite(image, offset)
+    return np.asarray(canvas.convert("RGB"), dtype=np.float64) / 255.0
+
+
+def draw_condition_strip(fig: plt.Figure, tiles: list[dict[str, object]]) -> None:
+    if not tiles:
+        return
+
+    fig_width, fig_height = fig.get_size_inches()
+    available_width = 0.88
+    gap = 0.014
+    max_tile_height = 0.165
+    tile_width = min(max_tile_height * fig_height / fig_width, (available_width - gap * (len(tiles) - 1)) / len(tiles))
+    tile_height = tile_width * fig_width / fig_height
+    total_width = tile_width * len(tiles) + gap * (len(tiles) - 1)
+    x = 0.5 - total_width / 2.0
+    y = 0.720
+
+    fig.text(0.5, y + tile_height + 0.040, "Conditioning images", ha="center", va="bottom", fontsize=10.5, color="#20242a")
+
+    for tile in tiles:
+        path = tile.get("path")
+        if not isinstance(path, Path):
+            continue
+        ax = fig.add_axes([x, y, tile_width, tile_height])
+        ax.imshow(_thumbnail(path))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("#20242a")
+            spine.set_linewidth(0.8)
+        ax.set_title(str(tile.get("label") or ""), fontsize=8.8, pad=3, color="#20242a")
+        fig.text(
+            x + tile_width / 2.0,
+            y - 0.018,
+            _ellipsize(str(tile.get("caption") or ""), 30),
+            ha="center",
+            va="top",
+            fontsize=7.2,
+            color="#4b5563",
+        )
+        x += tile_width + gap
+
+
+def prompt_footer(run_dir: Path, meta: dict[str, object], manifest: dict[str, object]) -> str:
     primitives = primitive_rows(manifest)
     mode, local_conditions, global_condition = texture_conditions(meta, len(primitives))
     global_line = f"Global {mode} condition: {global_condition}"
+    flat_prompt = ""
+    texture = meta.get("texture_guidance")
+    if isinstance(texture, dict):
+        flat_prompt = str(texture.get("flattened_text_prompt") or "").strip()
+    run_config = meta.get("run_config")
+    if not flat_prompt and isinstance(run_config, dict):
+        flat_prompt = str(run_config.get("flattenedTextPrompt") or "").strip()
+    flat_line = (
+        f"\nFlattened TRELLIS prompt: {flat_prompt}"
+        if experiment_type_from_meta(meta) in {"texture", "full"} and flat_prompt
+        else ""
+    )
     if not primitives:
-        return global_line
+        footer = global_line + flat_line
+        warning_lines = [f"Warning: {message}" for message in routing_warning_messages(run_dir)]
+        return footer + ("\n" + "\n".join(warning_lines) if warning_lines else "")
 
     pieces = []
     for row in primitives:
@@ -173,21 +447,138 @@ def prompt_footer(meta: dict[str, object], manifest: dict[str, object]) -> str:
         local = local_conditions[index] if index < len(local_conditions) else ""
         condition = local or f"global ({global_condition})"
         pieces.append(f"{index + 1}. {row['name']} [{row['controlLevel']}]: {condition}")
-    return global_line + "\nSQ conditions: " + "; ".join(pieces)
+    footer = global_line + "\nSQ conditions: " + "; ".join(pieces) + flat_line
+    warning_lines = [f"Warning: {message}" for message in routing_warning_messages(run_dir)]
+    return footer + ("\n" + "\n".join(warning_lines) if warning_lines else "")
 
 
-def sq_mesh_path(run_dir: Path) -> Path | None:
+def sq_mesh_path(run_dir: Path, meta: dict[str, object] | None = None) -> Path | None:
+    for variant in experiment_variants(run_dir, meta):
+        path = first_variant_file(run_dir, variant, ["spatial_control_mesh.ply"])
+        if path is not None:
+            return path
     return first_existing(run_dir, SQ_RENDER_PATHS)
 
 
-def complete_experiment_paths(run_dir: Path) -> list[tuple[str, Path]] | None:
-    paths: list[tuple[str, Path]] = []
-    for label, rel_paths in VARIANTS:
+def experiment_variants(run_dir: Path, meta: dict[str, object] | None = None) -> list[dict[str, object]]:
+    meta = meta if meta is not None else run_meta(run_dir)
+    raw = meta.get("experiment_variants")
+    if not isinstance(raw, list):
+        manifest = read_json(run_dir / "output" / "experiment_manifest.json")
+        raw = manifest.get("variants")
+    if not isinstance(raw, list):
+        return []
+    return [variant for variant in raw if isinstance(variant, dict)]
+
+
+def variant_output_candidates(run_dir: Path, variant: dict[str, object]) -> list[Path]:
+    candidates: list[Path] = []
+    output_dir_raw = str(variant.get("output_dir") or "").strip()
+    if output_dir_raw:
+        output_dir = Path(output_dir_raw)
+        candidates.append(output_dir if output_dir.is_absolute() else run_dir / output_dir)
+
+    name = str(variant.get("name") or "").strip()
+    if name:
+        candidates.append(run_dir / "output" / name)
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            unique.append(candidate)
+            seen.add(key)
+    return unique
+
+
+def first_variant_file(run_dir: Path, variant: dict[str, object], filenames: list[str]) -> Path | None:
+    for output_dir in variant_output_candidates(run_dir, variant):
+        for filename in filenames:
+            path = output_dir / filename
+            if path.is_file():
+                return path
+    return None
+
+
+def _variant_number(variant: dict[str, object], fallback: int) -> int:
+    name = str(variant.get("name") or "")
+    prefix = name.split("_", 1)[0]
+    return int(prefix) if prefix.isdigit() else fallback
+
+
+def _geometry_variant_label(variant: dict[str, object], fallback_index: int) -> str:
+    mode = str(variant.get("mode") or "")
+    low_tau = variant.get("low_tau")
+    high_tau = variant.get("high_tau")
+    ordinal = _variant_number(variant, fallback_index)
+    if mode == "local_tau":
+        if high_tau is None:
+            return f"tau-by-parts\nlow {_fmt_number(low_tau)}"
+        try:
+            if float(low_tau) == float(high_tau):
+                return f"tau-by-parts\nall {_fmt_number(low_tau)}"
+        except (TypeError, ValueError):
+            pass
+        return f"tau-by-parts\nlow {_fmt_number(low_tau)} / high {_fmt_number(high_tau)}"
+    if ordinal == 2:
+        return f"global low tau\n{_fmt_number(low_tau)}"
+    if ordinal == 3:
+        return f"global high tau\n{_fmt_number(low_tau)}"
+    return f"global tau\n{_fmt_number(low_tau)}"
+
+
+def _complete_paths_for_specs(run_dir: Path, specs: list[tuple]) -> list[tuple[str, Path, float]] | None:
+    paths: list[tuple[str, Path, float]] = []
+    for spec in specs:
+        label = str(spec[0])
+        rel_paths = spec[1]
+        render_yaw_deg = float(spec[2]) if len(spec) > 2 else 0.0
         path = first_existing(run_dir, rel_paths)
         if path is None:
             return None
-        paths.append((label, path))
+        paths.append((label, path, render_yaw_deg))
     return paths
+
+
+def _complete_geometry_paths_from_meta(run_dir: Path, meta: dict[str, object]) -> list[tuple[str, Path, float]] | None:
+    variants = [
+        variant
+        for variant in experiment_variants(run_dir, meta)
+        if str(variant.get("mode") or "") in {"local_tau", "global_tau"}
+    ]
+    if len(variants) < 3:
+        return None
+    variants = variants[:3]
+    paths: list[tuple[str, Path, float]] = []
+    for index, variant in enumerate(variants, start=1):
+        path = first_variant_file(run_dir, variant, ["out_sim_geometry.glb", "out_sim.glb"])
+        if path is None:
+            return None
+        paths.append((_geometry_variant_label(variant, index), path, 0.0))
+    return paths
+
+
+def complete_experiment_paths(
+    run_dir: Path,
+    experiment_type: str | None = None,
+) -> list[tuple[str, Path, float]] | None:
+    meta = run_meta(run_dir)
+    kind = (experiment_type or experiment_type_for_run(run_dir, meta)).strip().lower()
+    if kind in {"texture", "full"}:
+        specs = TEXTURE_VARIANTS
+        return _complete_paths_for_specs(run_dir, specs)
+
+    dynamic_paths = _complete_geometry_paths_from_meta(run_dir, meta)
+    if dynamic_paths is not None:
+        return dynamic_paths
+
+    specs = STRUCTURE_VARIANTS
+    return _complete_paths_for_specs(run_dir, specs)
+
+
+def single_result_path(run_dir: Path) -> Path | None:
+    return first_existing(run_dir, SINGLE_RESULT_PATHS)
 
 
 def discover_experiments(root: Path) -> list[Path]:
@@ -195,20 +586,65 @@ def discover_experiments(root: Path) -> list[Path]:
     return [path for path in candidates if complete_experiment_paths(path) is not None]
 
 
-def title_for(run_dir: Path) -> str:
+def title_for(run_dir: Path, experiment_type: str | None = None) -> str:
+    meta = run_meta(run_dir)
+    kind = (experiment_type or experiment_type_for_run(run_dir, meta)).strip().lower()
+    run_kind = experiment_type_for_run(run_dir, meta)
+    if run_kind == "full" and kind == "geometry":
+        prefix = "Full structure comparison"
+    elif run_kind == "full" and kind == "texture":
+        prefix = "Full texture comparison"
+    elif kind == "texture":
+        prefix = "Texture experiment"
+    elif kind == "full":
+        prefix = "Full experiment"
+    else:
+        prefix = "Textured comparison"
     meta_path = run_dir / "run_meta.json"
     if meta_path.is_file():
         try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             prompt = str(meta.get("run_config", {}).get("textPrompt") or "").strip()
             if prompt:
-                return f"Textured comparison: {prompt}"
+                return f"{prefix}: {prompt}"
         except json.JSONDecodeError:
             pass
     name = run_dir.name
     if "_" in name:
         name = name.split("_", 1)[1]
-    return "Textured comparison: " + name.replace("_experiment", "").replace("_", " ")
+    return prefix + ": " + name.replace("_experiment", "").replace("_", " ")
+
+
+def _fmt_number(value: object) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.3g}"
+
+
+def single_title_for(run_dir: Path) -> str:
+    meta = run_meta(run_dir)
+    run_config = meta.get("run_config")
+    if isinstance(run_config, dict):
+        prompt = str(run_config.get("textPrompt") or "").strip()
+        if prompt:
+            return f"Tau-by-parts result: {prompt}"
+    name = run_dir.name
+    if "_" in name:
+        name = name.split("_", 1)[1]
+    return "Tau-by-parts result: " + name.replace("_", " ")
+
+
+def tau_by_parts_label(meta: dict[str, object]) -> str:
+    run_config = meta.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    low_tau = run_config.get("lowTau", 3)
+    high_tau = run_config.get("highTau")
+    if high_tau is None:
+        return f"tau-by-parts\nlow {_fmt_number(low_tau)}"
+    return f"tau-by-parts\nlow {_fmt_number(low_tau)} / high {_fmt_number(high_tau)}"
 
 
 def camera_rotation(azim_deg: float, elev_deg: float) -> np.ndarray:
@@ -478,51 +914,38 @@ def _rasterize_panel(mesh_info: dict[str, object], lim_x: float, lim_y: float, l
     return image
 
 
-def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float) -> Path:
-    variant_paths = complete_experiment_paths(run_dir)
-    if variant_paths is None:
-        raise RuntimeError(f"Missing one or more variants: {run_dir}")
-
-    meta = run_meta(run_dir)
-    manifest = asset_manifest(meta)
-    footer = prompt_footer(meta, manifest)
+def _render_labeled_meshes(
+    run_dir: Path,
+    output_name: str,
+    azim: float,
+    elev: float,
+    meshes: list[dict[str, object]],
+    title: str,
+    footer: str,
+    condition_tiles: list[dict[str, object]],
+) -> Path:
     rotation = camera_rotation(azim, elev)
     light_dir = np.array([-0.35, -0.45, 0.82])
     light_dir /= np.linalg.norm(light_dir)
 
-    meshes: list[dict[str, object]] = []
     max_extent = 0.0
-    control_mesh_path = sq_mesh_path(run_dir)
-    if control_mesh_path is not None:
-        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+    for mesh_info in meshes:
         vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
         max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
-        meshes.append({
-            **mesh_info,
-            "label": "SQ controls\nteal high / orange low",
-        })
-
-    for label, path in variant_paths:
-        mesh_info = load_mesh(path)
-        vertices = np.asarray(mesh_info["vertices"], dtype=np.float64)
-        max_extent = max(max_extent, float(np.max(vertices.max(axis=0) - vertices.min(axis=0))))
-        meshes.append({
-            **mesh_info,
-            "label": label,
-            "annotations": [],
-        })
 
     scale = 1.0 / max(max_extent, 1e-8)
     projected = []
     max_abs = np.array([0.0, 0.0])
     for mesh_info in meshes:
-        vertices_camera = (np.asarray(mesh_info["vertices"]) * scale) @ rotation.T
+        render_yaw_deg = float(mesh_info.get("render_yaw_deg") or 0.0)
+        mesh_rotation = camera_rotation(render_yaw_deg, 0.0) if render_yaw_deg else np.eye(3)
+        vertices_camera = ((np.asarray(mesh_info["vertices"]) * scale) @ mesh_rotation.T) @ rotation.T
         vertices = vertices_camera.copy()
         vertices[:, 1] *= -1.0
-        vertex_normals = np.asarray(mesh_info["vertex_normals"], dtype=np.float64) @ rotation.T
+        vertex_normals = (np.asarray(mesh_info["vertex_normals"], dtype=np.float64) @ mesh_rotation.T) @ rotation.T
         annotations = []
         for label, position in mesh_info["annotations"]:
-            position_camera = (position * scale) @ rotation.T
+            position_camera = ((position * scale) @ mesh_rotation.T) @ rotation.T
             annotations.append((
                 label,
                 np.array([position_camera[0], -position_camera[1], position_camera[2]], dtype=np.float64),
@@ -538,7 +961,8 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
     lim_x = float(max_abs[0] * 1.10)
     lim_y = float(max_abs[1] * 1.16)
 
-    fig, axes = plt.subplots(1, len(projected), figsize=(4.7 * len(projected), 5.9), dpi=220)
+    fig_height = 6.9 if condition_tiles else 5.9
+    fig, axes = plt.subplots(1, len(projected), figsize=(4.7 * len(projected), fig_height), dpi=220)
     axes = np.atleast_1d(axes)
     fig.patch.set_facecolor("white")
 
@@ -571,15 +995,96 @@ def render_comparison(run_dir: Path, output_name: str, azim: float, elev: float)
         ax.axis("off")
         ax.set_title(label, fontsize=13, pad=6)
 
-    fig.suptitle(title_for(run_dir), fontsize=16, y=0.98)
-    footer_wrapped = "\n".join(textwrap.wrap(footer, width=190))
+    fig.suptitle(title, fontsize=16, y=0.98)
+    draw_condition_strip(fig, condition_tiles)
+    footer_width = max(90, min(190, 48 * len(projected)))
+    footer_wrapped = "\n".join(textwrap.wrap(footer, width=footer_width))
     fig.text(0.5, 0.045, footer_wrapped, ha="center", va="bottom", fontsize=8.5, color="#20242a")
-    plt.subplots_adjust(left=0.015, right=0.985, top=0.78, bottom=0.18, wspace=0.035)
+    plt.subplots_adjust(left=0.015, right=0.985, top=0.665 if condition_tiles else 0.78, bottom=0.18, wspace=0.035)
     output_path = run_dir / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, facecolor="white", bbox_inches="tight", pad_inches=0.04)
     plt.close(fig)
     return output_path
+
+
+def render_comparison(
+    run_dir: Path,
+    output_name: str,
+    azim: float,
+    elev: float,
+    *,
+    experiment_type: str | None = None,
+) -> Path:
+    variant_paths = complete_experiment_paths(run_dir, experiment_type=experiment_type)
+    if variant_paths is None:
+        raise RuntimeError(f"Missing one or more variants: {run_dir}")
+
+    meta = run_meta(run_dir)
+    manifest = asset_manifest(meta)
+
+    meshes: list[dict[str, object]] = []
+    control_mesh_path = sq_mesh_path(run_dir, meta)
+    if control_mesh_path is not None:
+        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+        meshes.append({
+            **mesh_info,
+            "label": "SQ controls\norange high / gray low",
+        })
+
+    for label, path, render_yaw_deg in variant_paths:
+        mesh_info = load_mesh(path)
+        meshes.append({
+            **mesh_info,
+            "label": label,
+            "annotations": [],
+            "render_yaw_deg": render_yaw_deg,
+        })
+
+    return _render_labeled_meshes(
+        run_dir,
+        output_name,
+        azim,
+        elev,
+        meshes,
+        title_for(run_dir, experiment_type=experiment_type),
+        prompt_footer(run_dir, meta, manifest),
+        condition_image_tiles(run_dir, meta),
+    )
+
+
+def render_single_result(run_dir: Path, output_name: str, azim: float, elev: float = 25.0) -> Path:
+    result_path = single_result_path(run_dir)
+    if result_path is None:
+        raise RuntimeError(f"Missing tau-by-parts result: {run_dir}")
+
+    meta = run_meta(run_dir)
+    manifest = asset_manifest(meta)
+    meshes: list[dict[str, object]] = []
+    control_mesh_path = sq_mesh_path(run_dir)
+    if control_mesh_path is not None:
+        mesh_info = load_sq_mesh(control_mesh_path, manifest)
+        meshes.append({
+            **mesh_info,
+            "label": "SQ controls\norange high / gray low",
+        })
+
+    meshes.append({
+        **load_mesh(result_path),
+        "label": tau_by_parts_label(meta),
+        "annotations": [],
+    })
+
+    return _render_labeled_meshes(
+        run_dir,
+        output_name,
+        azim,
+        elev,
+        meshes,
+        single_title_for(run_dir),
+        prompt_footer(run_dir, meta, manifest),
+        condition_image_tiles(run_dir, meta),
+    )
 
 
 def main() -> None:
@@ -589,19 +1094,23 @@ def main() -> None:
     parser.add_argument("--output-name", default="variant_comparison.png")
     parser.add_argument("--azim", type=float, default=-58.0)
     parser.add_argument("--elev", type=float, default=20.0)
+    parser.add_argument("--single", action="store_true", help="Render one tau-by-parts result plus SQ controls.")
     args = parser.parse_args()
 
-    run_dirs = args.runs or discover_experiments(args.root)
+    run_dirs = args.runs or ([] if args.single else discover_experiments(args.root))
     if not run_dirs:
-        raise SystemExit("No complete experiment runs found.")
+        raise SystemExit("No run directories provided." if args.single else "No complete experiment runs found.")
 
     for run_dir in run_dirs:
-        variants = complete_experiment_paths(run_dir)
-        if variants is None:
-            print(f"skip missing variants: {run_dir}")
-            continue
         try:
-            output_path = render_comparison(run_dir, args.output_name, args.azim, args.elev)
+            if args.single:
+                output_path = render_single_result(run_dir, args.output_name, args.azim, args.elev)
+            else:
+                variants = complete_experiment_paths(run_dir)
+                if variants is None:
+                    print(f"skip missing variants: {run_dir}")
+                    continue
+                output_path = render_comparison(run_dir, args.output_name, args.azim, args.elev)
         except Exception as exc:  # noqa: BLE001
             print(f"failed {run_dir}: {exc}")
             continue

@@ -37,7 +37,7 @@ def visualize_and_save(structure, partfield_clusters, output_folder,
     """Render a smooth rotating orbit video of the structure colored by cluster labels.
 
     Uses the TRELLIS MeshRenderer (nvdiffrast, ssaa=4) and the same yaw/pitch
-    camera trajectory as run.py's Gaussian scene videos so all sides are visible.
+    camera trajectory as the pipeline's Gaussian scene videos so all sides are visible.
 
     Args:
         structure:          trimesh.Trimesh — normalized structure mesh

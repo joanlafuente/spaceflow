@@ -1,16 +1,9 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
-import { useStore } from '../state/store';
-import type { Primitive } from '../state/store';
-import { exportNpz } from '../mesh/npzExport';
-import type { PrimitiveExport } from '../mesh/npzExport';
-import { importNpzToPrimitives, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { exportNpz, type PrimitiveExport } from '../mesh/npzExport';
+import { importNpzToPrimitives, importNpzWithMetadata, maybeRescalePrimitivesForEditor } from '../mesh/npzImport';
+import type { NpzSpaceflowMetadata } from '../mesh/npzImport';
 import { primitiveToExport } from '../mesh/spaceflowExport';
-import { isOrthogonal } from '../state/rotation';
-import { eulerToMatrix, matrixToEuler } from '../state/rotation';
-import { editFromText } from '../state/generate';
-import { createFromTextViaSuperdec } from '../state/createPipeline';
-import { generateWithSuperdec } from '../state/superdec';
-import { generateWithSuperflex } from '../state/superflex';
+import { eulerToMatrix, isOrthogonal, matrixToEuler } from '../state/rotation';
 import {
   fetchSpaceflowHistory,
   getSpaceflowRunStatus,
@@ -24,13 +17,49 @@ import {
   type SpaceflowRunStatus,
 } from '../state/spaceflow';
 import { npzEditorUrl } from '../state/npzUrl';
-import {
-  captureSuperquadricRenderBlob,
-  captureViewportDataUrl,
-  captureViewportImageForLlm,
-  captureViewportPreviewDataUrl,
-} from '../state/viewportCapture';
+import { useStore, type Primitive } from '../state/store';
 import { useTextureUploadStore } from '../state/textureUploads';
+import { useSpaceflowUiStore } from '../state/spaceflowUi';
+import { captureSuperquadricRenderBlob } from '../state/viewportCapture';
+import {
+  AlertTriangleIcon,
+  ChairIcon,
+  CircleIcon,
+  DownloadIcon,
+  MoonIcon,
+  RedoIcon,
+  RotateIcon,
+  SparklesIcon,
+  SunIcon,
+  TableIcon,
+  UndoIcon,
+  UploadIcon,
+  XIcon,
+} from './icons';
+
+type ThemeMode = 'dark' | 'light';
+type SpaceflowExperimentType = 'geometry' | 'texture' | 'full';
+
+interface DownloadableGlbMesh {
+  url: string;
+  filename: string;
+  label: string;
+}
+
+interface DemoPreset {
+  id: string;
+  label: string;
+  prompt: string;
+  texturePrompt: string;
+  outputName: string;
+  npzUrl: string;
+  imageUrl: string;
+}
+
+interface TopBarProps {
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -41,6 +70,28 @@ function downloadBlob(blob: Blob, filename: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+async function writeClipboardText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error('Clipboard is unavailable in this browser context.');
+}
+
+function safeName(name: string, fallback: string) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_') || fallback;
 }
 
 function formatFileSize(bytes: number) {
@@ -60,18 +111,49 @@ function outputNameFromPrompt(prompt: string) {
     .replace(/^_+|_+$/g, '') || 'spaceflow_run';
 }
 
+function textureExperimentPromptTemplate(
+  shapePrompt: string,
+  globalTextureText: string,
+  primitives: Primitive[],
+) {
+  const shape = shapePrompt.trim() || 'a 3D asset';
+  const globalTexture = globalTextureText.trim() || shape;
+  const parts = [
+    `${shape}.`,
+    `Overall appearance and texture: ${globalTexture}.`,
+  ];
+  const localParts = primitives
+    .map((primitive, index) => {
+      const prompt = (primitive.localTextureText ?? '').trim();
+      if (!prompt) return null;
+      const name = primitive.name.trim() || `spaceflow_${index}`;
+      return `part ${index + 1} (${name}): ${prompt}`;
+    })
+    .filter((value): value is string => Boolean(value));
+  if (localParts.length > 0) {
+    parts.push(`Local texture overrides: ${localParts.join('; ')}.`);
+    parts.push('All unspecified parts should use the overall appearance and texture.');
+  } else {
+    parts.push('Apply the overall appearance and texture consistently to every part.');
+  }
+  return parts.join(' ');
+}
+
 function outputFileLabel(file: SpaceflowOutputFile) {
-  switch (file.relative_path) {
+  const basename = file.relative_path.toLowerCase().split('/').pop() ?? file.relative_path.toLowerCase();
+  if (
+    file.relative_path === 'input_superquadrics_colored.glb' ||
+    file.relative_path.endsWith('/input_superquadrics_colored.glb')
+  ) {
+    return 'Colored input superquadrics';
+  }
+  switch (basename) {
     case 'out_sim.glb':
       return 'Textured refined mesh';
     case 'out_sim_geometry.glb':
       return 'White refined geometry';
-    case 'out_app.glb':
-      return 'Appearance-refined geometry';
     case 'out_gaussian_sim.mp4':
       return 'Refined Gaussian video';
-    case 'out_gaussian_app.mp4':
-      return 'Appearance Gaussian video';
     case 'sample.glb':
       return 'Structure mesh';
     case 'struct_mesh_zup.glb':
@@ -84,9 +166,9 @@ function outputFileLabel(file: SpaceflowOutputFile) {
       return 'High-control mesh';
     case 'low_control_superquadric_mask.ply':
       return 'Low-control mask';
-    case 'voxels/struct_voxels.ply':
+    case 'struct_voxels.ply':
       return 'Structure voxels';
-    case 'struct_renders/000.png':
+    case '000.png':
       return 'Structure preview';
     case 'denoising_evolution.mp4':
       return 'Denoising video';
@@ -95,14 +177,32 @@ function outputFileLabel(file: SpaceflowOutputFile) {
   }
 }
 
+function isGlbPath(value: string | undefined) {
+  return Boolean(value?.toLowerCase().split(/[?#]/, 1)[0]?.endsWith('.glb'));
+}
+
+function filenameBaseFromPath(value: string | undefined, fallback: string) {
+  const clean = value?.split(/[?#]/, 1)[0] ?? '';
+  const basename = clean.split(/[\\/]/).pop() ?? '';
+  return basename.replace(/\.glb$/i, '') || fallback;
+}
+
+function downloadableGlbFromOutput(file: SpaceflowOutputFile, runId?: string): DownloadableGlbMesh {
+  const relBase = filenameBaseFromPath(file.relative_path, file.name.replace(/\.glb$/i, '') || 'mesh');
+  const prefix = runId ? `${runId}_` : '';
+  return {
+    url: resolveSpaceflowUrl(file.url),
+    filename: `${safeName(`${prefix}${relBase}`, 'spaceflow_mesh')}.glb`,
+    label: outputFileLabel(file),
+  };
+}
+
 const SPACEFLOW_INSPECTION_MESH_PRIORITY = [
   'out_sim.glb',
-  'out_app.glb',
+  'out_sim_geometry.glb',
   'struct_mesh_zup.glb',
   'sample.glb',
   'struct_mesh.glb',
-  'app_mesh_zup.glb',
-  'app_mesh.glb',
 ];
 
 function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
@@ -111,57 +211,79 @@ function pickSpaceflowInspectionMesh(files: SpaceflowOutputFile[]) {
     const file = byPath.get(relativePath);
     if (file) return file;
   }
-  return (
-    files.find(file => file.kind === 'mesh' && /\.(glb|gltf)$/i.test(file.relative_path))
-  );
+  for (const filename of SPACEFLOW_INSPECTION_MESH_PRIORITY) {
+    const file = files.find(candidate => candidate.relative_path.toLowerCase().split('/').pop() === filename);
+    if (file) return file;
+  }
+  const generatedMesh = files.find(file => (
+    file.kind === 'mesh' &&
+    /\.(glb|gltf)$/i.test(file.relative_path) &&
+    file.relative_path.toLowerCase().split('/').pop() !== 'input_superquadrics_colored.glb'
+  ));
+  return generatedMesh ?? files.find(file => file.kind === 'mesh' && /\.(glb|gltf)$/i.test(file.relative_path));
 }
 
 let nextPresetId = 0;
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
 
-type ThemeMode = 'dark' | 'light';
-
-interface TopBarProps {
-  themeMode: ThemeMode;
-  onThemeModeChange: (mode: ThemeMode) => void;
-}
+const DEMO_PRESETS: DemoPreset[] = [
+  {
+    id: 'chair',
+    label: 'Chair',
+    prompt: 'A comfy chair',
+    texturePrompt: 'white comfy chair',
+    outputName: 'chair',
+    npzUrl: '/demo-presets/chair.npz',
+    imageUrl: '/demo-presets/chair.png?v=sq-render-2',
+  },
+  {
+    id: 'car',
+    label: 'Car',
+    prompt: 'A car',
+    texturePrompt: 'A car',
+    outputName: 'car',
+    npzUrl: '/demo-presets/car.npz',
+    imageUrl: '/demo-presets/car.png?v=sq-render-2',
+  },
+  {
+    id: 'bench',
+    label: 'Bench',
+    prompt: 'An elegant legged bench',
+    texturePrompt: 'An elegant legged bench',
+    outputName: 'bench',
+    npzUrl: '/demo-presets/bench.npz',
+    imageUrl: '/demo-presets/bench.png?v=sq-render-2',
+  },
+  {
+    id: 'trophy',
+    label: 'Trophy',
+    prompt: 'A gold trophy',
+    texturePrompt: 'A gold trophy',
+    outputName: 'trophy',
+    npzUrl: '/demo-presets/trophy.npz',
+    imageUrl: '/demo-presets/trophy.png?v=sq-render-2',
+  },
+];
 
 export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const primitives = useStore(s => s.primitives);
-  const selectedId = useStore(s => s.selectedId);
-  const selectPrimitive = useStore(s => s.selectPrimitive);
   const loadPreset = useStore(s => s.loadPreset);
+  const meshInspection = useStore(s => s.meshInspection);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const rotateAllWorld = useStore(s => s.rotateAllWorld);
-  const spaceflowLocalTextureImageFiles = useTextureUploadStore(s => s.localTextureImageFiles);
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const undoStack = useStore(s => s.undoStack);
   const redoStack = useStore(s => s.redoStack);
   const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
+  const setLowControlBBoxMargin = useStore(s => s.setLowControlBBoxMargin);
+  const spaceflowLocalTextureImageFiles = useTextureUploadStore(s => s.localTextureImageFiles);
+
   const [toast, setToast] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showRotateAll, setShowRotateAll] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [showGenerate, setShowGenerate] = useState(false);
-  const [genPrompt, setGenPrompt] = useState('');
-  const [showSuperdec, setShowSuperdec] = useState(false);
-  const [superdecGenerating, setSuperdecGenerating] = useState(false);
-  const [superdecFile, setSuperdecFile] = useState<File | null>(null);
-  const [superdecName, setSuperdecName] = useState('');
-  const [superdecZUp, setSuperdecZUp] = useState(false);
-  const [superdecNormalize, setSuperdecNormalize] = useState(true);
-  const [superdecLmOptimization, setSuperdecLmOptimization] = useState(false);
-  const [superdecMaxPrimitives, setSuperdecMaxPrimitives] = useState('16');
-  const [superdecExistThreshold, setSuperdecExistThreshold] = useState('0.5');
-  const [showSuperflex, setShowSuperflex] = useState(false);
-  const [superflexGenerating, setSuperflexGenerating] = useState(false);
-  const [superflexFile, setSuperflexFile] = useState<File | null>(null);
-  const [superflexName, setSuperflexName] = useState('');
-  const [superflexZUp, setSuperflexZUp] = useState(false);
-  const [superflexNormalize, setSuperflexNormalize] = useState(true);
-  const [superflexLmOptimization, setSuperflexLmOptimization] = useState(false);
-  const [superflexMaxPrimitives, setSuperflexMaxPrimitives] = useState('16');
-  const [superflexExistThreshold, setSuperflexExistThreshold] = useState('0.5');
   const [showSpaceflow, setShowSpaceflow] = useState(false);
   const [spaceflowSaving, setSpaceflowSaving] = useState(false);
   const [spaceflowRunning, setSpaceflowRunning] = useState(false);
@@ -171,28 +293,63 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
   const [spaceflowRun, setSpaceflowRun] = useState<SpaceflowRunStatus | null>(null);
   const [spaceflowLogTail, setSpaceflowLogTail] = useState('');
   const [spaceflowTextPrompt, setSpaceflowTextPrompt] = useState('A chair');
-  const [spaceflowTextureMode, setSpaceflowTextureMode] = useState<'text' | 'image'>('text');
+  const spaceflowTextureMode = useSpaceflowUiStore(s => s.textureMode);
+  const setSpaceflowTextureMode = useSpaceflowUiStore(s => s.setTextureMode);
+  const importedNpzMetadata = useSpaceflowUiStore(s => s.importedNpzMetadata);
   const [spaceflowGlobalTextureText, setSpaceflowGlobalTextureText] = useState('');
+  const [spaceflowTextureExperimentPrompt, setSpaceflowTextureExperimentPrompt] = useState('');
+  const [spaceflowTextureExperimentPromptEdited, setSpaceflowTextureExperimentPromptEdited] = useState(false);
   const [spaceflowGlobalTextureImagePath, setSpaceflowGlobalTextureImagePath] = useState('');
   const [spaceflowGlobalTextureImageFile, setSpaceflowGlobalTextureImageFile] = useState<File | null>(null);
   const [spaceflowLowTau, setSpaceflowLowTau] = useState('3.0');
   const [spaceflowHighTau, setSpaceflowHighTau] = useState('10.0');
   const [spaceflowPolyakTau, setSpaceflowPolyakTau] = useState('0.18');
+  const [spaceflowRepaintSteps, setSpaceflowRepaintSteps] = useState('10');
+  const [spaceflowTextureOptimSteps, setSpaceflowTextureOptimSteps] = useState('300');
   const [spaceflowOutputName, setSpaceflowOutputName] = useState('');
   const [spaceflowConvertYupToZup, setSpaceflowConvertYupToZup] = useState(true);
   const [spaceflowDryRun, setSpaceflowDryRun] = useState(false);
-  const [projectName, setProjectName] = useState('superquadrics');
-  const [genMode, setGenMode] = useState<'create' | 'edit'>('create');
-  const [editFocusNames, setEditFocusNames] = useState<string[]>([]);
-  const [includeViewportInEdit, setIncludeViewportInEdit] = useState(true);
-  const [viewportPreviewUrl, setViewportPreviewUrl] = useState<string | null>(null);
-  const [viewportPreviewModal, setViewportPreviewModal] = useState(false);
-  const [viewportModalUrl, setViewportModalUrl] = useState<string | null>(null);
-  const genInputRef = useRef<HTMLInputElement>(null);
-  const superdecNameRef = useRef<HTMLInputElement>(null);
-  const superflexNameRef = useRef<HTMLInputElement>(null);
+  const [projectName, setProjectName] = useState('spaceflow');
+
   const spaceflowPromptRef = useRef<HTMLInputElement>(null);
+  const globalTextureFileInputRef = useRef<HTMLInputElement>(null);
   const inspectedSpaceflowRunRef = useRef<string | null>(null);
+
+  const showToast = useCallback((msg: string, durationMs = 3000) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), durationMs);
+  }, []);
+
+  const applySpaceflowMetadata = useCallback((metadata: NpzSpaceflowMetadata | null) => {
+    if (!metadata) return;
+    if (metadata.projectName) setProjectName(metadata.projectName);
+    if (metadata.textPrompt) setSpaceflowTextPrompt(metadata.textPrompt);
+    if (metadata.outputName !== undefined) setSpaceflowOutputName(metadata.outputName);
+    if (metadata.textureMode) setSpaceflowTextureMode(metadata.textureMode);
+    if (metadata.globalTextureText !== undefined) {
+      setSpaceflowGlobalTextureText(metadata.globalTextureText);
+      if (!metadata.textureMode && metadata.globalTextureText) setSpaceflowTextureMode('text');
+    }
+    if (!PUBLIC_DEMO && metadata.globalTextureImagePath !== undefined) {
+      setSpaceflowGlobalTextureImagePath(metadata.globalTextureImagePath);
+      if (!metadata.textureMode && metadata.globalTextureImagePath) setSpaceflowTextureMode('image');
+    }
+    if (metadata.textureExperimentPrompt) {
+      setSpaceflowTextureExperimentPrompt(metadata.textureExperimentPrompt);
+      setSpaceflowTextureExperimentPromptEdited(true);
+    } else {
+      setSpaceflowTextureExperimentPrompt('');
+      setSpaceflowTextureExperimentPromptEdited(false);
+    }
+    setSpaceflowGlobalTextureImageFile(null);
+    if (metadata.lowTau !== undefined) setSpaceflowLowTau(String(metadata.lowTau));
+    if (metadata.highTau !== undefined) setSpaceflowHighTau(String(metadata.highTau));
+    if (metadata.polyakTau !== undefined) setSpaceflowPolyakTau(String(metadata.polyakTau));
+    if (metadata.repaintSteps !== undefined) setSpaceflowRepaintSteps(String(metadata.repaintSteps));
+    if (metadata.textureOptimSteps !== undefined) setSpaceflowTextureOptimSteps(String(metadata.textureOptimSteps));
+    if (metadata.convertYupToZup !== undefined) setSpaceflowConvertYupToZup(metadata.convertYupToZup);
+    if (metadata.lowControlBBoxMargin !== undefined) setLowControlBBoxMargin(metadata.lowControlBBoxMargin);
+  }, [setLowControlBBoxMargin, setSpaceflowTextureMode]);
 
   const inspectSpaceflowRunMesh = useCallback((run: SpaceflowRunStatus, automatic = false) => {
     const meshFile = pickSpaceflowInspectionMesh(run.output_files ?? []);
@@ -203,73 +360,63 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       url: resolveSpaceflowUrl(meshFile.url),
       name: outputFileLabel(meshFile),
       runId: run.run_id,
-      path: meshFile.path,
+      path: PUBLIC_DEMO ? undefined : meshFile.path,
       relativePath: meshFile.relative_path,
     });
     setShowSpaceflow(false);
     return meshFile;
   }, [setMeshInspection]);
 
-  const refreshViewportPreview = useCallback(async () => {
-    if (!includeViewportInEdit) {
-      setViewportPreviewUrl(null);
-      return;
-    }
-    try {
-      const url = await captureViewportPreviewDataUrl(240);
-      setViewportPreviewUrl(url);
-    } catch {
-      setViewportPreviewUrl(null);
-    }
-  }, [includeViewportInEdit]);
-
-  useEffect(() => {
-    if (!showGenerate || genMode !== 'edit' || !includeViewportInEdit) {
-      setViewportPreviewUrl(null);
-      return;
-    }
-    void refreshViewportPreview();
-  }, [showGenerate, genMode, includeViewportInEdit, primitives, refreshViewportPreview]);
-
-  useEffect(() => {
-    if (!showGenerate) {
-      setViewportPreviewModal(false);
-      setViewportModalUrl(null);
-    }
-  }, [showGenerate]);
-
-  useEffect(() => {
-    if (showSuperdec) {
-      setTimeout(() => superdecNameRef.current?.focus(), 50);
-    }
-  }, [showSuperdec]);
-
-  useEffect(() => {
-    if (showSuperflex) {
-      setTimeout(() => superflexNameRef.current?.focus(), 50);
-    }
-  }, [showSuperflex]);
-
   useEffect(() => {
     if (showSpaceflow) {
-      setTimeout(() => spaceflowPromptRef.current?.focus(), 50);
+      window.setTimeout(() => spaceflowPromptRef.current?.focus(), 50);
     }
   }, [showSpaceflow]);
 
-  useEffect(() => {
-    if (!viewportPreviewModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setViewportPreviewModal(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [viewportPreviewModal]);
+  const visiblePrimitives = useMemo(() => primitives.filter(p => p.visible), [primitives]);
+  const spaceflowRunActive = spaceflowRun?.status === 'running' || spaceflowRun?.status === 'cancelling';
+  const generatedTextureExperimentPrompt = useMemo(
+    () => textureExperimentPromptTemplate(
+      spaceflowTextPrompt,
+      spaceflowGlobalTextureText,
+      visiblePrimitives,
+    ),
+    [spaceflowGlobalTextureText, spaceflowTextPrompt, visiblePrimitives],
+  );
+  const textureExperimentPromptValue = spaceflowTextureExperimentPromptEdited
+    ? spaceflowTextureExperimentPrompt
+    : generatedTextureExperimentPrompt;
+
+  const spaceflowMetadata = useMemo<NpzSpaceflowMetadata>(() => ({
+    projectName,
+    textPrompt: spaceflowTextPrompt,
+    outputName: spaceflowOutputName,
+    textureMode: spaceflowTextureMode,
+    globalTextureText: spaceflowGlobalTextureText,
+    globalTextureImagePath: PUBLIC_DEMO ? '' : spaceflowGlobalTextureImagePath,
+    textureExperimentPrompt: textureExperimentPromptValue,
+    primitiveNames: visiblePrimitives.map(p => p.name),
+    localTextureTexts: visiblePrimitives.map(p => p.localTextureText ?? ''),
+    localTextureImagePaths: visiblePrimitives.map(p => PUBLIC_DEMO ? '' : p.localTextureImagePath ?? ''),
+    lowTau: Number(spaceflowLowTau),
+    highTau: Number(spaceflowHighTau),
+    polyakTau: Number(spaceflowPolyakTau),
+    repaintSteps: Number(spaceflowRepaintSteps),
+    textureOptimSteps: Number(spaceflowTextureOptimSteps),
+    convertYupToZup: spaceflowConvertYupToZup,
+    lowControlBBoxMargin,
+  }), [projectName, spaceflowTextPrompt, spaceflowOutputName, spaceflowTextureMode,
+    spaceflowGlobalTextureText, spaceflowGlobalTextureImagePath, textureExperimentPromptValue,
+    visiblePrimitives, spaceflowLowTau, spaceflowHighTau, spaceflowPolyakTau,
+    spaceflowRepaintSteps, spaceflowTextureOptimSteps, spaceflowConvertYupToZup,
+    lowControlBBoxMargin]);
 
   useEffect(() => {
-    if (
-      !spaceflowRun?.run_id ||
-      (spaceflowRun.status !== 'running' && spaceflowRun.status !== 'cancelling')
-    ) return;
+    if (importedNpzMetadata) applySpaceflowMetadata(importedNpzMetadata.metadata);
+  }, [applySpaceflowMetadata, importedNpzMetadata]);
+
+  useEffect(() => {
+    if (!spaceflowRun?.run_id || !spaceflowRunActive) return;
     let cancelled = false;
     const poll = async () => {
       try {
@@ -286,7 +433,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           showToast(
             inspectedFile
               ? `SpaceFlow succeeded: loaded ${outputFileLabel(inspectedFile)}`
-              : `SpaceFlow ${status.run.status}: ${status.run.output_dir ?? spaceflowRun.run_id}`,
+              : `SpaceFlow ${status.run.status}: ${PUBLIC_DEMO ? status.run.run_id : status.run.output_dir ?? spaceflowRun.run_id}`,
             8000,
           );
         }
@@ -300,64 +447,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [inspectSpaceflowRunMesh, spaceflowRun?.run_id, spaceflowRun?.status]);
-
-  const openViewportPreviewModal = useCallback(() => {
-    const full = captureViewportDataUrl();
-    setViewportModalUrl(full ?? viewportPreviewUrl);
-    setViewportPreviewModal(true);
-  }, [viewportPreviewUrl]);
-
-  const allOrtho = primitives.every(p => isOrthogonal(p.rotation));
-  const hasWarnings = !allOrtho;
-  const spaceflowOutputFiles = spaceflowRun?.output_files ?? [];
-  const spaceflowInspectionMesh = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
-  const spaceflowPreviewImage =
-    spaceflowOutputFiles.find(file => file.relative_path === 'struct_renders/000.png') ??
-    spaceflowOutputFiles.find(file => file.kind === 'image');
-  const spaceflowVisibleOutputs = spaceflowOutputFiles
-    .filter(file => file.kind !== 'log')
-    .slice(0, 14);
-  const spaceflowRunActive = spaceflowRun?.status === 'running' || spaceflowRun?.status === 'cancelling';
-  const showToast = (msg: string, durationMs = 3000) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), durationMs);
-  };
-
-  const toggleEditFocus = useCallback((name: string) => {
-    setEditFocusNames(prev =>
-      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-    );
-  }, []);
-
-  const addSelectionToEditFocus = useCallback(() => {
-    if (!selectedId) return;
-    const name = primitives.find(p => p.id === selectedId)?.name;
-    if (!name) return;
-    setEditFocusNames(prev => (prev.includes(name) ? prev : [...prev, name]));
-  }, [selectedId, primitives]);
-
-  const resetSuperdec = useCallback(() => {
-    setShowSuperdec(false);
-    setSuperdecFile(null);
-    setSuperdecName('');
-    setSuperdecZUp(false);
-    setSuperdecNormalize(true);
-    setSuperdecLmOptimization(false);
-    setSuperdecMaxPrimitives('16');
-    setSuperdecExistThreshold('0.5');
-  }, []);
-
-  const resetSuperflex = useCallback(() => {
-    setShowSuperflex(false);
-    setSuperflexFile(null);
-    setSuperflexName('');
-    setSuperflexZUp(false);
-    setSuperflexNormalize(true);
-    setSuperflexLmOptimization(false);
-    setSuperflexMaxPrimitives('16');
-    setSuperflexExistThreshold('0.5');
-  }, []);
+  }, [inspectSpaceflowRunMesh, showToast, spaceflowRun?.run_id, spaceflowRunActive]);
 
   const refreshSpaceflowHistory = useCallback(async () => {
     setSpaceflowHistoryLoading(true);
@@ -369,20 +459,24 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     } finally {
       setSpaceflowHistoryLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   const handleSaveSpaceflowInputs = useCallback(async () => {
-    if (spaceflowSaving || primitives.length === 0) return;
+    if (PUBLIC_DEMO || spaceflowSaving || visiblePrimitives.length === 0) return;
     setSpaceflowSaving(true);
     try {
-      const lowTau = Number.parseFloat(spaceflowLowTau) || 3;
-      const highTau = Number.parseFloat(spaceflowHighTau) || 10;
+      const lowTau = Number(spaceflowLowTau);
+      const highTau = Number(spaceflowHighTau);
+      if (!Number.isFinite(lowTau) || !Number.isFinite(highTau)) {
+        throw new Error('Enter finite low and high tau values before saving.');
+      }
       const { entry, bundle } = await saveSpaceflowAsset({
         projectName,
-        primitives,
+        primitives: visiblePrimitives,
         lowTau,
         highTau,
         lowControlBBoxMargin,
+        metadata: spaceflowMetadata,
       });
       showToast(
         `Saved SpaceFlow inputs (${bundle.counts.high} high, ${bundle.counts.low} low)\n${entry.asset_dir}`,
@@ -395,66 +489,104 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       setSpaceflowSaving(false);
     }
   }, [
-    primitives,
+    lowControlBBoxMargin,
     projectName,
     refreshSpaceflowHistory,
     showSpaceflowHistoryPanel,
+    showToast,
     spaceflowHighTau,
     spaceflowLowTau,
     spaceflowSaving,
-    lowControlBBoxMargin,
+    spaceflowMetadata,
+    visiblePrimitives,
   ]);
 
   const handleOpenSpaceflowHistory = useCallback(async (entry: SpaceflowHistoryEntry) => {
     try {
-      const prims = await openSpaceflowAsset(entry);
+      const { primitives: prims, metadata } = await openSpaceflowAsset(entry);
       loadPreset(prims);
+      applySpaceflowMetadata(metadata);
       setProjectName(entry.project_name || projectName);
       showToast(`Loaded ${prims.length} primitives from ${entry.project_name}`);
       setShowSpaceflow(false);
     } catch (err) {
       showToast(`Open saved asset failed: ${err instanceof Error ? err.message : err}`, 8000);
     }
-  }, [loadPreset, projectName]);
+  }, [applySpaceflowMetadata, loadPreset, projectName, showToast]);
 
-  const handleStartSpaceflowRun = useCallback(async (experimentMode = false) => {
-    if (spaceflowRunning || primitives.length === 0) return;
-    const lowTau = experimentMode ? 3 : Number.parseFloat(spaceflowLowTau);
-    const highTau = experimentMode ? 10 : Number.parseFloat(spaceflowHighTau);
+  const handleStartSpaceflowRun = useCallback(async (experimentType?: SpaceflowExperimentType) => {
+    if (spaceflowRunning || visiblePrimitives.length === 0) return;
+    const experimentMode = Boolean(experimentType);
+    const lowTau = Number.parseFloat(spaceflowLowTau);
+    const highTau = Number.parseFloat(spaceflowHighTau);
     const polyakTau = Number.parseFloat(spaceflowPolyakTau);
-    if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau <= lowTau) {
-      showToast('High tau must be greater than low tau.', 5000);
+    const repaintStepsRaw = spaceflowRepaintSteps.trim();
+    const repaintSteps = Number.parseInt(repaintStepsRaw, 10);
+    const textureOptimStepsRaw = spaceflowTextureOptimSteps.trim();
+    const textureOptimSteps = Number.parseInt(textureOptimStepsRaw, 10);
+    if (!Number.isFinite(lowTau) || !Number.isFinite(highTau) || highTau < lowTau) {
+      showToast('High tau must be greater than or equal to low tau.', 5000);
+      return;
+    }
+    if (!/^\d+$/.test(repaintStepsRaw) || !Number.isInteger(repaintSteps)) {
+      showToast('Repaint steps must be a non-negative whole number.', 5000);
+      return;
+    }
+    if (!/^\d+$/.test(textureOptimStepsRaw) || !Number.isInteger(textureOptimSteps) || textureOptimSteps < 2) {
+      showToast('Texture optimization steps must be at least 2.', 5000);
       return;
     }
     if (!spaceflowTextPrompt.trim()) {
       showToast('Enter a SpaceFlow text prompt.', 5000);
       return;
     }
+    const includesTextureExperiment = experimentType === 'texture' || experimentType === 'full';
+    if (includesTextureExperiment && spaceflowTextureMode !== 'text') {
+      showToast('Texture and full experiments support text texture guidance only.', 6000);
+      return;
+    }
+    const textureExperimentPrompt = includesTextureExperiment
+      ? textureExperimentPromptValue.trim()
+      : '';
+    if (includesTextureExperiment && !textureExperimentPrompt) {
+      showToast('Enter a TRELLIS texture experiment prompt.', 6000);
+      return;
+    }
     if (
       spaceflowTextureMode === 'image' &&
-      !spaceflowGlobalTextureImagePath.trim() &&
+      !(PUBLIC_DEMO ? '' : spaceflowGlobalTextureImagePath.trim()) &&
       !spaceflowGlobalTextureImageFile
     ) {
-      showToast('Choose a global texture image or enter a cluster image path.', 5000);
+      showToast(PUBLIC_DEMO ? 'Choose a global texture image.' : 'Choose a global texture image or enter a cluster image path.', 5000);
       return;
     }
     setSpaceflowRunning(true);
     setSpaceflowLogTail('');
     try {
       const globalTextureText = spaceflowGlobalTextureText.trim() || spaceflowTextPrompt.trim();
-      const globalTextureImagePath = spaceflowGlobalTextureImagePath.trim();
-      const localTextureTexts = primitives.map(p => (p.localTextureText ?? '').trim());
-      const localTextureImagePaths = primitives.map(p => (p.localTextureImagePath ?? '').trim());
-      const localTextureImageFiles = primitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
-      const outputName =
-        spaceflowOutputName.trim() ||
-        outputNameFromPrompt(spaceflowTextPrompt);
-      const runOutputName = experimentMode && !outputName.endsWith('_experiment')
-        ? `${outputName}_experiment`
+      const globalTextureImagePath = PUBLIC_DEMO ? '' : spaceflowGlobalTextureImagePath.trim();
+      const localTextureTexts = visiblePrimitives.map(p => (p.localTextureText ?? '').trim());
+      const localTextureImagePaths = visiblePrimitives.map(p => PUBLIC_DEMO ? '' : (p.localTextureImagePath ?? '').trim());
+      const localTextureImageFiles = visiblePrimitives.map(p => spaceflowLocalTextureImageFiles[p.id] ?? null);
+      const outputName = spaceflowOutputName.trim() || outputNameFromPrompt(spaceflowTextPrompt);
+      const experimentSuffix = experimentType === 'texture'
+        ? '_texture_experiment'
+        : experimentType === 'full'
+          ? '_full_experiment'
+          : '_experiment';
+      const runOutputName = experimentMode && !outputName.endsWith(experimentSuffix)
+        ? `${outputName}${experimentSuffix}`
         : outputName;
+      const runLabel = experimentType === 'texture'
+        ? 'SpaceFlow texture experiment'
+        : experimentType === 'full'
+          ? 'SpaceFlow full experiment'
+          : experimentMode
+          ? 'SpaceFlow experiment'
+          : 'SpaceFlow';
       const { run, bundle } = await startSpaceflowRun({
         projectName,
-        primitives,
+        primitives: visiblePrimitives,
         textureImageFile: spaceflowGlobalTextureImageFile,
         localTextureImageFiles,
         runConfig: {
@@ -467,22 +599,27 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
           globalTextureImagePath,
           localTextureTexts,
           localTextureImagePaths,
+          textureExperimentPrompt: includesTextureExperiment ? textureExperimentPrompt : undefined,
           lowTau,
           highTau,
           polyakTau: Number.isFinite(polyakTau) ? polyakTau : 0.18,
+          repaintSteps,
+          textureOptimSteps,
           outputName: runOutputName,
           convertYupToZup: spaceflowConvertYupToZup,
           lowControlBBoxMargin,
           dryRun: spaceflowDryRun,
           experimentMode,
+          experimentType,
         },
       });
       setSpaceflowRun(run);
       if (run.status === 'succeeded') {
         inspectSpaceflowRunMesh(run, true);
       }
+      const runLocation = PUBLIC_DEMO ? run.run_id : run.output_dir ?? run.run_id;
       showToast(
-        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${experimentMode ? 'SpaceFlow experiment' : 'SpaceFlow'} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${run.output_dir ?? run.run_id}`,
+        `${spaceflowDryRun ? 'Prepared' : 'Started'} ${runLabel} (${bundle.counts.high} high, ${bundle.counts.low} low)\n${runLocation}`,
         8000,
       );
       if (showSpaceflowHistoryPanel) await refreshSpaceflowHistory();
@@ -493,10 +630,11 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     }
   }, [
     inspectSpaceflowRunMesh,
-    primitives,
+    lowControlBBoxMargin,
     projectName,
     refreshSpaceflowHistory,
     showSpaceflowHistoryPanel,
+    showToast,
     spaceflowConvertYupToZup,
     spaceflowDryRun,
     spaceflowGlobalTextureImageFile,
@@ -507,10 +645,13 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     spaceflowLowTau,
     spaceflowOutputName,
     spaceflowPolyakTau,
+    spaceflowRepaintSteps,
     spaceflowRunning,
     spaceflowTextPrompt,
+    spaceflowTextureOptimSteps,
     spaceflowTextureMode,
-    lowControlBBoxMargin,
+    textureExperimentPromptValue,
+    visiblePrimitives,
   ]);
 
   const handleStopSpaceflowRun = useCallback(async () => {
@@ -519,202 +660,34 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       const run = await stopSpaceflowRun(spaceflowRun.run_id);
       setSpaceflowRun(run);
       setSpaceflowRunning(run.status === 'running' || run.status === 'cancelling');
-      showToast(`Stopping SpaceFlow: ${run.output_dir ?? run.run_id}`, 5000);
+      showToast(`Stopping SpaceFlow: ${PUBLIC_DEMO ? run.run_id : run.output_dir ?? run.run_id}`, 5000);
     } catch (err) {
       showToast(`Stop failed: ${err instanceof Error ? err.message : err}`, 8000);
     }
-  }, [spaceflowRun?.run_id, spaceflowRunActive]);
-
-  const handleGenerate = useCallback(async () => {
-    const prompt = genPrompt.trim();
-    if (!prompt || generating) return;
-    if (genMode === 'edit' && primitives.length === 0) {
-      showToast('Add or generate primitives before editing.', 4000);
-      return;
-    }
-    setGenerating(true);
-    const prevName = primitives.find(p => p.id === selectedId)?.name ?? null;
-    try {
-      if (genMode === 'create') {
-        const result = await createFromTextViaSuperdec(prompt, {
-          name: prompt.replace(/^a\s+/i, '').trim() || 'superquadrics',
-        });
-        const prims = result.primitives;
-        loadPreset(prims);
-        setProjectName(prompt.replace(/^a\s+/i, '').trim() || 'superquadrics');
-        showToast(
-          `Generated ${result.primitiveCount} primitives from ${result.pointCount} TRELLIS points`
-        );
-        setShowGenerate(false);
-        setGenPrompt('');
-      } else {
-        const focus =
-          editFocusNames.length > 0 ? editFocusNames : undefined;
-        let viewportImages: string[] | undefined;
-        if (includeViewportInEdit) {
-          try {
-            const b64 = await captureViewportImageForLlm(768);
-            if (b64) viewportImages = [b64];
-          } catch {
-            /* fall back to text-only edit */
-          }
-        }
-        const editResult = await editFromText(prompt, primitives, {
-          focusNames: focus,
-          viewportImagesBase64: viewportImages,
-        });
-        const vpNote =
-          includeViewportInEdit && viewportImages
-            ? ' · viewport image sent'
-            : includeViewportInEdit && !viewportImages
-              ? ' · text only (screenshot unavailable)'
-              : '';
-        if (editResult.unchanged) {
-          showToast(
-            `No geometry changed — the model returned the same numbers as your current scene (common with vague prompts like "fix this").${vpNote} Try naming a part and a concrete change, or turn off the viewport screenshot if the model keeps echoing JSON.`,
-            10000
-          );
-        } else {
-          const prims = editResult.primitives;
-          loadPreset(prims);
-          const newSel =
-            (prevName && prims.find(p => p.name === prevName)?.id) ??
-            prims[0]?.id ??
-            null;
-          selectPrimitive(newSel);
-          showToast(`Updated scene (${prims.length} primitives)${vpNote}`);
-          setShowGenerate(false);
-          setGenPrompt('');
-        }
-      }
-    } catch (err) {
-      showToast(`Generation failed: ${err instanceof Error ? err.message : err}`, 8000);
-    } finally {
-      setGenerating(false);
-    }
-  }, [
-    genPrompt,
-    generating,
-    genMode,
-    primitives,
-    editFocusNames,
-    includeViewportInEdit,
-    loadPreset,
-    selectPrimitive,
-    selectedId,
-  ]);
-
-  const handleSuperdecGenerate = useCallback(async () => {
-    if (!superdecFile || superdecGenerating) return;
-    setSuperdecGenerating(true);
-    const baseName =
-      superdecName.trim() ||
-      superdecFile.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') ||
-      'superdec';
-    try {
-      const maxPrimitives = Math.max(0, Number.parseInt(superdecMaxPrimitives || '0', 10) || 0);
-      const existThreshold = Math.min(
-        1,
-        Math.max(0, Number.parseFloat(superdecExistThreshold || '0.5') || 0.5)
-      );
-      const result = await generateWithSuperdec({
-        file: superdecFile,
-        name: baseName,
-        zUp: superdecZUp,
-        normalize: superdecNormalize,
-        lmOptimization: superdecLmOptimization,
-        maxPrimitives,
-        existThreshold,
-      });
-      loadPreset(result.primitives);
-      setProjectName(baseName);
-      showToast(`Generated ${result.primitiveCount} primitives with SuperDec`);
-      resetSuperdec();
-    } catch (err) {
-      showToast(`SuperDec failed: ${err instanceof Error ? err.message : err}`, 10000);
-    } finally {
-      setSuperdecGenerating(false);
-    }
-  }, [
-    loadPreset,
-    resetSuperdec,
-    superdecExistThreshold,
-    superdecFile,
-    superdecGenerating,
-    superdecLmOptimization,
-    superdecMaxPrimitives,
-    superdecName,
-    superdecNormalize,
-    superdecZUp,
-  ]);
-
-  const handleSuperflexGenerate = useCallback(async () => {
-    if (!superflexFile || superflexGenerating) return;
-    setSuperflexGenerating(true);
-    const baseName =
-      superflexName.trim() ||
-      superflexFile.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') ||
-      'superflex';
-    try {
-      const maxPrimitives = Math.max(0, Number.parseInt(superflexMaxPrimitives || '0', 10) || 0);
-      const existThreshold = Math.min(
-        1,
-        Math.max(0, Number.parseFloat(superflexExistThreshold || '0.5') || 0.5),
-      );
-      const result = await generateWithSuperflex({
-        file: superflexFile,
-        name: baseName,
-        zUp: superflexZUp,
-        normalize: superflexNormalize,
-        lmOptimization: superflexLmOptimization,
-        maxPrimitives,
-        existThreshold,
-      });
-      loadPreset(result.primitives);
-      setProjectName(baseName);
-      showToast(`Generated ${result.primitiveCount} primitives with SuperFlex`);
-      resetSuperflex();
-    } catch (err) {
-      showToast(`SuperFlex failed: ${err instanceof Error ? err.message : err}`, 10000);
-    } finally {
-      setSuperflexGenerating(false);
-    }
-  }, [
-    loadPreset,
-    resetSuperflex,
-    setProjectName,
-    superflexExistThreshold,
-    superflexFile,
-    superflexGenerating,
-    superflexLmOptimization,
-    superflexMaxPrimitives,
-    superflexName,
-    superflexNormalize,
-    superflexZUp,
-  ]);
+  }, [showToast, spaceflowRun?.run_id, spaceflowRunActive]);
 
   const handleDownloadNpz = useCallback(async () => {
     try {
-      const exports: PrimitiveExport[] = primitives.map(primitiveToExport);
-      const blob = await exportNpz(exports);
-      const filename = `${projectName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'superquadrics'}.npz`;
+      const exports: PrimitiveExport[] = visiblePrimitives.map(primitiveToExport);
+      const blob = await exportNpz(exports, { metadata: spaceflowMetadata });
+      const filename = `${safeName(projectName, 'spaceflow')}.npz`;
       downloadBlob(blob, filename);
       showToast(`Downloaded ${filename}`);
     } catch (err) {
-      showToast(`Export failed: ${err}`);
+      showToast(`Export failed: ${err instanceof Error ? err.message : err}`, 8000);
     }
     setShowExport(false);
-  }, [primitives, projectName]);
+  }, [projectName, showToast, spaceflowMetadata, visiblePrimitives]);
 
   const handleDownloadRendering = useCallback(async () => {
-    if (primitives.length === 0) return;
+    if (visiblePrimitives.length === 0) return;
     try {
       const blob = await captureSuperquadricRenderBlob();
       if (!blob) {
-        showToast('Could not render superquadrics. Switch back to the SQ viewport and try again.', 5000);
+        showToast('Could not render the superquadrics. Switch back to the viewport and try again.', 5000);
         return;
       }
-      const filename = `${projectName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'superquadrics'}_render.png`;
+      const filename = `${safeName(projectName, 'spaceflow')}_render.png`;
       downloadBlob(blob, filename);
       showToast(`Downloaded ${filename}`);
     } catch (err) {
@@ -722,10 +695,10 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
     } finally {
       setShowExport(false);
     }
-  }, [primitives.length, projectName]);
+  }, [projectName, showToast, visiblePrimitives.length]);
 
-  const handleCopyJson = useCallback(() => {
-    const data = primitives.map(p => ({
+  const handleCopyJson = useCallback(async () => {
+    const data = visiblePrimitives.map(p => ({
       name: p.name,
       controlLevel: p.controlLevel,
       scales: p.scales,
@@ -735,12 +708,16 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       ...(p.tapering !== undefined ? { tapering: p.tapering } : {}),
       ...(p.bending !== undefined ? { bending: p.bending } : {}),
       ...(p.localTextureText ? { localTextureText: p.localTextureText } : {}),
-      ...(p.localTextureImagePath ? { localTextureImagePath: p.localTextureImagePath } : {}),
+      ...(!PUBLIC_DEMO && p.localTextureImagePath ? { localTextureImagePath: p.localTextureImagePath } : {}),
     }));
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-    showToast('Copied JSON preset to clipboard');
-    setShowExport(false);
-  }, [primitives]);
+    try {
+      await writeClipboardText(JSON.stringify(data, null, 2));
+      showToast('Copied JSON preset to clipboard');
+      setShowExport(false);
+    } catch (err) {
+      showToast(`Copy failed: ${err instanceof Error ? err.message : err}`, 8000);
+    }
+  }, [showToast, visiblePrimitives]);
 
   const handleImportJson = useCallback(() => {
     const input = document.createElement('input');
@@ -780,18 +757,18 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
             ...(d.tapering !== undefined ? { tapering: d.tapering } : {}),
             ...(d.bending !== undefined ? { bending: d.bending } : {}),
             ...(d.localTextureText ? { localTextureText: d.localTextureText } : {}),
-            ...(d.localTextureImagePath ? { localTextureImagePath: d.localTextureImagePath } : {}),
+            ...(!PUBLIC_DEMO && d.localTextureImagePath ? { localTextureImagePath: d.localTextureImagePath } : {}),
           };
         });
         loadPreset(maybeRescalePrimitivesForEditor(prims));
         showToast(`Loaded ${prims.length} primitives from JSON`);
       } catch (err) {
-        showToast(`Import failed: ${err}`);
+        showToast(`Import failed: ${err instanceof Error ? err.message : err}`, 8000);
       }
     };
     input.click();
-    setShowExport(false);
-  }, [loadPreset]);
+    setShowImport(false);
+  }, [loadPreset, showToast]);
 
   const handleImportNpz = useCallback(() => {
     const input = document.createElement('input');
@@ -801,89 +778,146 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        const stem = file.name.replace(/\.npz$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'npz';
-        const prims = await importNpzToPrimitives(file, stem, { basisZUpToYUp: false });
+        const stem = safeName(file.name.replace(/\.npz$/i, ''), 'npz');
+        const { primitives: prims, metadata } = await importNpzWithMetadata(file, stem, { basisZUpToYUp: false });
         loadPreset(prims);
-        showToast(`Loaded ${prims.length} primitives from ${file.name}`);
+        applySpaceflowMetadata(metadata);
+        const textureCount = prims.filter(p => (p.localTextureText ?? '').trim() || (p.localTextureImagePath ?? '').trim()).length;
+        const withTexture = metadata?.globalTextureText || metadata?.globalTextureImagePath || textureCount > 0;
+        showToast(
+          `Loaded ${prims.length} primitives from ${file.name}${withTexture ? ` with ${textureCount} local texture prompt${textureCount === 1 ? '' : 's'}` : ''}`,
+        );
       } catch (err) {
         showToast(`NPZ import failed: ${err instanceof Error ? err.message : err}`, 6000);
       }
     };
     input.click();
-    setShowExport(false);
-  }, [loadPreset]);
+    setShowImport(false);
+  }, [applySpaceflowMetadata, loadPreset, showToast]);
 
-  const handleImportNpzZUp = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.npz,application/octet-stream';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const stem = file.name.replace(/\.npz$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'npz';
-        const prims = await importNpzToPrimitives(file, stem, { basisZUpToYUp: true });
-        loadPreset(prims);
-        showToast(`Loaded ${prims.length} primitives (Z-up → Y-up) from ${file.name}`);
-      } catch (err) {
-        showToast(`NPZ import failed: ${err instanceof Error ? err.message : err}`, 6000);
-      }
-    };
-    input.click();
-    setShowExport(false);
-  }, [loadPreset]);
+  const handleLoadDemoPreset = useCallback(async (preset: DemoPreset) => {
+    try {
+      const response = await fetch(preset.npzUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const prims = await importNpzToPrimitives(blob, preset.id, { basisZUpToYUp: false });
+      loadPreset(prims);
+      setProjectName(preset.id);
+      setSpaceflowTextPrompt(preset.prompt);
+      setSpaceflowGlobalTextureText(preset.texturePrompt);
+      setSpaceflowOutputName(preset.outputName);
+      setSpaceflowTextureMode('text');
+      setSpaceflowGlobalTextureImageFile(null);
+      setSpaceflowGlobalTextureImagePath('');
+      setSpaceflowTextureExperimentPromptEdited(false);
+      setSpaceflowTextureExperimentPrompt('');
+      const high = prims.filter(prim => prim.controlLevel === 'high').length;
+      const low = prims.filter(prim => prim.controlLevel === 'low').length;
+      showToast(`Loaded ${preset.label} demo (${high} high, ${low} low)`);
+    } catch (err) {
+      showToast(`Demo preset failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setShowImport(false);
+    }
+  }, [loadPreset, setSpaceflowTextureMode, showToast]);
 
   const handleOpenNpzPath = useCallback(() => {
-    const path = window.prompt('Path to superflex.npz');
+    const path = window.prompt('Path to .npz');
     const source = path?.trim();
     if (!source) return;
     if (!source.toLowerCase().split(/[?#]/, 1)[0]?.endsWith('.npz')) {
       showToast('Please enter a .npz path.', 5000);
       return;
     }
-    setShowExport(false);
+    setShowImport(false);
     window.location.assign(npzEditorUrl(source));
-  }, []);
+  }, [showToast]);
 
   const handleLoadTemplate = useCallback((template: string) => {
     const templates: Record<string, () => Primitive[]> = {
       'Single Ellipsoid': () => {
         const euler: [number, number, number] = [0, 0, 0];
         return [{
-          id: `t_${++nextPresetId}_${Date.now()}`, name: 'Ellipsoid', visible: true, controlLevel: 'high',
-          scales: [0.5, 0.5, 1], shapes: [1, 1], translation: [0, 0, 0],
-          rotation: eulerToMatrix(euler), eulerDeg: euler,
+          id: `t_${++nextPresetId}_${Date.now()}`,
+          name: 'Ellipsoid',
+          visible: true,
+          controlLevel: 'high',
+          scales: [0.5, 0.5, 1],
+          shapes: [1, 1],
+          translation: [0, 0, 0],
+          rotation: eulerToMatrix(euler),
+          eulerDeg: euler,
         }];
       },
       'Table (5 parts)': () => {
-        const leg = (x: number, z: number, idx: number): Primitive => ({
-          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true, controlLevel: 'high',
-          scales: [0.06, 0.4, 0.06], shapes: [0.4, 0.4], translation: [x, -0.44, z],
-          rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0],
+        const leg = (x: number, y: number, idx: number): Primitive => ({
+          id: `t_${++nextPresetId}_${Date.now()}`,
+          name: `Leg ${idx}`,
+          visible: true,
+          controlLevel: 'high',
+          scales: [0.06, 0.06, 0.4],
+          shapes: [0.4, 0.4],
+          translation: [x, y, -0.44],
+          rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+          eulerDeg: [0, 0, 0],
         });
         return [
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Top', visible: true, controlLevel: 'high',
-            scales: [0.8, 0.04, 0.5], shapes: [0.3, 0.3], translation: [0, 0, 0],
-            rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
-          leg(-0.65, -0.4, 1), leg(0.65, -0.4, 2),
-          leg(-0.65, 0.4, 3), leg(0.65, 0.4, 4),
+          {
+            id: `t_${++nextPresetId}_${Date.now()}`,
+            name: 'Top',
+            visible: true,
+            controlLevel: 'high',
+            scales: [0.8, 0.5, 0.04],
+            shapes: [0.3, 0.3],
+            translation: [0, 0, 0],
+            rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            eulerDeg: [0, 0, 0],
+          },
+          leg(-0.65, -0.4, 1),
+          leg(0.65, -0.4, 2),
+          leg(-0.65, 0.4, 3),
+          leg(0.65, 0.4, 4),
         ];
       },
       'Chair (6 parts)': () => {
-        const leg = (x: number, z: number, idx: number): Primitive => ({
-          id: `t_${++nextPresetId}_${Date.now()}`, name: `Leg ${idx}`, visible: true, controlLevel: 'high',
-          scales: [0.05, 0.35, 0.05], shapes: [0.4, 0.4], translation: [x, -0.39, z],
-          rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0],
+        const leg = (x: number, y: number, idx: number): Primitive => ({
+          id: `t_${++nextPresetId}_${Date.now()}`,
+          name: `Leg ${idx}`,
+          visible: true,
+          controlLevel: 'high',
+          scales: [0.05, 0.05, 0.35],
+          shapes: [0.4, 0.4],
+          translation: [x, y, -0.39],
+          rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+          eulerDeg: [0, 0, 0],
         });
         return [
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Seat', visible: true, controlLevel: 'high',
-            scales: [0.5, 0.04, 0.45], shapes: [0.3, 0.3], translation: [0, 0, 0],
-            rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
-          { id: `t_${++nextPresetId}_${Date.now()}`, name: 'Backrest', visible: true, controlLevel: 'high',
-            scales: [0.5, 0.35, 0.04], shapes: [0.3, 0.3], translation: [0, 0.39, -0.4],
-            rotation: [[1,0,0],[0,1,0],[0,0,1]], eulerDeg: [0, 0, 0] },
-          leg(-0.42, -0.38, 1), leg(0.42, -0.38, 2),
-          leg(-0.42, 0.38, 3), leg(0.42, 0.38, 4),
+          {
+            id: `t_${++nextPresetId}_${Date.now()}`,
+            name: 'Seat',
+            visible: true,
+            controlLevel: 'high',
+            scales: [0.5, 0.45, 0.04],
+            shapes: [0.3, 0.3],
+            translation: [0, 0, 0],
+            rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            eulerDeg: [0, 0, 0],
+          },
+          {
+            id: `t_${++nextPresetId}_${Date.now()}`,
+            name: 'Backrest',
+            visible: true,
+            controlLevel: 'high',
+            scales: [0.5, 0.04, 0.35],
+            shapes: [0.3, 0.3],
+            translation: [0, -0.43, 0.36],
+            rotation: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            eulerDeg: [0, 0, 0],
+          },
+          leg(-0.42, 0.35, 1),
+          leg(0.42, 0.35, 2),
+          leg(-0.42, -0.35, 3),
+          leg(0.42, -0.35, 4),
         ];
       },
     };
@@ -892,676 +926,134 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
       loadPreset(factory());
       showToast(`Loaded "${template}" template`);
     }
+    setShowImport(false);
     setShowExport(false);
-  }, [loadPreset]);
+  }, [loadPreset, showToast]);
+
+  const highCount = visiblePrimitives.filter(p => p.controlLevel === 'high').length;
+  const lowCount = visiblePrimitives.filter(p => p.controlLevel === 'low').length;
+  const allOrtho = visiblePrimitives.every(p => isOrthogonal(p.rotation));
+  const hasWarnings = !allOrtho;
+  const canStartSpaceflow = !spaceflowRunning && visiblePrimitives.length > 0 && highCount > 0 && lowCount > 0;
+  const canStartTextureExperiment = canStartSpaceflow && spaceflowTextureMode === 'text';
+  const spaceflowOutputFiles = useMemo(() => spaceflowRun?.output_files ?? [], [spaceflowRun?.output_files]);
+  const spaceflowRunWarnings = (spaceflowRun?.warnings ?? [])
+    .map(warning => String(warning.message ?? '').trim())
+    .filter(Boolean);
+  const spaceflowInspectionMesh = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
+  const spaceflowDownloadGlb = useMemo<DownloadableGlbMesh | null>(() => {
+    const runGlb = pickSpaceflowInspectionMesh(spaceflowOutputFiles);
+    if (runGlb) return downloadableGlbFromOutput(runGlb, spaceflowRun?.run_id);
+    if (
+      meshInspection &&
+      (
+        isGlbPath(meshInspection.relativePath) ||
+        isGlbPath(meshInspection.path) ||
+        isGlbPath(meshInspection.url)
+      )
+    ) {
+      const fallbackBase = filenameBaseFromPath(
+        meshInspection.relativePath ?? meshInspection.path ?? meshInspection.url,
+        meshInspection.name || 'mesh',
+      );
+      return {
+        url: meshInspection.url,
+        filename: `${safeName(fallbackBase, 'spaceflow_mesh')}.glb`,
+        label: meshInspection.name,
+      };
+    }
+    return null;
+  }, [meshInspection, spaceflowOutputFiles, spaceflowRun?.run_id]);
+  const spaceflowPreviewImage =
+    spaceflowOutputFiles.find(file => (
+      file.relative_path === 'struct_renders/000.png' ||
+      file.relative_path.endsWith('/struct_renders/000.png')
+    )) ??
+    spaceflowOutputFiles.find(file => file.kind === 'image');
+  const spaceflowVisibleOutputs = spaceflowOutputFiles
+    .filter(file => file.kind !== 'log')
+    .slice(0, 14);
+  const handleDownloadGlbMesh = useCallback(async () => {
+    if (!spaceflowDownloadGlb) return;
+    try {
+      const res = await fetch(spaceflowDownloadGlb.url);
+      if (!res.ok) throw new Error(`download returned ${res.status}`);
+      const blob = await res.blob();
+      downloadBlob(blob, spaceflowDownloadGlb.filename);
+      showToast(`Downloaded ${spaceflowDownloadGlb.filename}`);
+    } catch (err) {
+      showToast(`GLB download failed: ${err instanceof Error ? err.message : err}`, 8000);
+    } finally {
+      setShowExport(false);
+    }
+  }, [showToast, spaceflowDownloadGlb]);
 
   return (
     <div className="top-bar">
       <div className="top-left">
-        <span className="app-name">SQ Editor</span>
-        <span className="app-sep">/</span>
-        <input
-          type="text"
-          className="project-name-input"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          title="Project name (used as export filename)"
-        />
-        <div className="theme-toggle" role="group" aria-label="Color theme">
-          <button
-            type="button"
-            className={`theme-toggle-btn ${themeMode === 'light' ? 'active' : ''}`}
-            onClick={() => onThemeModeChange('light')}
-            aria-pressed={themeMode === 'light'}
-            title="Use light mode"
-          >
-            Light
-          </button>
-          <button
-            type="button"
-            className={`theme-toggle-btn ${themeMode === 'dark' ? 'active' : ''}`}
-            onClick={() => onThemeModeChange('dark')}
-            aria-pressed={themeMode === 'dark'}
-            title="Use dark mode"
-          >
-            Dark
-          </button>
-        </div>
+        <span className="app-name">SpaceFlow</span>
       </div>
 
       <div className="top-center">
-        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)">↩</button>
-        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Shift+Z)">↪</button>
+        <button className="toolbar-btn" onClick={undo} disabled={undoStack.length === 0} title="Undo" aria-label="Undo">
+          <UndoIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={redo} disabled={redoStack.length === 0} title="Redo" aria-label="Redo">
+          <RedoIcon size={16} />
+        </button>
         <span className="separator" />
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single Ellipsoid">⊙</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template">⊞</button>
-        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template">⊟</button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Single Ellipsoid')} title="Single ellipsoid" aria-label="Load single ellipsoid template">
+          <CircleIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Table (5 parts)')} title="Table template" aria-label="Load table template">
+          <TableIcon size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={() => handleLoadTemplate('Chair (6 parts)')} title="Chair template" aria-label="Load chair template">
+          <ChairIcon size={16} />
+        </button>
         <span className="separator" />
         <div className={`export-dropdown rotate-all-group${showRotateAll ? ' is-open' : ''}`}>
           <button
             type="button"
             className={`toolbar-btn toolbar-btn-menu${showRotateAll ? ' is-open' : ''}`}
-            onClick={() => setShowRotateAll(v => !v)}
+            onClick={() => {
+              setShowRotateAll(v => !v);
+              setShowImport(false);
+              setShowExport(false);
+              setShowSpaceflow(false);
+            }}
             disabled={primitives.length === 0}
-            title="Rotate all primitives 90° about a world axis (wrong up-axis / upside-down)"
+            title="Rotate all primitives"
           >
-            <svg
-              className="toolbar-btn-menu-icon"
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M23 4v6h-6" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-            <span className="toolbar-btn-menu-label">90°</span>
-            <span className="toolbar-btn-menu-caret" aria-hidden>
-              ▾
-            </span>
+            <RotateIcon className="toolbar-btn-menu-icon" size={14} />
+            <span className="toolbar-btn-menu-label">Rotate All</span>
           </button>
           {showRotateAll && (
-            <div className="dropdown-menu dropdown-menu-toolbar" role="menu">
-              <button
-                type="button"
-                className="dropdown-item"
-                role="menuitem"
-                onClick={() => {
-                  rotateAllWorld([90, 0, 0]);
-                  setShowRotateAll(false);
-                  showToast('Rotated all parts +90° about world X');
-                }}
-              >
-                +90° about world X
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                role="menuitem"
-                onClick={() => {
-                  rotateAllWorld([0, 90, 0]);
-                  setShowRotateAll(false);
-                  showToast('Rotated all parts +90° about world Y');
-                }}
-              >
-                +90° about world Y
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                role="menuitem"
-                onClick={() => {
-                  rotateAllWorld([0, 0, 90]);
-                  setShowRotateAll(false);
-                  showToast('Rotated all parts +90° about world Z');
-                }}
-              >
-                +90° about world Z
-              </button>
+            <div className="dropdown-menu rotate-all-menu">
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([90, 0, 0])}>X +90</button>
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([-90, 0, 0])}>X -90</button>
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([0, 90, 0])}>Y +90</button>
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([0, -90, 0])}>Y -90</button>
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([0, 0, 90])}>Z +90</button>
+              <button type="button" className="dropdown-item" onClick={() => rotateAllWorld([0, 0, -90])}>Z -90</button>
             </div>
           )}
         </div>
         <span className="separator" />
-        <div className={`generate-group ${showGenerate ? 'is-open' : ''}`}>
-          {!showGenerate ? (
-            <button
-              className="btn-generate"
-              onClick={() => {
-                resetSuperdec();
-                resetSuperflex();
-                setShowSpaceflow(false);
-                setShowGenerate(true);
-                setTimeout(() => genInputRef.current?.focus(), 50);
-              }}
-              disabled={generating || superdecGenerating || superflexGenerating}
-              title="Create via TRELLIS + SuperDec, or edit via Ollama"
-            >
-              {generating ? '...' : 'AI Generate'}
-            </button>
-          ) : (
-            <>
-              <div
-                className="generate-popover-backdrop"
-                onClick={() => {
-                  if (!generating) {
-                    setShowGenerate(false);
-                    setGenPrompt('');
-                  }
-                }}
-                aria-hidden
-              />
-              <div className="generate-open-bar">
-                <div className="gen-mode-row" role="group" aria-label="AI mode">
-                  <button
-                    type="button"
-                    className={`gen-mode-btn ${genMode === 'create' ? 'active' : ''}`}
-                    onClick={() => setGenMode('create')}
-                    disabled={generating}
-                  >
-                    Create
-                  </button>
-                  <button
-                    type="button"
-                    className={`gen-mode-btn ${genMode === 'edit' ? 'active' : ''}`}
-                    onClick={() => setGenMode('edit')}
-                    disabled={generating}
-                    title="Edit current scene with a text instruction"
-                  >
-                    Edit
-                  </button>
-                </div>
-                <button
-                  className="toolbar-btn"
-                  onClick={() => { setShowGenerate(false); setGenPrompt(''); }}
-                  disabled={generating}
-                  title="Close (Esc)"
-                  type="button"
-                >
-                  ✕
-                </button>
-              </div>
-              <div
-                className="generate-popover"
-                role="dialog"
-                aria-label={genMode === 'create' ? 'Create from prompt' : 'Edit scene with prompt'}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {genMode === 'edit' && primitives.length > 0 && (
-                  <div className="edit-focus-block">
-                    <div className="edit-focus-head">
-                      <span className="edit-focus-title">Focus parts</span>
-                      <button
-                        type="button"
-                        className="edit-focus-add-sel"
-                        onClick={addSelectionToEditFocus}
-                        disabled={!selectedId || generating}
-                        title="Add currently selected primitive to focus"
-                      >
-                        + selection
-                      </button>
-                    </div>
-                    <div className="edit-focus-list">
-                      {primitives.map(p => (
-                        <label key={p.id} className="edit-focus-item">
-                          <input
-                            type="checkbox"
-                            checked={editFocusNames.includes(p.name)}
-                            onChange={() => toggleEditFocus(p.name)}
-                            disabled={generating}
-                          />
-                          <span>{p.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <p className="edit-focus-hint">
-                      Optional: check parts to steer the edit. Leave all unchecked to let the model choose.
-                    </p>
-                    <label className="edit-viewport-include">
-                      <input
-                        type="checkbox"
-                        checked={includeViewportInEdit}
-                        onChange={(e) => setIncludeViewportInEdit(e.target.checked)}
-                        disabled={generating}
-                      />
-                      <span>
-                        Include viewport screenshot (multimodal models: aligns the edit with what you see)
-                      </span>
-                    </label>
-                    {includeViewportInEdit && (
-                      <div className="edit-viewport-preview-row">
-                        <button
-                          type="button"
-                          className="edit-viewport-thumb"
-                          onClick={openViewportPreviewModal}
-                          disabled={generating}
-                          title="Click to view full size"
-                        >
-                          {viewportPreviewUrl ? (
-                            <img src={viewportPreviewUrl} alt="" />
-                          ) : (
-                            <span className="edit-viewport-thumb-placeholder">No preview</span>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          className="edit-viewport-refresh"
-                          onClick={() => void refreshViewportPreview()}
-                          disabled={generating}
-                          title="Refresh preview from viewport"
-                        >
-                          Refresh
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <label className="generate-popover-label" htmlFor="sq-gen-prompt-input">
-                  {genMode === 'create' ? 'Describe what to create' : 'Describe what to change'}
-                </label>
-                <div className="generate-popover-footer">
-                  <input
-                    id="sq-gen-prompt-input"
-                    ref={genInputRef}
-                    type="text"
-                    className="generate-input generate-input-popover"
-                    placeholder={
-                      genMode === 'create'
-                        ? 'e.g. a wooden desk lamp'
-                        : 'e.g. make the backrest taller, rounder wheels'
-                    }
-                    value={genPrompt}
-                    onChange={(e) => setGenPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleGenerate();
-                      if (e.key === 'Escape') {
-                        setShowGenerate(false);
-                        setGenPrompt('');
-                      }
-                    }}
-                    disabled={generating}
-                  />
-                  <button
-                    className="btn-generate-go"
-                    type="button"
-                    onClick={handleGenerate}
-                    disabled={
-                      generating ||
-                      !genPrompt.trim() ||
-                      (genMode === 'edit' && primitives.length === 0)
-                    }
-                  >
-                    {generating ? (
-                      <svg
-                        className="spinner-svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        aria-hidden={true}
-                      >
-                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
-                        <circle
-                          cx="8"
-                          cy="8"
-                          r="6.5"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeDasharray="10 31"
-                        />
-                      </svg>
-                    ) : (
-                      'Go'
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        <div className={`generate-group ${showSuperdec ? 'is-open' : ''}`}>
-          {!showSuperdec ? (
-            <button
-              className="btn-generate btn-superdec"
-              onClick={() => {
-                setShowGenerate(false);
-                setShowSpaceflow(false);
-                resetSuperflex();
-                setShowSuperdec(true);
-              }}
-              disabled={superdecGenerating || superflexGenerating}
-              title="Generate superquadrics from a point cloud with SuperDec"
-            >
-              {superdecGenerating ? '...' : 'SuperDec'}
-            </button>
-          ) : (
-            <>
-              <div
-                className="generate-popover-backdrop"
-                onClick={() => {
-                  if (!superdecGenerating) resetSuperdec();
-                }}
-                aria-hidden
-              />
-              <div className="generate-open-bar">
-                <div className="gen-mode-row" role="group" aria-label="SuperDec mode">
-                  <span className="superdec-open-label">Point Cloud</span>
-                </div>
-                <button
-                  className="toolbar-btn"
-                  onClick={resetSuperdec}
-                  disabled={superdecGenerating}
-                  title="Close (Esc)"
-                  type="button"
-                >
-                  ✕
-                </button>
-              </div>
-              <div
-                className="generate-popover superdec-popover"
-                role="dialog"
-                aria-label="Generate superquadrics from a point cloud"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <label className="generate-popover-label" htmlFor="sq-superdec-name-input">
-                  Scene name
-                </label>
-                <input
-                  id="sq-superdec-name-input"
-                  ref={superdecNameRef}
-                  type="text"
-                  className="generate-input generate-input-popover"
-                  placeholder="e.g. chair_scan"
-                  value={superdecName}
-                  onChange={(e) => setSuperdecName(e.target.value)}
-                  disabled={superdecGenerating}
-                />
-
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Input point cloud</span>
-                  </div>
-                  <label className="superdec-file-picker">
-                    <input
-                      type="file"
-                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl,.glb,.gltf"
-                      onChange={(e) => setSuperdecFile(e.target.files?.[0] ?? null)}
-                      disabled={superdecGenerating}
-                    />
-                    <span>{superdecFile ? superdecFile.name : 'Choose point cloud or mesh file'}</span>
-                  </label>
-                  <p className="edit-focus-hint">
-                    Supports `.ply` directly and also common formats such as `.pcd`, `.xyz`, `.pts`, `.obj`, `.stl`, `.glb`, and `.gltf` via the service-side loader.
-                  </p>
-                </div>
-
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Inference options</span>
-                  </div>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superdecZUp}
-                      onChange={(e) => setSuperdecZUp(e.target.checked)}
-                      disabled={superdecGenerating}
-                    />
-                    <span>Treat input as Z-up and convert it into the editor&apos;s Y-up frame</span>
-                  </label>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superdecNormalize}
-                      onChange={(e) => setSuperdecNormalize(e.target.checked)}
-                      disabled={superdecGenerating}
-                    />
-                    <span>Normalize point cloud before inference</span>
-                  </label>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superdecLmOptimization}
-                      onChange={(e) => setSuperdecLmOptimization(e.target.checked)}
-                      disabled={superdecGenerating}
-                    />
-                    <span>Enable LM optimization for a slower but potentially better fit</span>
-                  </label>
-                  <div className="superdec-number-grid">
-                    <label className="superdec-number-field">
-                      <span>Max primitives</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="num-input"
-                        value={superdecMaxPrimitives}
-                        onChange={(e) => setSuperdecMaxPrimitives(e.target.value)}
-                        disabled={superdecGenerating}
-                      />
-                    </label>
-                    <label className="superdec-number-field">
-                      <span>Exist threshold</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        className="num-input"
-                        value={superdecExistThreshold}
-                        onChange={(e) => setSuperdecExistThreshold(e.target.value)}
-                        disabled={superdecGenerating}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="generate-popover-footer">
-                  <button
-                    className="btn-generate-go"
-                    type="button"
-                    onClick={handleSuperdecGenerate}
-                    disabled={superdecGenerating || !superdecFile}
-                  >
-                    {superdecGenerating ? (
-                      <svg
-                        className="spinner-svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        aria-hidden={true}
-                      >
-                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
-                        <circle
-                          cx="8"
-                          cy="8"
-                          r="6.5"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeDasharray="10 31"
-                        />
-                      </svg>
-                    ) : (
-                      'Generate'
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        <div className={`generate-group ${showSuperflex ? 'is-open' : ''}`}>
-          {!showSuperflex ? (
-            <button
-              className="btn-generate btn-superflex"
-              onClick={() => {
-                setShowGenerate(false);
-                setShowSpaceflow(false);
-                resetSuperdec();
-                setShowSuperflex(true);
-              }}
-              disabled={superdecGenerating || superflexGenerating}
-              title="SuperFlex: superquadrics with tapering and bending (separate service)"
-            >
-              {superflexGenerating ? '...' : 'SuperFlex'}
-            </button>
-          ) : (
-            <>
-              <div
-                className="generate-popover-backdrop"
-                onClick={() => {
-                  if (!superflexGenerating) resetSuperflex();
-                }}
-                aria-hidden
-              />
-              <div className="generate-open-bar">
-                <div className="gen-mode-row" role="group" aria-label="SuperFlex mode">
-                  <span className="superdec-open-label">Taper + bend</span>
-                </div>
-                <button
-                  className="toolbar-btn"
-                  onClick={resetSuperflex}
-                  disabled={superflexGenerating}
-                  title="Close (Esc)"
-                  type="button"
-                >
-                  ✕
-                </button>
-              </div>
-              <div
-                className="generate-popover superdec-popover"
-                role="dialog"
-                aria-label="SuperFlex from point cloud or mesh"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <label className="generate-popover-label" htmlFor="sq-superflex-name-input">
-                  Scene name
-                </label>
-                <input
-                  id="sq-superflex-name-input"
-                  ref={superflexNameRef}
-                  type="text"
-                  className="generate-input generate-input-popover"
-                  placeholder="e.g. chair_scan"
-                  value={superflexName}
-                  onChange={(e) => setSuperflexName(e.target.value)}
-                  disabled={superflexGenerating}
-                />
-
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Input point cloud or mesh</span>
-                  </div>
-                  <label className="superdec-file-picker">
-                    <input
-                      type="file"
-                      accept=".ply,.pcd,.xyz,.xyzn,.xyzrgb,.pts,.obj,.stl,.glb,.gltf"
-                      onChange={(e) => setSuperflexFile(e.target.files?.[0] ?? null)}
-                      disabled={superflexGenerating}
-                    />
-                    <span>{superflexFile ? superflexFile.name : 'Choose file'}</span>
-                  </label>
-                  <p className="edit-focus-hint">
-                    Same formats as SuperDec. Use a SuperFlex-trained checkpoint so tapering and bending heads are
-                    populated (generic SuperDec weights still run but may predict zeros for bend/taper).
-                  </p>
-                </div>
-
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Inference options</span>
-                  </div>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superflexZUp}
-                      onChange={(e) => setSuperflexZUp(e.target.checked)}
-                      disabled={superflexGenerating}
-                    />
-                    <span>Treat input as Z-up and convert it into the editor&apos;s Y-up frame</span>
-                  </label>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superflexNormalize}
-                      onChange={(e) => setSuperflexNormalize(e.target.checked)}
-                      disabled={superflexGenerating}
-                    />
-                    <span>Normalize point cloud before inference</span>
-                  </label>
-                  <label className="edit-viewport-include">
-                    <input
-                      type="checkbox"
-                      checked={superflexLmOptimization}
-                      onChange={(e) => setSuperflexLmOptimization(e.target.checked)}
-                      disabled={superflexGenerating}
-                    />
-                    <span>Enable LM optimization for a slower but potentially better fit</span>
-                  </label>
-                  <div className="superdec-number-grid">
-                    <label className="superdec-number-field">
-                      <span>Max primitives</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="num-input"
-                        value={superflexMaxPrimitives}
-                        onChange={(e) => setSuperflexMaxPrimitives(e.target.value)}
-                        disabled={superflexGenerating}
-                      />
-                    </label>
-                    <label className="superdec-number-field">
-                      <span>Exist threshold</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        className="num-input"
-                        value={superflexExistThreshold}
-                        onChange={(e) => setSuperflexExistThreshold(e.target.value)}
-                        disabled={superflexGenerating}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="generate-popover-footer">
-                  <button
-                    className="btn-generate-go"
-                    type="button"
-                    onClick={handleSuperflexGenerate}
-                    disabled={superflexGenerating || !superflexFile}
-                  >
-                    {superflexGenerating ? (
-                      <svg
-                        className="spinner-svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        aria-hidden={true}
-                      >
-                        <circle cx="8" cy="8" r="6.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
-                        <circle
-                          cx="8"
-                          cy="8"
-                          r="6.5"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeDasharray="10 31"
-                        />
-                      </svg>
-                    ) : (
-                      'Generate'
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
         <div className={`generate-group ${showSpaceflow ? 'is-open' : ''}`}>
           {!showSpaceflow ? (
             <button
               className="btn-generate btn-spaceflow"
               onClick={() => {
-                setShowGenerate(false);
-                resetSuperdec();
-                resetSuperflex();
+                setShowImport(false);
+                setShowExport(false);
+                setShowRotateAll(false);
                 setShowSpaceflow(true);
               }}
-              disabled={spaceflowSaving || spaceflowRunning}
-              title="Save SpaceFlow inputs and launch two-level tau runs"
+              disabled={spaceflowSaving}
+              title="Run SpaceFlow from the current superquadrics"
             >
+              <SparklesIcon size={14} />
               {spaceflowRunning ? 'Running...' : 'SpaceFlow'}
             </button>
           ) : (
@@ -1575,16 +1067,17 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
               />
               <div className="generate-open-bar">
                 <div className="gen-mode-row" role="group" aria-label="SpaceFlow">
-                  <span className="superdec-open-label">SpaceFlow refinement</span>
+                  <span className="spaceflow-open-label">SpaceFlow refinement</span>
                 </div>
                 <button
-                  className="toolbar-btn"
+                  className="toolbar-btn toolbar-btn-close"
                   onClick={() => setShowSpaceflow(false)}
                   disabled={spaceflowSaving || spaceflowRunning}
                   title="Close"
                   type="button"
+                  aria-label="Close SpaceFlow panel"
                 >
-                  ✕
+                  <XIcon size={15} />
                 </button>
               </div>
               <div
@@ -1593,49 +1086,51 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                 aria-label="Run SpaceFlow"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Inputs</span>
-                    <div className="spaceflow-head-actions">
-                      <button
-                        type="button"
-                        className="edit-focus-add-sel"
-                        onClick={() => {
-                          const next = !showSpaceflowHistoryPanel;
-                          setShowSpaceflowHistoryPanel(next);
-                          if (next) void refreshSpaceflowHistory();
-                        }}
-                        disabled={spaceflowHistoryLoading}
-                        title="Show saved SpaceFlow input bundles"
-                      >
-                        {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
-                      </button>
-                      <button
-                        type="button"
-                        className="edit-focus-add-sel"
-                        onClick={handleSaveSpaceflowInputs}
-                        disabled={spaceflowSaving || primitives.length === 0}
-                        title="Save all.npz, high_control.npz, and low_control_bbox.npz"
-                      >
-                        {spaceflowSaving ? 'Saving...' : 'Save inputs'}
-                      </button>
-                    </div>
+                <div className="spaceflow-panel-block">
+                  <div className="spaceflow-panel-head">
+                    <span className="spaceflow-panel-title">Inputs</span>
+                    {!PUBLIC_DEMO && (
+                      <div className="spaceflow-head-actions">
+                        <button
+                          type="button"
+                          className="spaceflow-panel-action"
+                          onClick={() => {
+                            const next = !showSpaceflowHistoryPanel;
+                            setShowSpaceflowHistoryPanel(next);
+                            if (next) void refreshSpaceflowHistory();
+                          }}
+                          disabled={spaceflowHistoryLoading}
+                          title="Show saved SpaceFlow input bundles"
+                        >
+                          {showSpaceflowHistoryPanel ? 'Hide saved' : 'Saved inputs'}
+                        </button>
+                        <button
+                          type="button"
+                          className="spaceflow-panel-action"
+                          onClick={handleSaveSpaceflowInputs}
+                          disabled={spaceflowSaving || visiblePrimitives.length === 0}
+                          title="Save SpaceFlow input files"
+                        >
+                          {spaceflowSaving ? 'Saving...' : 'Save inputs'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <p className="spaceflow-summary">
-                    {primitives.filter(p => p.controlLevel === 'high').length} high · {primitives.filter(p => p.controlLevel === 'low').length} low
+                    {highCount} high control, {lowCount} low control
                   </p>
-                  <p className="edit-focus-hint">
-                    Current launch path writes the structure-stage outputs; high and low groups control the local tau sampler.
+                  <p className="spaceflow-panel-hint">
+                    The current scene is exported as all, high-control, and low-control bounding-box inputs for SpaceFlow.
                   </p>
                 </div>
 
-                {showSpaceflowHistoryPanel && (
-                  <div className="edit-focus-block spaceflow-history-block">
-                    <div className="edit-focus-head">
-                      <span className="edit-focus-title">Saved inputs</span>
+                {!PUBLIC_DEMO && showSpaceflowHistoryPanel && (
+                  <div className="spaceflow-panel-block spaceflow-history-block">
+                    <div className="spaceflow-panel-head">
+                      <span className="spaceflow-panel-title">Saved inputs</span>
                       <button
                         type="button"
-                        className="edit-focus-add-sel"
+                        className="spaceflow-panel-action"
                         onClick={() => void refreshSpaceflowHistory()}
                         disabled={spaceflowHistoryLoading}
                       >
@@ -1644,7 +1139,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     </div>
                     <div className="spaceflow-history-list">
                       {spaceflowHistory.length === 0 && (
-                        <p className="edit-focus-hint">No saved SpaceFlow input bundles yet.</p>
+                        <p className="spaceflow-panel-hint">No saved SpaceFlow input bundles yet.</p>
                       )}
                       {spaceflowHistory.map(entry => (
                         <button
@@ -1656,7 +1151,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                         >
                           <span className="spaceflow-history-title">{entry.project_name}</span>
                           <span className="spaceflow-history-meta">
-                            {entry.counts?.high ?? '?'} high · {entry.counts?.low ?? '?'} low · {entry.saved_at}
+                            {entry.counts?.high ?? '?'} high, {entry.counts?.low ?? '?'} low, {entry.saved_at}
                           </span>
                         </button>
                       ))}
@@ -1678,9 +1173,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   placeholder="e.g. A chair"
                 />
 
-                <div className="edit-focus-block spaceflow-texture-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Texture guidance</span>
+                <div className="spaceflow-panel-block spaceflow-texture-block">
+                  <div className="spaceflow-panel-head">
+                    <span className="spaceflow-panel-title">Texture guidance</span>
                     <div className="gen-mode-row">
                       <button
                         type="button"
@@ -1701,60 +1196,105 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     </div>
                   </div>
                   {spaceflowTextureMode === 'text' ? (
-                    <input
-                      type="text"
-                      className="generate-input generate-input-popover"
-                      value={spaceflowGlobalTextureText}
-                      onChange={(e) => setSpaceflowGlobalTextureText(e.target.value)}
-                      disabled={spaceflowRunning}
-                      placeholder="Global texture text; defaults to the shape prompt"
-                    />
-                  ) : (
-                    <div className="spaceflow-image-inputs">
+                    <>
                       <input
                         type="text"
                         className="generate-input generate-input-popover"
-                        value={spaceflowGlobalTextureImagePath}
-                        onChange={(e) => setSpaceflowGlobalTextureImagePath(e.target.value)}
+                        value={spaceflowGlobalTextureText}
+                        onChange={(e) => setSpaceflowGlobalTextureText(e.target.value)}
                         disabled={spaceflowRunning}
-                        placeholder="Global image path on cluster, or choose file below"
+                        placeholder="Global texture text; defaults to the shape prompt"
                       />
-                      <label className="superdec-file-picker">
+                      <label className="spaceflow-experiment-prompt-field">
+                        <span>TRELLIS experiment prompt</span>
+                        <textarea
+                          className="generate-input generate-input-popover spaceflow-experiment-prompt-input"
+                          value={textureExperimentPromptValue}
+                          onChange={(e) => {
+                            setSpaceflowTextureExperimentPromptEdited(true);
+                            setSpaceflowTextureExperimentPrompt(e.target.value);
+                          }}
+                          disabled={spaceflowRunning}
+                          placeholder={generatedTextureExperimentPrompt}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <div className="spaceflow-image-inputs">
+                      {!PUBLIC_DEMO && (
                         <input
+                          type="text"
+                          className="generate-input generate-input-popover"
+                          value={spaceflowGlobalTextureImagePath}
+                          onChange={(e) => setSpaceflowGlobalTextureImagePath(e.target.value)}
+                          disabled={spaceflowRunning}
+                          placeholder="Global image path on cluster, or choose file below"
+                        />
+                      )}
+                      <label className="spaceflow-file-picker">
+                        <input
+                          ref={globalTextureFileInputRef}
                           type="file"
                           accept="image/*"
+                          onClick={(e) => {
+                            e.currentTarget.value = '';
+                          }}
                           onChange={(e) => setSpaceflowGlobalTextureImageFile(e.target.files?.[0] ?? null)}
                           disabled={spaceflowRunning}
                         />
                         <span>{spaceflowGlobalTextureImageFile ? spaceflowGlobalTextureImageFile.name : 'Choose global texture image'}</span>
                       </label>
-                    </div>
+                      {((!PUBLIC_DEMO && spaceflowGlobalTextureImagePath) || spaceflowGlobalTextureImageFile) && (
+                        <button
+                          type="button"
+                          className="spaceflow-file-clear-btn"
+                          onClick={() => {
+                            setSpaceflowGlobalTextureImagePath('');
+                            setSpaceflowGlobalTextureImageFile(null);
+                            if (globalTextureFileInputRef.current) {
+                              globalTextureFileInputRef.current.value = '';
+                            }
+                          }}
+                          disabled={spaceflowRunning}
+                        >
+                          Clear
+                        </button>
+                      )}
+                      </div>
                   )}
                 </div>
 
-                <div className="edit-focus-block">
-                  <div className="edit-focus-head">
-                    <span className="edit-focus-title">Run options</span>
+                <div className="spaceflow-panel-block">
+                  <div className="spaceflow-panel-head">
+                    <span className="spaceflow-panel-title">Run options</span>
                   </div>
-                  <div className="superdec-number-grid">
-                    <label className="superdec-number-field">
+                  <div className="spaceflow-number-grid">
+                    <label className="spaceflow-number-field">
                       <span>Low tau</span>
                       <input className="num-input" type="number" step="0.5" value={spaceflowLowTau} onChange={(e) => setSpaceflowLowTau(e.target.value)} disabled={spaceflowRunning} />
                     </label>
-                    <label className="superdec-number-field">
+                    <label className="spaceflow-number-field">
                       <span>High tau</span>
                       <input className="num-input" type="number" step="0.5" value={spaceflowHighTau} onChange={(e) => setSpaceflowHighTau(e.target.value)} disabled={spaceflowRunning} />
                     </label>
-                    <label className="superdec-number-field">
+                    <label className="spaceflow-number-field">
                       <span>Polyak tau</span>
                       <input className="num-input" type="number" step="0.01" value={spaceflowPolyakTau} onChange={(e) => setSpaceflowPolyakTau(e.target.value)} disabled={spaceflowRunning} />
                     </label>
-                    <label className="superdec-number-field">
+                    <label className="spaceflow-number-field">
+                      <span>Repaint steps</span>
+                      <input className="num-input" type="number" min="0" step="1" value={spaceflowRepaintSteps} onChange={(e) => setSpaceflowRepaintSteps(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="spaceflow-number-field">
+                      <span>Texture optim steps</span>
+                      <input className="num-input" type="number" min="2" step="1" value={spaceflowTextureOptimSteps} onChange={(e) => setSpaceflowTextureOptimSteps(e.target.value)} disabled={spaceflowRunning} />
+                    </label>
+                    <label className="spaceflow-number-field">
                       <span>Output name</span>
                       <input className="num-input" type="text" value={spaceflowOutputName} onChange={(e) => setSpaceflowOutputName(e.target.value)} disabled={spaceflowRunning} placeholder={outputNameFromPrompt(spaceflowTextPrompt)} />
                     </label>
                   </div>
-                  <label className="edit-viewport-include">
+                  <label className="spaceflow-toggle-row">
                     <input
                       type="checkbox"
                       checked={spaceflowConvertYupToZup}
@@ -1763,7 +1303,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                     />
                     <span>Convert generated mesh from Y-up to Z-up</span>
                   </label>
-                  <label className="edit-viewport-include">
+                  <label className="spaceflow-toggle-row">
                     <input
                       type="checkbox"
                       checked={spaceflowDryRun}
@@ -1778,19 +1318,42 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   <button
                     className="btn-generate-go"
                     type="button"
-                    onClick={() => void handleStartSpaceflowRun(false)}
-                    disabled={spaceflowRunning || primitives.length === 0}
+                    onClick={() => void handleStartSpaceflowRun()}
+                    disabled={!canStartSpaceflow}
+                    title="Requires at least one visible high-control and one visible low-control primitive"
                   >
                     {spaceflowRunning ? 'Running' : spaceflowDryRun ? 'Dry Run' : 'Run'}
                   </button>
                   <button
                     className="btn-generate-go btn-spaceflow-experiment"
                     type="button"
-                    onClick={() => void handleStartSpaceflowRun(true)}
-                    disabled={spaceflowRunning || primitives.length === 0}
-                    title="Run local tau 3/10, global tau 3 polyak 0, and global tau 10 polyak 0 into one experiment folder"
+                    onClick={() => void handleStartSpaceflowRun('geometry')}
+                    disabled={!canStartSpaceflow}
+                    title="Run the preset SpaceFlow comparison variants"
                   >
-                    Experiment
+                    Structure exp
+                  </button>
+                  <button
+                    className="btn-generate-go btn-spaceflow-texture-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('texture')}
+                    disabled={!canStartTextureExperiment}
+                    title={spaceflowTextureMode === 'text'
+                      ? 'Run texture-focused TRELLIS and SpaceFlow comparison variants'
+                      : 'Texture experiment requires text texture guidance'}
+                  >
+                    Texture exp
+                  </button>
+                  <button
+                    className="btn-generate-go btn-spaceflow-texture-experiment"
+                    type="button"
+                    onClick={() => void handleStartSpaceflowRun('full')}
+                    disabled={!canStartTextureExperiment}
+                    title={spaceflowTextureMode === 'text'
+                      ? 'Run structure and texture comparison variants'
+                      : 'Full experiment requires text texture guidance'}
+                  >
+                    Full exp
                   </button>
                   {spaceflowRunActive && (
                     <button
@@ -1810,7 +1373,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   )}
                 </div>
 
-                {spaceflowRun?.output_dir && (
+                {!PUBLIC_DEMO && spaceflowRun?.output_dir && (
                   <div className="spaceflow-output-path">
                     <span>Output directory</span>
                     <code className="spaceflow-path-block" title={spaceflowRun.output_dir}>
@@ -1819,10 +1382,19 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                   </div>
                 )}
 
+                {spaceflowRunWarnings.length > 0 && (
+                  <div className="spaceflow-run-warnings" role="status">
+                    <span>Warnings</span>
+                    {spaceflowRunWarnings.map((message, index) => (
+                      <p key={`${index}-${message}`}>{message}</p>
+                    ))}
+                  </div>
+                )}
+
                 {spaceflowVisibleOutputs.length > 0 && (
-                  <div className="edit-focus-block spaceflow-results-block">
-                    <div className="edit-focus-head">
-                      <span className="edit-focus-title">Generated files</span>
+                  <div className="spaceflow-panel-block spaceflow-results-block">
+                    <div className="spaceflow-panel-head">
+                      <span className="spaceflow-panel-title">Generated files</span>
                       <div className="spaceflow-head-actions">
                         {spaceflowRun?.pipeline_stage === 'structure_only' ? (
                           <span className="spaceflow-stage-pill">structure stage</span>
@@ -1832,7 +1404,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                         {spaceflowRun && spaceflowInspectionMesh && (
                           <button
                             type="button"
-                            className="edit-focus-add-sel"
+                            className="spaceflow-panel-action"
                             onClick={() => {
                               const inspectedFile = inspectSpaceflowRunMesh(spaceflowRun);
                               showToast(
@@ -1854,7 +1426,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                         href={resolveSpaceflowUrl(spaceflowPreviewImage.url)}
                         target="_blank"
                         rel="noreferrer"
-                        title={spaceflowPreviewImage.path}
+                        title={PUBLIC_DEMO ? outputFileLabel(spaceflowPreviewImage) : spaceflowPreviewImage.path}
                       >
                         <img src={resolveSpaceflowUrl(spaceflowPreviewImage.url)} alt="SpaceFlow preview" />
                       </a>
@@ -1867,7 +1439,7 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                           href={resolveSpaceflowUrl(file.url)}
                           target="_blank"
                           rel="noreferrer"
-                          title={file.path}
+                          title={PUBLIC_DEMO ? outputFileLabel(file) : file.path}
                         >
                           <span>{outputFileLabel(file)}</span>
                           <small>{file.kind} {formatFileSize(file.size)}</small>
@@ -1878,9 +1450,9 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
                 )}
 
                 {spaceflowLogTail && (
-                  <div className="edit-focus-block spaceflow-log-block">
-                    <div className="edit-focus-head">
-                      <span className="edit-focus-title">Run log</span>
+                  <div className="spaceflow-panel-block spaceflow-log-block">
+                    <div className="spaceflow-panel-head">
+                      <span className="spaceflow-panel-title">Run log</span>
                     </div>
                     <pre className="spaceflow-log-tail">{spaceflowLogTail}</pre>
                   </div>
@@ -1893,92 +1465,137 @@ export default function TopBar({ themeMode, onThemeModeChange }: TopBarProps) {
 
       <div className="top-right">
         {hasWarnings && (
-          <span className="validation-warn" title="Some rotation matrices are not orthogonal">⚠</span>
+          <span className="validation-warn" title="Some rotation matrices are not orthogonal">
+            <AlertTriangleIcon size={17} />
+          </span>
         )}
-        {!hasWarnings && primitives.length > 0 && (
-          <span className="validation-ok" title="All rotations valid">✓</span>
-        )}
+        <button
+          type="button"
+          className={`theme-toggle ${themeMode}`}
+          role="switch"
+          aria-checked={themeMode === 'dark'}
+          aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+          onClick={() => onThemeModeChange(themeMode === 'dark' ? 'light' : 'dark')}
+        >
+          <span className="theme-toggle-thumb" aria-hidden />
+          <span className={`theme-toggle-icon ${themeMode === 'light' ? 'active' : ''}`} aria-hidden>
+            <SunIcon size={14} strokeWidth={2.2} />
+          </span>
+          <span className={`theme-toggle-icon ${themeMode === 'dark' ? 'active' : ''}`} aria-hidden>
+            <MoonIcon size={14} strokeWidth={2.2} />
+          </span>
+        </button>
         <div className="export-dropdown">
           <button
+            type="button"
             className="btn-accent"
-            onClick={() => setShowExport(!showExport)}
-            title="Export, copy, or import presets"
+            onClick={() => {
+              setShowImport(!showImport);
+              setShowExport(false);
+              setShowRotateAll(false);
+              setShowSpaceflow(false);
+            }}
+            title="Import presets or open NPZ files"
           >
-            Export ▾
+            <UploadIcon size={14} />
+            Import
+          </button>
+          {showImport && (
+            <div className={`dropdown-menu${PUBLIC_DEMO ? ' demo-preset-menu' : ''}`}>
+              {PUBLIC_DEMO && (
+                <>
+                  <div className="demo-preset-grid">
+                    {DEMO_PRESETS.map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className="demo-preset-item"
+                        onClick={() => void handleLoadDemoPreset(preset)}
+                        title={`Load ${preset.label}`}
+                      >
+                        <img src={preset.imageUrl} alt="" className="demo-preset-thumb" />
+                        <span className="demo-preset-label">{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="dropdown-separator" />
+                </>
+              )}
+              <button type="button" className="dropdown-item" onClick={handleImportJson}>
+                Import JSON preset
+              </button>
+              {!PUBLIC_DEMO && (
+                <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
+                  Open .npz path...
+                </button>
+              )}
+              <button type="button" className="dropdown-item" onClick={handleImportNpz}>
+                Import NPZ
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="export-dropdown">
+          <button
+            type="button"
+            className="btn-accent"
+            onClick={() => {
+              setShowExport(!showExport);
+              setShowImport(false);
+              setShowRotateAll(false);
+              setShowSpaceflow(false);
+            }}
+            title="Export or copy presets"
+          >
+            <DownloadIcon size={14} />
+            Export
           </button>
           {showExport && (
             <div className="dropdown-menu">
               <button
                 type="button"
-                className="dropdown-item"
-                onClick={handleDownloadNpz}
-                disabled={primitives.length === 0}
+                  className="dropdown-item"
+                  onClick={handleDownloadNpz}
+                  disabled={visiblePrimitives.length === 0}
               >
                 Download .npz
               </button>
               <button
                 type="button"
-                className="dropdown-item"
-                onClick={handleDownloadRendering}
-                disabled={primitives.length === 0}
+                  className="dropdown-item"
+                  onClick={handleDownloadRendering}
+                  disabled={visiblePrimitives.length === 0}
               >
                 Download rendering (.png)
               </button>
               <button
                 type="button"
                 className="dropdown-item"
-                onClick={handleCopyJson}
-                disabled={primitives.length === 0}
+                onClick={() => void handleDownloadGlbMesh()}
+                disabled={!spaceflowDownloadGlb}
+                title={
+                  spaceflowDownloadGlb
+                    ? `Download ${spaceflowDownloadGlb.label}`
+                    : 'No generated GLB mesh is available yet'
+                }
+              >
+                Download GLB mesh
+              </button>
+              <button
+                  type="button"
+                  className="dropdown-item"
+                  onClick={() => void handleCopyJson()}
+                  disabled={visiblePrimitives.length === 0}
               >
                 Copy JSON preset
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportJson}>
-                Import JSON preset
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleOpenNpzPath}>
-                Open .npz path...
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportNpz}>
-                Import .npz (as stored)
-              </button>
-              <button type="button" className="dropdown-item" onClick={handleImportNpzZUp} title="Use if the object looks sideways: applies x,y,z → x,z,-y">
-                Import .npz (Z-up → Y-up)
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {viewportPreviewModal && (
-        <div
-          className="viewport-preview-modal-backdrop"
-          role="presentation"
-          onClick={() => setViewportPreviewModal(false)}
-        >
-          <div
-            className="viewport-preview-modal"
-            role="dialog"
-            aria-label="Viewport screenshot"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="viewport-preview-modal-close"
-              onClick={() => setViewportPreviewModal(false)}
-              aria-label="Close"
-            >
-              ✕
-            </button>
-            {viewportModalUrl ? (
-              <img src={viewportModalUrl} alt="Viewport" className="viewport-preview-modal-img" />
-            ) : (
-              <p className="viewport-preview-modal-empty">Viewport is not available.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {toast && <div className="toast" onClick={() => setToast(null)}>{toast}</div>}
+      {toast && <div className="app-toast" onClick={() => setToast(null)}>{toast}</div>}
     </div>
   );
 }

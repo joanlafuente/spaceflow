@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/immutability, react-hooks/refs */
+/* eslint-disable react-hooks/immutability */
 import { useRef, useMemo, useCallback, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -6,13 +6,18 @@ import { OrbitControls, GizmoHelper, GizmoViewport, Grid, Html } from '@react-th
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as THREE from 'three';
-import { useStore } from '../state/store';
+import {
+  DEFAULT_MESH_ILLUMINATION,
+  MAX_MESH_ILLUMINATION,
+  MIN_MESH_ILLUMINATION,
+  useStore,
+} from '../state/store';
 import type { MeshInspectionSource, Primitive } from '../state/store';
 import { createSuperquadricMesh, normalizeMergedVertices } from '../mesh/superquadric';
 import { buildLowControlBoundingBoxPrimitive } from '../mesh/spaceflowExport';
 import { setViewportCapture, setViewportRenderExport } from '../state/viewportCapture';
 
-function superflexDeformForPrimitive(p: Primitive) {
+function deformForPrimitive(p: Primitive) {
   if (p.tapering === undefined && p.bending === undefined) return undefined;
   return {
     tapering: (p.tapering ?? [0, 0]) as [number, number],
@@ -27,29 +32,31 @@ function superflexDeformForPrimitive(p: Primitive) {
   };
 }
 
-const RENDER_EXPORT_BG = '#ffffff';
 const RENDER_EXPORT_HIGH_COLOR = '#f59e0b';
 const RENDER_EXPORT_LOW_COLOR = '#f8fafc';
 const RENDER_EXPORT_FRAME_FILL = 0.82;
+const RENDER_EXPORT_ALPHA_CUTOFF = 3;
+const PREVIEW_RESOLUTION = 48;
 
 type ThemeMode = 'dark' | 'light';
+const MESH_ILLUMINATION_STEP = 0.05;
 
 const VIEWPORT_THEME = {
   dark: {
-    background: '#0e1014',
-    gridCell: '#333a48',
-    gridSection: '#4a5568',
+    background: '#0b0f16',
+    gridCell: '#252d3a',
+    gridSection: '#3d4a5d',
     outline: '#ffffff',
     gizmoLabel: '#ffffff',
-    lowControlBBox: '#fbbf24',
+    lowControlBBox: '#facc15',
   },
   light: {
-    background: '#f6f8fb',
-    gridCell: '#cbd5e1',
-    gridSection: '#94a3b8',
-    outline: '#1e293b',
+    background: '#eef5fb',
+    gridCell: '#d7e0ea',
+    gridSection: '#9fb0c3',
+    outline: '#0f172a',
     gizmoLabel: '#0f172a',
-    lowControlBBox: '#d97706',
+    lowControlBBox: '#c2410c',
   },
 } satisfies Record<ThemeMode, {
   background: string;
@@ -175,6 +182,79 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise(resolve => canvas.toBlob(blob => resolve(blob), 'image/png'));
 }
 
+function clampByte(value: number) {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function readCanvasImageData(canvas: HTMLCanvasElement): ImageData | null {
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const ctx = copy.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(canvas, 0, 0);
+  return ctx.getImageData(0, 0, copy.width, copy.height);
+}
+
+function imageDataToPngBlob(imageData: ImageData): Promise<Blob | null> {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return Promise.resolve(null);
+  ctx.putImageData(imageData, 0, 0);
+  return canvasToPngBlob(canvas);
+}
+
+async function renderTransparentPngBlob(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+): Promise<Blob | null> {
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear(true, true, true);
+  renderer.render(scene, camera);
+  const black = readCanvasImageData(renderer.domElement);
+
+  renderer.setClearColor(0xffffff, 1);
+  renderer.clear(true, true, true);
+  renderer.render(scene, camera);
+  const white = readCanvasImageData(renderer.domElement);
+
+  if (!black || !white || black.width !== white.width || black.height !== white.height) return null;
+
+  const output = new ImageData(black.width, black.height);
+  const blackData = black.data;
+  const whiteData = white.data;
+  const outputData = output.data;
+  for (let i = 0; i < outputData.length; i += 4) {
+    const br = blackData[i];
+    const bg = blackData[i + 1];
+    const bb = blackData[i + 2];
+    const wr = whiteData[i];
+    const wg = whiteData[i + 1];
+    const wb = whiteData[i + 2];
+    const backgroundContribution = Math.max(wr - br, wg - bg, wb - bb, 0);
+    const alpha = 255 - backgroundContribution;
+
+    if (alpha <= RENDER_EXPORT_ALPHA_CUTOFF) {
+      outputData[i] = 0;
+      outputData[i + 1] = 0;
+      outputData[i + 2] = 0;
+      outputData[i + 3] = 0;
+      continue;
+    }
+
+    const unpremultiply = 255 / alpha;
+    outputData[i] = clampByte(br * unpremultiply);
+    outputData[i + 1] = clampByte(bg * unpremultiply);
+    outputData[i + 2] = clampByte(bb * unpremultiply);
+    outputData[i + 3] = clampByte(alpha);
+  }
+
+  return imageDataToPngBlob(output);
+}
+
 function cloneExportableSuperquadrics(sourceScene: THREE.Scene, targetScene: THREE.Scene): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
   sourceScene.traverse(object => {
@@ -197,7 +277,7 @@ function cloneExportableSuperquadrics(sourceScene: THREE.Scene, targetScene: THR
   return meshes;
 }
 
-/** Registers WebGL canvas readback for AI Edit screenshots and clean SQ render exports. */
+/** Registers WebGL canvas readback for viewport snapshots and clean SQ render exports. */
 function ViewportCaptureRegister() {
   const gl = useThree(s => s.gl);
   const scene = useThree(s => s.scene);
@@ -214,7 +294,7 @@ function ViewportCaptureRegister() {
       const width = Math.max(1, gl.domElement.width);
       const height = Math.max(1, gl.domElement.height);
       const exportScene = new THREE.Scene();
-      exportScene.background = new THREE.Color(RENDER_EXPORT_BG);
+      exportScene.background = null;
       exportScene.add(new THREE.AmbientLight(0xffffff, 0.7));
       const key = new THREE.DirectionalLight(0xffffff, 1.15);
       key.position.set(5, 8, 5);
@@ -235,8 +315,7 @@ function ViewportCaptureRegister() {
       renderer.setSize(width, height, false);
 
       const exportCamera = fitExportCameraToMeshes(camera, width, height, meshes);
-      renderer.render(exportScene, exportCamera);
-      const blob = await canvasToPngBlob(renderer.domElement);
+      const blob = await renderTransparentPngBlob(renderer, exportScene, exportCamera);
 
       meshes.forEach(mesh => {
         mesh.geometry.dispose();
@@ -284,6 +363,11 @@ type GeneratedMeshState = {
   error: string | null;
 };
 
+function prepareGeneratedMaterial(material: THREE.Material) {
+  material.side = THREE.DoubleSide;
+  material.needsUpdate = true;
+}
+
 function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
   const object = gltf.scene.clone(true);
   object.traverse(child => {
@@ -298,13 +382,9 @@ function prepareGeneratedMesh(gltf: GLTF): LoadedGeneratedMesh {
         metalness: 0.05,
         side: THREE.DoubleSide,
       });
-      return;
     }
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach(material => {
-      material.side = THREE.DoubleSide;
-      material.needsUpdate = true;
-    });
+    materials.forEach(prepareGeneratedMaterial);
   });
 
   const box = new THREE.Box3().setFromObject(object);
@@ -446,7 +526,7 @@ function SuperquadricMesh({
       primitive.rotation,
       primitive.translation,
       resolution,
-      superflexDeformForPrimitive(primitive),
+      deformForPrimitive(primitive),
     );
 
     const geo = new THREE.BufferGeometry();
@@ -679,8 +759,9 @@ function LowControlBBoxPreview({
 function Scene({ themeMode }: { themeMode: ThemeMode }) {
   const primitives = useStore(s => s.primitives);
   const meshInspection = useStore(s => s.meshInspection);
+  const meshIllumination = useStore(s => s.meshIllumination);
   const selectedId = useStore(s => s.selectedId);
-  const resolution = useStore(s => s.previewResolution);
+  const resolution = PREVIEW_RESOLUTION;
   const showNormalized = useStore(s => s.showNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
   const lowControlBBoxMargin = useStore(s => s.lowControlBBoxMargin);
@@ -701,7 +782,7 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
           p.scales[0], p.scales[1], p.scales[2],
           p.shapes[0], p.shapes[1],
           p.rotation, p.translation, resolution,
-          superflexDeformForPrimitive(p),
+          deformForPrimitive(p),
         );
         return vertices;
       });
@@ -726,20 +807,48 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
   // Match `gui/` conventions: Z-up world.
   const camera = useThree(s => s.camera);
+  const gl = useThree(s => s.gl);
   useEffect(() => {
     camera.up.set(0, 0, 1);
     camera.updateProjectionMatrix();
   }, [camera]);
 
+  useEffect(() => {
+    const previousToneMapping = gl.toneMapping;
+    const previousExposure = gl.toneMappingExposure;
+
+    if (meshInspection) {
+      gl.toneMapping = THREE.ACESFilmicToneMapping;
+      gl.toneMappingExposure = 0.9 + meshIllumination * 0.36;
+    } else {
+      gl.toneMapping = THREE.NoToneMapping;
+      gl.toneMappingExposure = 1;
+    }
+
+    return () => {
+      gl.toneMapping = previousToneMapping;
+      gl.toneMappingExposure = previousExposure;
+    };
+  }, [gl, meshIllumination, meshInspection]);
+
   const handleMiss = useCallback(() => {
     selectPrimitive(null);
   }, [selectPrimitive]);
 
+  const inspectionLight = meshInspection ? meshIllumination : 1;
+
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 8, 5]} intensity={1} />
-      <directionalLight position={[-3, -4, -2]} intensity={0.3} />
+      <ambientLight intensity={meshInspection ? 0.82 * inspectionLight : 0.56} />
+      <directionalLight color="#fff7ed" position={[5, 8, 5]} intensity={meshInspection ? 1.14 * inspectionLight : 1.05} />
+      <directionalLight color="#dbeafe" position={[-3, -4, -2]} intensity={meshInspection ? 0.54 * inspectionLight : 0.34} />
+      {meshInspection && (
+        <>
+          <hemisphereLight color="#ffffff" groundColor="#bfdbfe" intensity={0.4 * inspectionLight} />
+          <directionalLight color="#fef3c7" position={[0, -6, 6]} intensity={0.46 * inspectionLight} />
+          <directionalLight color="#e0f2fe" position={[-4, 3, 5]} intensity={0.3 * inspectionLight} />
+        </>
+      )}
 
       <Grid
         args={[20, 20]}
@@ -802,6 +911,8 @@ function Scene({ themeMode }: { themeMode: ThemeMode }) {
 
 export default function Viewport({ themeMode }: { themeMode: ThemeMode }) {
   const meshInspection = useStore(s => s.meshInspection);
+  const meshIllumination = useStore(s => s.meshIllumination);
+  const setMeshIllumination = useStore(s => s.setMeshIllumination);
   const setMeshInspection = useStore(s => s.setMeshInspection);
   const theme = VIEWPORT_THEME[themeMode];
 
@@ -821,6 +932,28 @@ export default function Viewport({ themeMode }: { themeMode: ThemeMode }) {
           <div className="viewport-inspection-title" title={meshInspection.path ?? meshInspection.url}>
             <span>Inspecting</span>
             <strong>{meshInspection.name}</strong>
+          </div>
+          <div className="viewport-light-control" title="Illumination for inspected output meshes">
+            <span>Light</span>
+            <input
+              type="range"
+              aria-label="Mesh illumination"
+              min={MIN_MESH_ILLUMINATION}
+              max={MAX_MESH_ILLUMINATION}
+              step={MESH_ILLUMINATION_STEP}
+              value={meshIllumination}
+              onChange={(e) => setMeshIllumination(parseFloat(e.target.value))}
+            />
+            <output>{Math.round(meshIllumination * 100)}%</output>
+            <button
+              type="button"
+              className="viewport-light-reset"
+              title="Reset illumination"
+              aria-label="Reset illumination"
+              onClick={() => setMeshIllumination(DEFAULT_MESH_ILLUMINATION)}
+            >
+              Reset
+            </button>
           </div>
           <button
             type="button"

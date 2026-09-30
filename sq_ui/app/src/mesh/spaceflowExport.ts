@@ -6,6 +6,7 @@ import {
 } from '../state/spaceflowConfig';
 import { createSuperquadricMesh } from './superquadric';
 import { exportNpz, type PrimitiveExport } from './npzExport';
+import type { NpzSpaceflowMetadata } from './npzImport';
 
 const BBOX_MIN_HALF_EXTENT = 1e-4;
 const BBOX_RESOLUTION = 32;
@@ -37,7 +38,7 @@ export interface SpaceflowSqBundleBlobs {
   lowControlBbox: Blob;
 }
 
-function superflexDeformForPrimitive(p: Primitive) {
+function deformForPrimitive(p: Primitive) {
   if (p.tapering === undefined && p.bending === undefined) return undefined;
   return {
     tapering: (p.tapering ?? [0, 0]) as [number, number],
@@ -84,7 +85,7 @@ function paddedBBoxFromLowPrimitives(
       p.rotation,
       p.translation,
       BBOX_RESOLUTION,
-      superflexDeformForPrimitive(p),
+      deformForPrimitive(p),
     );
     for (let i = 0; i < vertices.length; i += 3) {
       min[0] = Math.min(min[0], vertices[i]);
@@ -124,7 +125,7 @@ export function buildLowControlBoundingBoxPrimitive(
   bbox: SpaceflowBBox;
 } {
   const bbox = paddedBBoxFromLowPrimitives(
-    primitives.filter(p => p.controlLevel === 'low'),
+    primitives.filter(p => p.visible && p.controlLevel === 'low'),
     marginFraction,
   );
 
@@ -147,14 +148,15 @@ export function buildSpaceflowSqBundleData(
   primitives: Primitive[],
   options: { lowControlBBoxMargin?: number } = {},
 ): SpaceflowSqBundleData {
-  if (primitives.length === 0) throw new Error('No primitives to save.');
+  const visiblePrimitives = primitives.filter(p => p.visible);
+  if (visiblePrimitives.length === 0) throw new Error('No visible primitives to save.');
   const bboxMarginFraction = clampLowControlBBoxMargin(
     options.lowControlBBoxMargin ?? DEFAULT_LOW_CONTROL_BBOX_MARGIN,
   );
-  const all = primitives.map(primitiveToExport);
-  const highControl = primitives.filter(p => p.controlLevel === 'high').map(primitiveToExport);
+  const all = visiblePrimitives.map(primitiveToExport);
+  const highControl = visiblePrimitives.filter(p => p.controlLevel === 'high').map(primitiveToExport);
   const { primitive: lowControlBbox, bbox } = buildLowControlBoundingBoxPrimitive(
-    primitives,
+    visiblePrimitives,
     bboxMarginFraction,
   );
   return {
@@ -164,18 +166,19 @@ export function buildSpaceflowSqBundleData(
     bbox,
     bboxMarginFraction,
     counts: {
-      all: primitives.length,
+      all: visiblePrimitives.length,
       high: highControl.length,
-      low: primitives.filter(p => p.controlLevel === 'low').length,
+      low: visiblePrimitives.filter(p => p.controlLevel === 'low').length,
     },
   };
 }
 
 export async function buildSpaceflowSqBundleBlobs(
   data: SpaceflowSqBundleData,
+  metadata?: NpzSpaceflowMetadata,
 ): Promise<SpaceflowSqBundleBlobs> {
   const [all, highControl, lowControlBbox] = await Promise.all([
-    exportNpz(data.all),
+    exportNpz(data.all, { metadata }),
     exportNpz(data.highControl, { allowEmpty: true }),
     exportNpz([data.lowControlBbox]),
   ]);

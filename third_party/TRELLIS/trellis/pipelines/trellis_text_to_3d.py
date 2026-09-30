@@ -12,6 +12,7 @@ import open3d_pycg as o3d
 import os
 import time
 import imageio
+import logging
 from .base import Pipeline
 from . import samplers
 from ..modules import sparse as sp
@@ -20,6 +21,8 @@ from ..utils import render_utils
 # from gui import utils (Directly copied the functions here because of coliding dependencies)
 from pathlib import Path
 from sklearn.decomposition import PCA
+
+log = logging.getLogger(__name__)
 
 
 def merge_meshes(mesh_list):
@@ -134,7 +137,10 @@ class TrellisTextTo3DPipeline(Pipeline):
         self.slat_sampler_params = {}
         self.slat_normalization = slat_normalization
         self._init_text_cond_model(text_cond_model)
-        self._init_image_cond_model(image_cond_model)
+        self.image_cond_model_name = image_cond_model
+        self.image_cond_model_transform = None
+        if os.environ.get("TRELLIS_EAGER_IMAGE_COND", "").strip().lower() in {"1", "true", "yes", "on"}:
+            self._init_image_cond_model(image_cond_model)
 
     @staticmethod
     def from_pretrained(path: str) -> "TrellisTextTo3DPipeline":
@@ -158,8 +164,13 @@ class TrellisTextTo3DPipeline(Pipeline):
         new_pipeline.slat_normalization = args['slat_normalization']
 
         new_pipeline._init_text_cond_model(args['text_cond_model'])
-        
-        if 'image_cond_model' in args:
+
+        new_pipeline.image_cond_model_name = args.get('image_cond_model')
+        new_pipeline.image_cond_model_transform = None
+        if (
+            new_pipeline.image_cond_model_name
+            and os.environ.get("TRELLIS_EAGER_IMAGE_COND", "").strip().lower() in {"1", "true", "yes", "on"}
+        ):
             new_pipeline._init_image_cond_model(args['image_cond_model'])
 
         return new_pipeline
@@ -183,13 +194,27 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         Initialize the image conditioning model.
         """
+        if not name:
+            raise ValueError("No image conditioning model configured for this pipeline")
+        if (
+            'image_cond_model' in self.models
+            and getattr(self, 'image_cond_model_name', None) == name
+            and getattr(self, 'image_cond_model_transform', None) is not None
+        ):
+            return
         dinov2_model = torch.hub.load('facebookresearch/dinov2', name, pretrained=True)
-        dinov2_model.eval()
+        target_device = self.device
+        dinov2_model.eval().to(target_device)
         self.models['image_cond_model'] = dinov2_model
+        self.image_cond_model_name = name
         transform = transforms.Compose([
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
         self.image_cond_model_transform = transform
+
+    def _ensure_image_cond_model(self) -> None:
+        if 'image_cond_model' not in self.models or getattr(self, 'image_cond_model_transform', None) is None:
+            self._init_image_cond_model(getattr(self, 'image_cond_model_name', None))
 
     @torch.no_grad()
     def encode_text(self, text: List[str]) -> torch.Tensor:
@@ -225,6 +250,7 @@ class TrellisTextTo3DPipeline(Pipeline):
         else:
             raise ValueError(f"Unsupported type of image: {type(image)}")
         
+        self._ensure_image_cond_model()
         image = self.image_cond_model_transform(image).to(self.device)
         features = self.models['image_cond_model'](image, is_training=True)['x_prenorm']
         patchtokens = F.layer_norm(features, features.shape[-1:])
@@ -355,6 +381,13 @@ class TrellisTextTo3DPipeline(Pipeline):
         noise = torch.randn(num_samples, flow_model.in_channels, reso, reso, reso).to(self.device)
         sampler_params = {**self.sparse_structure_sampler_params, **sampler_params}
 
+        sample_start = time.perf_counter()
+        log.info(
+            "Sampling TRELLIS sparse structure: samples=%d, resolution=%d, steps=%s",
+            num_samples,
+            reso,
+            sampler_params.get("steps", "default"),
+        )
         ret = self.sparse_structure_sampler.sample(
             flow_model,
             noise,
@@ -363,14 +396,22 @@ class TrellisTextTo3DPipeline(Pipeline):
             verbose=True
         )
         z_s = ret.samples
+        log.info("Sampled TRELLIS sparse structure latent in %.2fs", time.perf_counter() - sample_start)
 
         # Decode occupancy latent
+        decode_start = time.perf_counter()
         decoder = self.models['sparse_structure_decoder']
-        coords = torch.argwhere(decoder(z_s)>0)[:, [0, 2, 3, 4]].int()
+        occupancy = decoder(z_s)
+        coords = torch.argwhere(occupancy > 0)[:, [0, 2, 3, 4]].int()
+        log.info(
+            "Decoded TRELLIS sparse structure occupancy in %.2fs (%d voxels)",
+            time.perf_counter() - decode_start,
+            coords.shape[0],
+        )
 
         # Save intermediate voxel structure for visualization
         save_voxelgrid_as_ply(
-            decoder(z_s)[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
+            occupancy[0, 0].cpu().numpy(), "debug/structure_fm_output.ply"
         )
 
         if (vis_output_dir is not None) and (len(ret.pred_x_0) > 0):
@@ -397,11 +438,17 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         ret = {}
         if 'mesh' in formats:
+            mesh_start = time.perf_counter()
             ret['mesh'] = self.models['slat_decoder_mesh'](slat)
+            log.info("Decoded TRELLIS mesh SLAT in %.2fs", time.perf_counter() - mesh_start)
         if 'gaussian' in formats:
+            gaussian_start = time.perf_counter()
             ret['gaussian'] = self.models['slat_decoder_gs'](slat)
+            log.info("Decoded TRELLIS gaussian SLAT in %.2fs", time.perf_counter() - gaussian_start)
         if 'radiance_field' in formats:
+            rf_start = time.perf_counter()
             ret['radiance_field'] = self.models['slat_decoder_rf'](slat)
+            log.info("Decoded TRELLIS radiance-field SLAT in %.2fs", time.perf_counter() - rf_start)
         return ret
     
     def sample_slat(
@@ -420,14 +467,23 @@ class TrellisTextTo3DPipeline(Pipeline):
         """
         # Sample structured latent
         if cond['cond'].shape[-1] == 768:
-          flow_model = self.models['slat_flow_model_text']
+          flow_model_key = 'slat_flow_model_text'
+          flow_model = self.models[flow_model_key]
         else:
-          flow_model = self.models['slat_flow_model_image']
+          flow_model_key = 'slat_flow_model_image'
+          flow_model = self.models[flow_model_key]
         noise = sp.SparseTensor(
             feats=torch.randn(coords.shape[0], flow_model.in_channels).to(self.device),
             coords=coords,
         )
         sampler_params = {**self.slat_sampler_params, **sampler_params}
+        sample_start = time.perf_counter()
+        log.info(
+            "Sampling TRELLIS SLAT with %s: coords=%d, steps=%s",
+            flow_model_key,
+            coords.shape[0],
+            sampler_params.get("steps", "default"),
+        )
         slat = self.slat_sampler.sample(
             flow_model,
             noise,
@@ -435,10 +491,13 @@ class TrellisTextTo3DPipeline(Pipeline):
             **sampler_params,
             verbose=True
         ).samples
+        log.info("Sampled TRELLIS SLAT in %.2fs", time.perf_counter() - sample_start)
 
+        norm_start = time.perf_counter()
         std = torch.tensor(self.slat_normalization['std'])[None].to(slat.device)
         mean = torch.tensor(self.slat_normalization['mean'])[None].to(slat.device)
         slat = slat * std + mean
+        log.info("Applied TRELLIS SLAT normalization in %.2fs", time.perf_counter() - norm_start)
         return slat
 
     @torch.no_grad()
@@ -529,28 +588,45 @@ class TrellisTextTo3DPipeline(Pipeline):
             sparse_structure_sampler_params (dict): Additional parameters for the sparse structure sampler.
             slat_sampler_params (dict): Additional parameters for the structured latent sampler.
         """
+        conditioning_start = time.perf_counter()
+        text_start = time.perf_counter()
         cond_text = self.get_cond_text([prompt])
+        log.info(f"Encoded TRELLIS text condition in {time.perf_counter() - text_start:.2f}s")
+
         torch.manual_seed(seed)
+        spatial_start = time.perf_counter()
         spatial_control_latent = self.encode_spatial_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
+        log.info(f"Encoded spatial control latent in {time.perf_counter() - spatial_start:.2f}s")
 
         high_control_spatial_control = None
         low_control_spatial_control = None
         lantent_high_control = None
         if (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'guidance'):
+            high_start = time.perf_counter()
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_start:.2f}s")
         elif (sparse_structure_sampler_params.get('high_control_spatial_control_mesh_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'masking'):
+            high_mask_start = time.perf_counter()
             high_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Prepared high-control mask in {time.perf_counter() - high_mask_start:.2f}s")
             # low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['spatial_control_mesh_path'])
             print("High control sum:", high_control_spatial_control.sum().item())
             # print("Low control sum:", low_control_spatial_control.sum().item())            
             # low_control_spatial_control = low_control_spatial_control - high_control_spatial_control
             # print("Low control after subtracting high control sum:", low_control_spatial_control.sum().item())
+            high_latent_start = time.perf_counter()
             lantent_high_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_latent_start:.2f}s")
         elif (sparse_structure_sampler_params.get('low_control_superquadric_mask_path', None) is not None) and (sparse_structure_sampler_params.get('local_tau_mode', None) == 'low_control_mask'):
+            low_mask_start = time.perf_counter()
             low_control_spatial_control = self.load_mesh_high_control(sparse_structure_sampler_params['low_control_superquadric_mask_path'])
+            log.info(f"Prepared low-control mask in {time.perf_counter() - low_mask_start:.2f}s")
+            high_start = time.perf_counter()
             high_control_spatial_control = self.encode_spatial_control(sparse_structure_sampler_params['high_control_spatial_control_mesh_path'])
+            log.info(f"Encoded high-control spatial latent in {time.perf_counter() - high_start:.2f}s")
 
         cond_text = {**cond_text, 'control': spatial_control_latent, 'control_high': high_control_spatial_control, 'control_low_mask': low_control_spatial_control, 'latent_high_control': lantent_high_control}
+        log.info(f"Prepared TRELLIS structure conditioning in {time.perf_counter() - conditioning_start:.2f}s")
         coords = self.sample_sparse_structure(cond_text, num_samples, sparse_structure_sampler_params, vis_output_dir=vis_output_dir)
 
         return coords

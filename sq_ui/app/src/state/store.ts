@@ -15,9 +15,9 @@ export interface Primitive {
   translation: [number, number, number];
   rotation: number[][];
   eulerDeg: [number, number, number]; // cached Euler ZYX in degrees
-  /** SuperFlex-style linear taper along local Z (dimensionless); omitted for plain superquadrics. */
+  /** Linear taper along local Z (dimensionless); omitted for plain superquadrics. */
   tapering?: [number, number];
-  /** Packed [k_z, α_z, k_x, α_x, k_y, α_y] for SuperFlex bending; omitted for plain superquadrics. */
+  /** Packed [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y] bending; omitted for plain superquadrics. */
   bending?: [number, number, number, number, number, number];
   /** Optional per-primitive SpaceFlow texture text override. Empty/omitted falls back to the global texture prompt. */
   localTextureText?: string;
@@ -33,6 +33,15 @@ export interface MeshInspectionSource {
   relativePath?: string;
 }
 
+export const DEFAULT_MESH_ILLUMINATION = 1.8;
+export const MIN_MESH_ILLUMINATION = 0.5;
+export const MAX_MESH_ILLUMINATION = 3;
+
+export function clampMeshIllumination(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MESH_ILLUMINATION;
+  return Math.min(MAX_MESH_ILLUMINATION, Math.max(MIN_MESH_ILLUMINATION, value));
+}
+
 interface HistoryEntry {
   primitives: Primitive[];
   selectedId: string | null;
@@ -41,10 +50,10 @@ interface HistoryEntry {
 export interface AppState {
   primitives: Primitive[];
   selectedId: string | null;
-  previewResolution: number;
   showNormalized: boolean;
   showControlPreview: boolean;
   lowControlBBoxMargin: number;
+  meshIllumination: number;
   meshInspection: MeshInspectionSource | null;
 
   undoStack: HistoryEntry[];
@@ -60,16 +69,18 @@ export interface AppState {
   /** Push current primitives/selection as one undo step (e.g. once at drag start). */
   pushUndoSnapshot: () => void;
   reorderPrimitives: (fromIndex: number, toIndex: number) => void;
-  setPreviewResolution: (res: number) => void;
   setShowNormalized: (v: boolean) => void;
   setShowControlPreview: (v: boolean) => void;
   setLowControlBBoxMargin: (v: number) => void;
+  setMeshIllumination: (v: number) => void;
   setMeshInspection: (source: MeshInspectionSource | null) => void;
   undo: () => void;
   redo: () => void;
   loadPreset: (primitives: Primitive[]) => void;
   /** Apply the same world-space rotation (ZYX Euler delta in degrees) to every primitive. */
   rotateAllWorld: (deltaEulerDeg: [number, number, number]) => void;
+  /** Swap high-control and low-control labels on every primitive. */
+  invertControlLevels: () => void;
 }
 
 let idCounter = 0;
@@ -164,20 +175,20 @@ function sqPreset(
 }
 
 export const PRESETS: Record<string, () => Partial<Primitive>> = {
-  Ball: () => sqPreset([0.5, 0.5, 0.5], [1, 1], [0, 0, 0]),
+  Ball: () => sqPreset([0.2, 0.2, 0.2], [1, 1], [0, 0, 0]),
   Ellipsoid: () => sqPreset([0.25, 0.25, 0.5], [1, 1], [0, 0, 0]),
-  Cylinder: () => sqPreset([0.5, 0.5, 0.5], [0.05, 1], [90, 0, 0]),
-  Cube: () => sqPreset([0.5, 0.5, 0.5], [0.05, 0.05], [90, 0, 0]),
-  'Astroid (star)': () => sqPreset([0.5, 0.5, 0.5], [4, 4], [0, 0, 0]),
+  Cylinder: () => sqPreset([0.2, 0.2, 0.2], [0.05, 1], [90, 0, 0]),
+  Cube: () => sqPreset([0.2, 0.2, 0.2], [0.05, 0.05], [90, 0, 0]),
+  'Astroid (star)': () => sqPreset([0.2, 0.2, 0.2], [4, 4], [0, 0, 0]),
 };
 
 export const useStore = create<AppState>((set, get) => ({
   primitives: [],
   selectedId: null,
-  previewResolution: 48,
   showNormalized: false,
   showControlPreview: true,
   lowControlBBoxMargin: DEFAULT_LOW_CONTROL_BBOX_MARGIN,
+  meshIllumination: DEFAULT_MESH_ILLUMINATION,
   meshInspection: null,
   undoStack: [],
   redoStack: [],
@@ -270,10 +281,10 @@ export const useStore = create<AppState>((set, get) => ({
     });
   },
 
-  setPreviewResolution: (res) => set({ previewResolution: res }),
   setShowNormalized: (v) => set({ showNormalized: v }),
   setShowControlPreview: (v) => set({ showControlPreview: v }),
   setLowControlBBoxMargin: (v) => set({ lowControlBBoxMargin: clampLowControlBBoxMargin(v) }),
+  setMeshIllumination: (v) => set({ meshIllumination: clampMeshIllumination(v) }),
   setMeshInspection: (source) => set({ meshInspection: source }),
 
   undo: () => {
@@ -328,6 +339,20 @@ export const useStore = create<AppState>((set, get) => ({
     });
     set({
       primitives,
+      undoStack: [...state.undoStack, entry],
+      redoStack: [],
+    });
+  },
+
+  invertControlLevels: () => {
+    const state = get();
+    if (state.primitives.length === 0) return;
+    const entry = snapshot(state);
+    set({
+      primitives: state.primitives.map(p => ({
+        ...p,
+        controlLevel: p.controlLevel === 'high' ? 'low' : 'high',
+      })),
       undoStack: [...state.undoStack, entry],
       redoStack: [],
     });

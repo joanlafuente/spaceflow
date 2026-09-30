@@ -19,9 +19,6 @@ function stemFromSource(source: string): string {
   }
   const parts = pathname.split(/[\\/]/).filter(Boolean);
   const filename = parts[parts.length - 1] ?? 'npz';
-  if (/^superflex\.npz$/i.test(filename) && parts.length >= 2) {
-    return sanitizeStem(parts[parts.length - 2] ?? 'superflex');
-  }
   return sanitizeStem(filename.replace(/\.npz$/i, ''));
 }
 
@@ -44,7 +41,6 @@ export function getNpzUrlRequest(location: Location = window.location): NpzUrlRe
     namePrefix,
     importOptions: {
       basisZUpToYUp: parseBasis(params),
-      inferSuperflex: true,
     },
   };
 }

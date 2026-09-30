@@ -2,12 +2,15 @@ import { useCallback, useMemo } from 'react';
 import { useStore } from '../state/store';
 import { eulerToMatrix, isOrthogonal, det3 } from '../state/rotation';
 import { useTextureUploadStore } from '../state/textureUploads';
+import { useSpaceflowUiStore } from '../state/spaceflowUi';
 
-/** Half-axis minimum; must match scale slider min (SuperDec / normalized fits use ~1e-3). */
+/** Half-axis minimum; must match scale slider min for normalized fits. */
 const SCALE_MIN = 0.0001;
 const SCALE_SLIDER_MAX = 5;
 const SCALE_STEP = 0.0001;
 const LOG_SLIDER_STEPS = 1000;
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
 
 interface SliderRowProps {
   label: string;
@@ -17,7 +20,7 @@ interface SliderRowProps {
   max: number;
   step: number;
   tooltip?: string;
-  /** Decimal places for the number box (range uses `step`). Use more for very small values (e.g. SuperDec fits). */
+  /** Decimal places for the number box (range uses `step`). Use more for very small normalized fits. */
   inputDecimals?: number;
   rangeMode?: 'linear' | 'log';
 }
@@ -78,12 +81,11 @@ export default function ParameterPanel() {
   const primitives = useStore(s => s.primitives);
   const selectedId = useStore(s => s.selectedId);
   const updatePrimitive = useStore(s => s.updatePrimitive);
-  const previewResolution = useStore(s => s.previewResolution);
-  const setPreviewResolution = useStore(s => s.setPreviewResolution);
   const showNormalized = useStore(s => s.showNormalized);
   const setShowNormalized = useStore(s => s.setShowNormalized);
   const showControlPreview = useStore(s => s.showControlPreview);
   const setShowControlPreview = useStore(s => s.setShowControlPreview);
+  const spaceflowTextureMode = useSpaceflowUiStore(s => s.textureMode);
   const localTextureImageFile = useTextureUploadStore(s =>
     selectedId ? (s.localTextureImageFiles[selectedId] ?? null) : null
   );
@@ -119,6 +121,20 @@ export default function ParameterPanel() {
     const e: [number, number, number] = [...prim.eulerDeg];
     e[idx] = val;
     updatePrimitive(prim.id, { eulerDeg: e });
+  }, [prim, updatePrimitive]);
+
+  const setTaperEnabled = useCallback((enabled: boolean) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, {
+      tapering: enabled ? (prim.tapering ?? [0, 0]) : undefined,
+    });
+  }, [prim, updatePrimitive]);
+
+  const setBendEnabled = useCallback((enabled: boolean) => {
+    if (!prim) return;
+    updatePrimitive(prim.id, {
+      bending: enabled ? (prim.bending ?? [0, 0, 0, 0, 0, 0]) : undefined,
+    });
   }, [prim, updatePrimitive]);
 
   const updateTaper = useCallback((idx: number, val: number) => {
@@ -157,9 +173,13 @@ export default function ParameterPanel() {
 
   const clearLocalTextureOverride = useCallback(() => {
     if (!prim) return;
-    updatePrimitive(prim.id, { localTextureText: '', localTextureImagePath: '' });
-    clearLocalTextureImageFile(prim.id);
-  }, [clearLocalTextureImageFile, prim, updatePrimitive]);
+    if (spaceflowTextureMode === 'image') {
+      updatePrimitive(prim.id, { localTextureImagePath: '' });
+      clearLocalTextureImageFile(prim.id);
+    } else {
+      updatePrimitive(prim.id, { localTextureText: '' });
+    }
+  }, [clearLocalTextureImageFile, prim, spaceflowTextureMode, updatePrimitive]);
 
   const scaleSliderMax = useMemo(() => {
     const maxScale = Math.max(...primitives.flatMap(p => p.scales), 0.05);
@@ -178,13 +198,6 @@ export default function ParameterPanel() {
         </div>
         <div className="section" style={{ marginTop: 'auto' }}>
           <div className="section-title">Preview</div>
-          <SliderRow
-            label="Resolution"
-            value={previewResolution}
-            onChange={setPreviewResolution}
-            min={16} max={128} step={4}
-            tooltip="Mesh quality for preview only (does not affect export)"
-          />
           <div className="checkbox-row">
             <label>
               <input
@@ -262,55 +275,77 @@ export default function ParameterPanel() {
           Local texture
           <span
             className="help-badge"
-            title="Overrides the global SpaceFlow texture condition for this selected superquadric. Empty fields use the global texture."
+            title={spaceflowTextureMode === 'image'
+              ? 'Overrides the global SpaceFlow image texture condition for this selected superquadric. Empty fields use the global image.'
+              : 'Overrides the global SpaceFlow text texture condition for this selected superquadric. Empty fields use the global text.'}
           >
             ?
           </span>
         </div>
-        <label className="local-texture-field">
-          <span>Text override</span>
-          <input
-            type="text"
-            className="name-input local-texture-input"
-            value={prim.localTextureText ?? ''}
-            onChange={(e) => updateLocalTextureText(e.target.value)}
-            placeholder="Empty uses global text"
-          />
-        </label>
-        <label className="local-texture-field">
-          <span>Image path override</span>
-          <input
-            type="text"
-            className="name-input local-texture-input"
-            value={prim.localTextureImagePath ?? ''}
-            onChange={(e) => updateLocalTextureImagePath(e.target.value)}
-            placeholder="Empty uses global image"
-          />
-        </label>
-        <div className="local-texture-actions">
-          <label className="local-texture-file-picker">
-            <input
-              type="file"
-              accept="image/*"
-              onClick={(e) => {
-                e.currentTarget.value = '';
-              }}
-              onChange={(e) => setLocalTextureImageFile(prim.id, e.target.files?.[0] ?? null)}
-            />
-            <span title={localTextureImageFile?.name ?? undefined}>
-              {localTextureImageFile?.name ?? 'Choose image override'}
-            </span>
-          </label>
-          {(prim.localTextureText || prim.localTextureImagePath || localTextureImageFile) && (
-            <button
-              type="button"
-              className="local-texture-clear-btn"
-              onClick={clearLocalTextureOverride}
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        {spaceflowTextureMode === 'image' ? (
+          <>
+            {!PUBLIC_DEMO && (
+              <label className="local-texture-field">
+                <span>Image path override</span>
+                <input
+                  type="text"
+                  className="name-input local-texture-input"
+                  value={prim.localTextureImagePath ?? ''}
+                  onChange={(e) => updateLocalTextureImagePath(e.target.value)}
+                  placeholder="Empty uses global image"
+                />
+              </label>
+            )}
+            <div className="local-texture-actions">
+              <label className="local-texture-file-picker">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onClick={(e) => {
+                    e.currentTarget.value = '';
+                  }}
+                  onChange={(e) => setLocalTextureImageFile(prim.id, e.target.files?.[0] ?? null)}
+                />
+                <span title={localTextureImageFile?.name ?? undefined}>
+                  {localTextureImageFile?.name ?? 'Choose image override'}
+                </span>
+              </label>
+              {((!PUBLIC_DEMO && prim.localTextureImagePath) || localTextureImageFile) && (
+                <button
+                  type="button"
+                  className="local-texture-clear-btn"
+                  onClick={clearLocalTextureOverride}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="local-texture-field">
+              <span>Text override</span>
+              <input
+                type="text"
+                className="name-input local-texture-input"
+                value={prim.localTextureText ?? ''}
+                onChange={(e) => updateLocalTextureText(e.target.value)}
+                placeholder="Empty uses global text"
+              />
+            </label>
+            {prim.localTextureText && (
+              <div className="local-texture-actions">
+                <button
+                  type="button"
+                  className="local-texture-clear-btn"
+                  onClick={clearLocalTextureOverride}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="section">
@@ -475,78 +510,87 @@ export default function ParameterPanel() {
         )}
       </div>
 
-      {(prim.tapering !== undefined || prim.bending !== undefined) && (
-        <div className="section">
-          <div className="section-title">
-            SuperFlex deform
-            <span
-              className="help-badge"
-              title="Linear taper (Kx, Ky) along local Z and bending packed as [k_z, α_z, k_x, α_x, k_y, α_y] in local space (α in radians)."
-            >
-              ?
-            </span>
-          </div>
-          {prim.tapering !== undefined && (
-            <>
-              <SliderRow
-                label="Kx (taper)"
-                value={prim.tapering[0]}
-                onChange={(v) => updateTaper(0, v)}
-                min={-3}
-                max={3}
-                step={0.001}
-                tooltip="Taper along X vs normalized Z (see SuperFlex viz)"
-                inputDecimals={6}
-              />
-              <SliderRow
-                label="Ky (taper)"
-                value={prim.tapering[1]}
-                onChange={(v) => updateTaper(1, v)}
-                min={-3}
-                max={3}
-                step={0.001}
-                tooltip="Taper along Y vs normalized Z"
-                inputDecimals={6}
-              />
-            </>
-          )}
-          {prim.bending !== undefined && (
-            <>
-              {(
-                [
-                  ['kz', 0],
-                  ['αz (rad)', 1],
-                  ['kx', 2],
-                  ['αx (rad)', 3],
-                  ['ky', 4],
-                  ['αy (rad)', 5],
-                ] as const
-              ).map(([label, j]) => (
-                <SliderRow
-                  key={label}
-                  label={label}
-                  value={prim.bending![j]}
-                  onChange={(v) => updateBend(j, v)}
-                  min={label.startsWith('α') ? -3.15 : -2}
-                  max={label.startsWith('α') ? 3.15 : 2}
-                  step={label.startsWith('α') ? 0.01 : 0.001}
-                  inputDecimals={label.startsWith('α') ? 4 : 6}
-                />
-              ))}
-            </>
-          )}
+      <div className="section">
+        <div className="section-title">
+          Deform
+          <span
+            className="help-badge"
+            title="Optional local-space tapering and bending. Bending is packed as [k_z, alpha_z, k_x, alpha_x, k_y, alpha_y], with alpha in radians."
+          >
+            ?
+          </span>
         </div>
-      )}
+        <div className="deform-toggle-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={prim.tapering !== undefined}
+              onChange={(e) => setTaperEnabled(e.target.checked)}
+            />
+            <span>Taper</span>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={prim.bending !== undefined}
+              onChange={(e) => setBendEnabled(e.target.checked)}
+            />
+            <span>Bend</span>
+          </label>
+        </div>
+        {prim.tapering !== undefined && (
+          <>
+            <SliderRow
+              label="Kx"
+              value={prim.tapering[0]}
+              onChange={(v) => updateTaper(0, v)}
+              min={-3}
+              max={3}
+              step={0.001}
+              tooltip="Taper along X vs normalized local Z"
+              inputDecimals={6}
+            />
+            <SliderRow
+              label="Ky"
+              value={prim.tapering[1]}
+              onChange={(v) => updateTaper(1, v)}
+              min={-3}
+              max={3}
+              step={0.001}
+              tooltip="Taper along Y vs normalized local Z"
+              inputDecimals={6}
+            />
+          </>
+        )}
+        {prim.bending !== undefined && (
+          <>
+            {(
+              [
+                ['kz', 0],
+                ['alpha z', 1],
+                ['kx', 2],
+                ['alpha x', 3],
+                ['ky', 4],
+                ['alpha y', 5],
+              ] as const
+            ).map(([label, j]) => (
+              <SliderRow
+                key={label}
+                label={label}
+                value={prim.bending![j]}
+                onChange={(v) => updateBend(j, v)}
+                min={label.startsWith('alpha') ? -3.15 : -2}
+                max={label.startsWith('alpha') ? 3.15 : 2}
+                step={label.startsWith('alpha') ? 0.01 : 0.001}
+                inputDecimals={label.startsWith('alpha') ? 4 : 6}
+              />
+            ))}
+          </>
+        )}
+      </div>
 
       <div className="section">
         <div className="section-title">Preview</div>
-        <SliderRow
-          label="Resolution"
-          value={previewResolution}
-          onChange={setPreviewResolution}
-          min={16} max={128} step={4}
-          tooltip="Mesh quality for preview only (does not affect export)"
-        />
         <div className="checkbox-row">
           <label>
             <input

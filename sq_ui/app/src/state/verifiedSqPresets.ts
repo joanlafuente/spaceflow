@@ -1,7 +1,7 @@
 /**
  * Source numbers match examples/superquadrics/*_sq.npz (pipeline / fit convention).
  * Those assets are effectively Z-up; we convert world pose to Y-up (Three.js) for the LLM
- * so few-shot examples match the editor — same transform as "Import .npz (Z-up → Y-up)".
+ * so few-shot examples match the editor.
  */
 import { applyWorldBasisZUpToYUp } from '../mesh/npzImport';
 import { eulerToMatrix, matrixToEuler } from './rotation';

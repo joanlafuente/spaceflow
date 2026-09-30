@@ -4,13 +4,16 @@ import PrimitiveList from './ui/PrimitiveList';
 import Viewport from './ui/Viewport';
 import ParameterPanel from './ui/ParameterPanel';
 import { useStore } from './state/store';
-import { importNpzToPrimitives } from './mesh/npzImport';
+import { importNpzWithMetadata } from './mesh/npzImport';
 import { getNpzUrlRequest, npzFetchUrl } from './state/npzUrl';
+import { useSpaceflowUiStore } from './state/spaceflowUi';
 import './App.css';
 
 type ThemeMode = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'sq-ui-theme';
+const PUBLIC_DEMO = String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === '1'
+  || String(import.meta.env.VITE_PUBLIC_DEMO ?? '').toLowerCase() === 'true';
 
 function readInitialTheme(): ThemeMode {
   try {
@@ -22,6 +25,15 @@ function readInitialTheme(): ThemeMode {
   return 'dark';
 }
 
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+    return true;
+  }
+  if (target.isContentEditable) return true;
+  return Boolean(target.closest('[contenteditable="true"], [contenteditable="plaintext-only"]'));
+}
+
 export default function App() {
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
@@ -29,6 +41,7 @@ export default function App() {
   const removePrimitive = useStore(s => s.removePrimitive);
   const duplicatePrimitive = useStore(s => s.duplicatePrimitive);
   const loadPreset = useStore(s => s.loadPreset);
+  const setImportedNpzMetadata = useSpaceflowUiStore(s => s.setImportedNpzMetadata);
   const [urlToast, setUrlToast] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(readInitialTheme);
   const loadedNpzRequestRef = useRef<string | null>(null);
@@ -45,7 +58,7 @@ export default function App() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+      if (isTextEditingTarget(e.target)) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -69,6 +82,7 @@ export default function App() {
   }, [undo, redo, selectedId, removePrimitive, duplicatePrimitive]);
 
   useEffect(() => {
+    if (PUBLIC_DEMO) return;
     const request = getNpzUrlRequest();
     const requestKey = request
       ? JSON.stringify({ source: request.source, importOptions: request.importOptions })
@@ -96,11 +110,12 @@ export default function App() {
       } finally {
         window.clearTimeout(timeout);
       }
-      const prims = await importNpzToPrimitives(blob, request.namePrefix, request.importOptions);
+      const { primitives: prims, metadata } = await importNpzWithMetadata(blob, request.namePrefix, request.importOptions);
       if (cancelled) return;
       loadPreset(prims);
+      if (metadata) setImportedNpzMetadata(metadata);
       loadedNpzRequestRef.current = requestKey;
-      setUrlToast(`Loaded ${prims.length} primitives from ${request.namePrefix}.npz`);
+      setUrlToast(`Loaded ${prims.length} primitives from ${request.namePrefix}.npz${metadata ? ' with texture metadata' : ''}`);
       window.setTimeout(() => {
         if (!cancelled) setUrlToast(null);
       }, 3500);
@@ -114,7 +129,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [loadPreset]);
+  }, [loadPreset, setImportedNpzMetadata]);
 
   return (
     <div className="app" data-theme={themeMode}>
@@ -124,7 +139,7 @@ export default function App() {
         <Viewport themeMode={themeMode} />
         <ParameterPanel />
       </div>
-      {urlToast && <div className="toast" onClick={() => setUrlToast(null)}>{urlToast}</div>}
+      {urlToast && <div className="app-toast" onClick={() => setUrlToast(null)}>{urlToast}</div>}
     </div>
   );
 }
